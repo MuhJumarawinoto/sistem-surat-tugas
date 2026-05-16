@@ -1,0 +1,77 @@
+flowchart TD
+    Start([Mulai]) --> Login[PNS Login ke SIPINTAR]
+    Login --> CekRole{Cek Role User}
+
+    CekRole -->|Pemohon| DashboardPemohon[Dashboard Pemohon]
+    CekRole -->|Atasan| DashboardAtasan[Dashboard Atasan]
+    CekRole -->|Admin BKPSDM| DashboardAdmin[Dashboard Admin]
+    CekRole -->|Kepala BKPSDM| DashboardKepala[Dashboard Kepala]
+
+    %% Alur Pemohon
+    DashboardPemohon --> PilihAksi{Pilih Aksi}
+    PilihAksi -->|Buat Baru| IsiForm[Isi Form Pengajuan]
+    PilihAksi -->|Lihat Riwayat| ListPengajuan[Daftar Pengajuan]
+
+    IsiForm --> UploadDoc[Upload 9 Dokumen Wajib]
+    UploadDoc --> CekDokumen{Semua Dokumen Lengkap?}
+    CekDokumen -->|Belum| UploadDoc
+    CekDokumen -->|Ya| SimpanDraft[Simpan Draft]
+    SimpanDraft --> SubmitPengajuan[Submit Pengajuan]
+    SubmitPengajuan --> StatusPending[Status: Pending Atasan]
+
+    ListPengajuan --> ViewDetail[Lihat Detail]
+    ViewDetail --> CekStatusPemohon{Cek Status}
+    CekStatusPemohon -->|Draft| EditDraft[Edit / Upload Dokumen]
+    CekStatusPemohon -->|Pending| TungguProses[Tunggu Proses]
+    CekStatusPemohon -->|Disetujui| DownloadSurat[Download Surat Tugas]
+    CekStatusPemohon -->|Ditolak| LihatAlasan[Lihat Alasan Penolakan]
+    EditDraft --> UploadDoc
+
+    %% Alur Atasan
+    DashboardAtasan --> ListPending[List Pengajuan Pending]
+    ListPending --> ReviewAtasan[Review Pengajuan]
+    ReviewAtasan --> CekKelengkapan{Cek Kelengkapan}
+    CekKelengkapan -->|Lengkap| DecideAtasan{Keputusan Atasan}
+    CekKelengkapan -->|Kurang| KembalikanPemohon[Kembalikan ke Pemohon]
+    DecideAtasan -->|Setuju| StatusPendingAdmin[Status: Pending Admin]
+    DecideAtasan -->|Tolak| StatusDitolakPemohon[Status: Ditolak]
+    KembalikanPemohon --> UploadDoc
+    StatusDitolakPemohon --> LihatAlasan
+
+    %% Alur Admin BKPSDM
+    DashboardAdmin --> ListPendingAdmin[List Pengajuan Pending]
+    ListPendingAdmin --> ReviewAdmin[Review Pengajuan]
+    ReviewAdmin --> VerifikasiDokumen[Verifikasi Dokumen]
+    VerifikasiDokumen --> ChecklistAdmin[Checklist 9 Dokumen]
+    ChecklistAdmin --> CekVerifikasi{Semua Lengkap?}
+    CekVerifikasi -->|Tidak Lengkap| TolakAdmin[Tolak dengan Catatan]
+    CekVerifikasi -->|Lengkap| DecideAdmin{Keputusan Admin}
+    DecideAdmin -->|Setuju| GenerateSurat[Generate Surat Tugas]
+    DecideAdmin -->|Tolak| StatusDitolakAdmin[Status: Ditolak]
+    TolakAdmin --> LihatAlasan
+
+    %% Alur Kepala BKPSDM
+    DashboardKepala --> ListSigning[List Surat Pending TTE]
+    ListSigning --> PreviewSurat[Preview Surat Tugas]
+    PreviewSurat --> SignTTE[Sign TTE Elektronik]
+    SignTTE --> StatusSelesai[Status: Selesai]
+    StatusSelesai --> NotifPemohon[Notifikasi ke Pemohon]
+
+    %% Alur Download
+    DownloadSurat --> Finish([Selesai])
+    StatusSelesai --> Finish
+
+    %% Styling
+    classDef pemohonClass fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef atasanClass fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef adminClass fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef kepalaClass fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    classDef statusClass fill:#ffebee,stroke:#c62828,stroke-width:2px
+    classDef successClass fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+
+    class DashboardPemohon,IsiForm,UploadDoc,ListPengajuan,ViewDetail pemohonClass
+    class DashboardAtasan,ListPending,ReviewAtasan atasanClass
+    class DashboardAdmin,ListPendingAdmin,ReviewAdmin,VerifikasiDokumen,GenerateSurat adminClass
+    class DashboardKepala,ListSigning,PreviewSurat,SignTTE kepalaClass
+    class StatusDitolakPemohon,StatusDitolakAdmin,TolakAdmin statusClass
+    class StatusSelesai,DownloadSurat,Finish successClass
