@@ -5,6 +5,9 @@ import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
 import AppHeader from '@/components/layout/Header.vue'
 import AppSidebar from '@/components/layout/Sidebar.vue'
+import LoadingSpinner from '@/components/LoadingSpinner.vue'
+import Breadcrumb from '@/components/Breadcrumb.vue'
+import SendMessageModal from '@/components/SendMessageModal.vue'
 
 const pengajuanStore = usePengajuanStore()
 const authStore = useAuthStore()
@@ -13,6 +16,8 @@ const pengajuanList = ref([])
 const loading = ref(false)
 const filterStatus = ref('pending_atasan')
 const approving = ref(false)
+const showModal = ref(false)
+const selectedPengajuan = ref(null)
 
 const statusOptions = [
   { value: '', label: 'Semua Status' },
@@ -70,6 +75,30 @@ function getStatusColor(status) {
   return colors[status] || 'bg-gray-100 text-gray-800'
 }
 
+function getStatusBadge(status) {
+  const badges = {
+    draft: 'badge-default',
+    pending_atasan: 'badge-warning',
+    pending_admin: 'badge-info',
+    disetujui: 'badge-success',
+    ditolak: 'badge-danger',
+    selesai: 'badge-purple',
+  }
+  return badges[status] || 'badge-default'
+}
+
+function getStatusIcon(status) {
+  const icons = {
+    draft: 'ri-draft-line',
+    pending_atasan: 'ri-time-line',
+    pending_admin: 'ri-time-line',
+    disetujui: 'ri-check-line',
+    ditolak: 'ri-close-line',
+    selesai: 'ri-checkbox-circle-line',
+  }
+  return icons[status] || 'ri-file-line'
+}
+
 async function approvePengajuan(id) {
   if (!confirm('Setujui pengajuan ini?')) return
 
@@ -100,97 +129,128 @@ async function rejectPengajuan(id) {
     approving.value = false
   }
 }
+
+function openSendMessageModal(pengajuan) {
+  selectedPengajuan.value = pengajuan
+  showModal.value = true
+}
+
+function handleMessageSent() {
+  alert('Pesan berhasil dikirim ke pemohon')
+}
 </script>
 
 <template>
-  <div class="flex min-h-screen">
+  <div class="flex min-h-screen bg-secondary-50">
     <AppSidebar />
-    <div class="flex-1">
+    <div class="flex-1 flex flex-col">
       <AppHeader />
-      <main class="p-6">
-        <div class="mb-6 flex justify-between items-center">
-          <div>
-            <h2 class="text-2xl font-bold text-gray-900">Persetujuan Pengajuan</h2>
-            <p class="text-gray-600">Unit Kerja: {{ authStore.user?.unit_kerja || '-' }}</p>
+      <main class="flex-1 p-6 overflow-y-auto">
+        <div class="mb-6 animate-fade-in">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h2 class="text-2xl font-bold text-secondary-800">Persetujuan Pengajuan</h2>
+              <p class="text-secondary-500 mt-1">Unit Kerja: {{ authStore.user?.unit_kerja || '-' }}</p>
+            </div>
+            <select v-model="filterStatus" @change="loadPengajuan" class="select-field w-48">
+              <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
           </div>
-          <select v-model="filterStatus" @change="loadPengajuan" class="input-field w-48">
-            <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
-              {{ opt.label }}
-            </option>
-          </select>
         </div>
 
-        <div class="card">
-          <div v-if="loading" class="text-center py-8">
-            <p class="text-gray-500">Loading...</p>
-          </div>
-
-          <div v-else-if="pengajuanList.length === 0" class="text-center py-8">
-            <p class="text-gray-500 mb-4">Tidak ada pengajuan</p>
-            <div class="text-sm text-gray-400">
-              <p>Pastikan:</p>
-              <p>1. Pemohon sudah submit pengajuan (bukan Draft)</p>
-              <p>2. Pemohon berada di unit kerja yang sama dengan Anda</p>
+        <div class="card animate-slide-up">
+          <div class="card-body">
+            <div v-if="loading" class="flex items-center justify-center py-12">
+              <LoadingSpinner size="md" text="Memuat..." />
             </div>
-          </div>
 
-          <div v-else class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200">
-              <thead class="bg-gray-50">
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nomor</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pemohon</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Program Studi</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Universitas</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Aksi</th>
-                </tr>
-              </thead>
-              <tbody class="bg-white divide-y divide-gray-200">
-                <tr v-for="item in pengajuanList" :key="item.id">
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {{ item.nomor_pengajuan }}
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm">
-                    <p class="font-medium text-gray-900">{{ item.user?.name }}</p>
-                    <p class="text-gray-500">NIP: {{ item.user?.nip }}</p>
-                  </td>
-                  <td class="px-6 py-4 text-sm text-gray-900">
-                    {{ item.nama_prodi }}
-                  </td>
-                  <td class="px-6 py-4 text-sm text-gray-900">
-                    {{ item.perguruan_tinggi }}
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap">
-                    <span :class="['px-2 py-1 text-xs rounded-full', getStatusColor(item.status)]">
-                      {{ getStatusLabel(item.status) }}
-                    </span>
-                  </td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm">
-                    <div v-if="item.status === 'pending_atasan'" class="flex space-x-2">
-                      <button
-                        @click="approvePengajuan(item.id)"
-                        :disabled="approving"
-                        class="btn-primary text-xs"
-                      >
-                        Setujui
-                      </button>
-                      <button
-                        @click="rejectPengajuan(item.id)"
-                        :disabled="approving"
-                        class="btn-danger text-xs"
-                      >
-                        Tolak
-                      </button>
-                    </div>
-                    <span v-else class="text-gray-400 text-xs">-</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <div v-else-if="pengajuanList.length === 0" class="text-center py-12">
+              <div class="w-16 h-16 rounded-full bg-secondary-100 flex items-center justify-center mx-auto mb-4">
+                <i class="ri-inbox-line text-3xl text-secondary-400"></i>
+              </div>
+              <p class="text-secondary-500 mb-2">Tidak ada pengajuan</p>
+              <p class="text-sm text-secondary-400">Pastikan pemohon sudah submit pengajuan dan berada di unit kerja yang sama</p>
+            </div>
+
+            <div v-else class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Nomor</th>
+                    <th>Pemohon</th>
+                    <th>Prodi</th>
+                    <th>Universitas</th>
+                    <th>Status</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in pengajuanList" :key="item.id">
+                    <td class="font-medium">{{ item.nomor_pengajuan }}</td>
+                    <td>
+                      <p class="font-medium text-secondary-800">{{ item.user?.name }}</p>
+                      <p class="text-sm text-secondary-500">NIP: {{ item.user?.nip }}</p>
+                    </td>
+                    <td>{{ item.nama_prodi }}</td>
+                    <td>{{ item.perguruan_tinggi }}</td>
+                    <td>
+                      <span :class="['badge', getStatusBadge(item.status), 'flex items-center gap-1 w-fit']">
+                        <i :class="getStatusIcon(item.status)"></i>
+                        {{ getStatusLabel(item.status) }}
+                      </span>
+                    </td>
+                    <td>
+                      <div class="flex items-center gap-1">
+                        <button
+                          @click="openSendMessageModal(item)"
+                          class="btn btn-ghost btn-sm"
+                          title="Kirim Pesan"
+                        >
+                          <i class="ri-message-3-line"></i>
+                        </button>
+                        <template v-if="item.status === 'pending_atasan'">
+                          <button
+                            @click="approvePengajuan(item.id)"
+                            :disabled="approving"
+                            class="btn btn-primary btn-sm"
+                          >
+                            <LoadingSpinner v-if="approving" size="sm" color="white" />
+                            <span v-else class="flex items-center gap-1">
+                              <i class="ri-check-line"></i>
+                              Setujui
+                            </span>
+                          </button>
+                          <button
+                            @click="rejectPengajuan(item.id)"
+                            :disabled="approving"
+                            class="btn btn-danger btn-sm"
+                          >
+                            <LoadingSpinner v-if="approving" size="sm" color="white" />
+                            <span v-else class="flex items-center gap-1">
+                              <i class="ri-close-line"></i>
+                              Tolak
+                            </span>
+                          </button>
+                        </template>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </main>
     </div>
   </div>
+
+  <SendMessageModal
+    :show="showModal"
+    :pengajuan-id="selectedPengajuan?.id"
+    :pemohon-name="selectedPengajuan?.user?.name"
+    @close="showModal = false"
+    @sent="handleMessageSent"
+  />
 </template>

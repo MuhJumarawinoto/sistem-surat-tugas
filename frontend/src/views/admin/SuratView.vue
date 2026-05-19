@@ -1,140 +1,117 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
 import { usePengajuanStore } from '@/stores/pengajuan'
 import api from '@/services/api'
 import AppHeader from '@/components/layout/Header.vue'
 import AppSidebar from '@/components/layout/Sidebar.vue'
+import LoadingSpinner from '@/components/LoadingSpinner.vue'
+import Breadcrumb from '@/components/Breadcrumb.vue'
+import SendMessageModal from '@/components/SendMessageModal.vue'
 
-const route = useRoute()
 const pengajuanStore = usePengajuanStore()
 
-const pengajuan = ref(null)
+const suratList = ref([])
 const loading = ref(false)
+const showModal = ref(false)
+const selectedPengajuan = ref(null)
 
 onMounted(async () => {
-  await loadPengajuan()
+  await loadSurat()
 })
 
-async function loadPengajuan() {
+async function loadSurat() {
   loading.value = true
   try {
-    pengajuan.value = await pengajuanStore.fetchPengajuanDetail(route.params.id)
+    const response = await api.get('/pengajuan', { params: { status: 'disetujui' } })
+    suratList.value = response.data?.data || []
   } catch (error) {
-    alert('Gagal memuat pengajuan')
+    console.error('Failed to load surat:', error)
   } finally {
     loading.value = false
   }
 }
 
-async function approvePengajuan() {
-  if (!confirm('Setujui pengajuan ini?')) return
+async function signSurat(id) {
+  if (!confirm('Tanda tangani surat ini?')) return
 
   try {
-    await api.post(`/pengajuan/${route.params.id}/approve-admin`)
-    alert('Pengajuan disetujui')
-    await loadPengajuan()
+    await api.post(`/surat/${id}/sign-tte`)
+    alert('Surat berhasil ditandatangani')
+    await loadSurat()
   } catch (error) {
-    alert('Gagal menyetujui pengajuan')
+    alert('Gagal menandatangani surat')
   }
 }
 
-async function rejectPengajuan() {
-  const catatan = prompt('Alasan penolakan:')
-  if (!catatan) return
+function openSendMessageModal(pengajuan) {
+  selectedPengajuan.value = pengajuan
+  showModal.value = true
+}
 
-  try {
-    await api.post(`/pengajuan/${route.params.id}/reject`, { catatan })
-    alert('Pengajuan ditolak')
-    window.location.href = '/admin/verifikasi'
-  } catch (error) {
-    alert('Gagal menolak pengajuan')
-  }
+function handleMessageSent() {
+  alert('Pesan berhasil dikirim ke pemohon')
 }
 </script>
 
 <template>
-  <div class="flex min-h-screen">
+  <div class="flex min-h-screen bg-secondary-50">
     <AppSidebar />
-    <div class="flex-1">
+    <div class="flex-1 flex flex-col">
       <AppHeader />
-      <main class="p-6">
-        <div v-if="loading" class="text-center py-8">
-          <p class="text-gray-500">Loading...</p>
+      <main class="flex-1 p-6 overflow-y-auto">
+        <div class="mb-6 animate-fade-in">
+          <h2 class="text-2xl font-bold text-secondary-800">Tanda Tangan Surat</h2>
+          <p class="text-secondary-500 mt-1">Daftar surat yang siap ditandatangani</p>
         </div>
 
-        <div v-else-if="pengajuan" class="space-y-6">
-          <div class="flex justify-between items-center">
-            <div>
-              <h2 class="text-2xl font-bold text-gray-900">Verifikasi Pengajuan</h2>
-              <p class="text-gray-600">{{ pengajuan.nomor_pengajuan }}</p>
+        <div class="card animate-slide-up">
+          <div class="card-body">
+            <div v-if="loading" class="flex items-center justify-center py-12">
+              <LoadingSpinner size="md" text="Memuat..." />
             </div>
-          </div>
 
-          <div class="card">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">Data Pemohon</h3>
-            <dl class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <dt class="text-sm text-gray-500">Nama</dt>
-                <dd class="text-gray-900">{{ pengajuan.user?.name }}</dd>
+            <div v-else-if="suratList.length === 0" class="text-center py-12">
+              <div class="w-16 h-16 rounded-full bg-secondary-100 flex items-center justify-center mx-auto mb-4">
+                <i class="ri-file-sign-line text-3xl text-secondary-400"></i>
               </div>
-              <div>
-                <dt class="text-sm text-gray-500">NIP</dt>
-                <dd class="text-gray-900">{{ pengajuan.user?.nip }}</dd>
-              </div>
-              <div>
-                <dt class="text-sm text-gray-500">Unit Kerja</dt>
-                <dd class="text-gray-900">{{ pengajuan.user?.unit_kerja }}</dd>
-              </div>
-              <div>
-                <dt class="text-sm text-gray-500">Jabatan</dt>
-                <dd class="text-gray-900">{{ pengajuan.user?.jabatan }}</dd>
-              </div>
-            </dl>
-          </div>
+              <p class="text-secondary-500">Tidak ada surat yang menunggu tanda tangan</p>
+            </div>
 
-          <div class="card">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">Data Pendidikan</h3>
-            <dl class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <dt class="text-sm text-gray-500">Jenjang</dt>
-                <dd class="text-gray-900">{{ pengajuan.jenjang?.nama }}</dd>
-              </div>
-              <div>
-                <dt class="text-sm text-gray-500">Program Studi</dt>
-                <dd class="text-gray-900">{{ pengajuan.nama_prodi }}</dd>
-              </div>
-              <div>
-                <dt class="text-sm text-gray-500">Perguruan Tinggi</dt>
-                <dd class="text-gray-900">{{ pengajuan.perguruan_tinggi }}</dd>
-              </div>
-              <div>
-                <dt class="text-sm text-gray-500">Akreditasi</dt>
-                <dd class="text-gray-900">{{ pengajuan.akreditasi_prodi }}</dd>
-              </div>
-            </dl>
-          </div>
-
-          <div class="card">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">Dokumen</h3>
-            <div v-if="pengajuan.dokumen && pengajuan.dokumen.length > 0" class="space-y-2">
-              <div v-for="doc in pengajuan.dokumen" :key="doc.id" class="flex justify-between items-center p-3 border rounded-lg">
-                <span class="text-sm text-gray-700">{{ doc.file_name }}</span>
-                <span class="text-xs text-gray-500">{{ (doc.file_size / 1024 / 1024).toFixed(2) }} MB</span>
+            <div v-else class="space-y-3">
+              <div v-for="item in suratList" :key="item.id" class="p-4 border border-secondary-200 rounded-xl hover:border-primary-300 hover:shadow-sm transition-all">
+                <div class="flex justify-between items-start">
+                  <div class="flex-1">
+                    <p class="text-base font-semibold text-secondary-800">{{ item.nomor_pengajuan }}</p>
+                    <p class="text-sm text-secondary-600 mt-1">{{ item.user?.name }}</p>
+                    <p class="text-sm text-secondary-500">{{ item.nama_prodi }} - {{ item.perguruan_tinggi }}</p>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <button
+                      @click="openSendMessageModal(item)"
+                      class="btn btn-ghost btn-sm"
+                      title="Kirim Pesan"
+                    >
+                      <i class="ri-message-3-line text-lg"></i>
+                    </button>
+                    <button @click="signSurat(item.id)" class="btn btn-primary btn-sm">
+                      <i class="ri-edit-line mr-1"></i>
+                      Tanda Tangan
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-
-          <div class="flex space-x-4">
-            <button @click="approvePengajuan" class="btn-primary">
-              Setujui & Buat Surat
-            </button>
-            <button @click="rejectPengajuan" class="btn-danger">
-              Tolak
-            </button>
           </div>
         </div>
       </main>
     </div>
   </div>
+
+  <SendMessageModal
+    :show="showModal"
+    :pengajuan-id="selectedPengajuan?.id"
+    :pemohon-name="selectedPengajuan?.user?.name"
+    @close="showModal = false"
+    @sent="handleMessageSent"
+  />
 </template>

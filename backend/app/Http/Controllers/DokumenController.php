@@ -26,7 +26,7 @@ class DokumenController extends Controller
     {
         $request->validate([
             'jenis_dokumen' => 'required|in:sk_pangkat,sk_cpns,skp,surat_lulus,jadwal,akreditasi,surat_mandiri,surat_ijazah,surat_sehat',
-            'file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:2048', // Max 2MB (sesuai PHP upload_max_filesize)
         ]);
 
         $pengajuan = Pengajuan::findOrFail($pengajuanId);

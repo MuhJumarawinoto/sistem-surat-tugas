@@ -50,7 +50,7 @@ class PengajuanController extends Controller
             'jenjang_id' => 'required|exists:jenjang_pendidikan,id',
             'nama_prodi' => 'required|string|max:255',
             'perguruan_tinggi' => 'required|string|max:255',
-            'akreditasi_prodi' => 'required|in:A,B,C,Unggul',
+            'akreditasi_prodi' => 'required|string|max:50',
             'lokasi_pt' => 'required|string|max:255',
             'rencana_mulai' => 'required|date',
             'rencana_selesai' => 'required|date|after:rencana_mulai',
@@ -106,7 +106,7 @@ class PengajuanController extends Controller
             'jenjang_id' => 'required|exists:jenjang_pendidikan,id',
             'nama_prodi' => 'required|string|max:255',
             'perguruan_tinggi' => 'required|string|max:255',
-            'akreditasi_prodi' => 'required|in:A,B,C,Unggul',
+            'akreditasi_prodi' => 'required|string|max:50',
             'lokasi_pt' => 'required|string|max:255',
             'rencana_mulai' => 'required|date',
             'rencana_selesai' => 'required|date|after:rencana_mulai',
@@ -158,9 +158,8 @@ class PengajuanController extends Controller
             return response()->json(['message' => 'Pengajuan already submitted'], 400);
         }
 
-        if (!$pengajuan->getAllDocumentsUploaded()) {
-            return response()->json(['message' => 'All documents must be uploaded before submitting'], 400);
-        }
+        // Validasi dokumen dihapus - pengajuan bisa dikirim meskipun dokumen tidak lengkap
+        // Atasan/Admin akan menilai kelengkapan dokumen saat verifikasi
 
         $pengajuan->update([
             'status' => 'pending_atasan',

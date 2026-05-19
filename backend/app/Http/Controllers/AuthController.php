@@ -12,21 +12,24 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $request->validate([
-            'email' => 'required|email',
+            'identity' => 'required',
             'password' => 'required',
         ]);
 
-        $user = \App\Models\User::where('email', $request->email)->first();
+        // Login dengan NIP atau email
+        $user = \App\Models\User::where('nip', $request->identity)
+            ->orWhere('email', $request->identity)
+            ->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.'],
+                'identity' => ['NIP atau password salah.'],
             ]);
         }
 
         if (!$user->is_active) {
             throw ValidationException::withMessages([
-                'email' => ['Your account is inactive.'],
+                'identity' => ['Akun Anda tidak aktif.'],
             ]);
         }
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ApprovalHistory;
+use App\Models\Notification;
 use App\Models\Pengajuan;
 use Illuminate\Http\Request;
 
@@ -28,6 +29,19 @@ class ApprovalController extends Controller
             'status' => 'setuju',
             'catatan' => $request->catatan,
         ]);
+
+        // Send notification to pemohon
+        $message = 'Pengajuan Anda telah disetujui oleh atasan';
+        if ($request->catatan) {
+            $message .= '. Catatan: ' . $request->catatan;
+        }
+        Notification::createForUser(
+            $pengajuan->user_id,
+            'success',
+            'Pengajuan Disetujui Atasan',
+            $message,
+            $pengajuan->id
+        );
 
         return response()->json($pengajuan->load(['user', 'jenjang', 'approvalHistory']));
     }
@@ -56,6 +70,19 @@ class ApprovalController extends Controller
             'status' => 'setuju',
             'catatan' => $request->catatan,
         ]);
+
+        // Send notification to pemohon
+        $message = 'Pengajuan Anda telah disetujui oleh Admin BKPSDM';
+        if ($request->catatan) {
+            $message .= '. Catatan: ' . $request->catatan;
+        }
+        Notification::createForUser(
+            $pengajuan->user_id,
+            'success',
+            'Pengajuan Disetujui Admin',
+            $message,
+            $pengajuan->id
+        );
 
         return response()->json($pengajuan->load(['user', 'jenjang', 'approvalHistory']));
     }
@@ -92,6 +119,16 @@ class ApprovalController extends Controller
             'catatan' => $request->catatan,
         ]);
 
+        // Send notification to pemohon
+        $roleName = $roleApproval === 'atasan' ? 'Atasan' : 'Admin BKPSDM';
+        Notification::createForUser(
+            $pengajuan->user_id,
+            'error',
+            "Pengajuan Ditolak oleh $roleName",
+            "Pengajuan Anda ditolak. Alasan: {$request->catatan}",
+            $pengajuan->id
+        );
+
         return response()->json($pengajuan->load(['user', 'jenjang', 'approvalHistory']));
     }
 
@@ -103,7 +140,7 @@ class ApprovalController extends Controller
             'catatan' => 'nullable|string',
         ]);
 
-        $pengajuan = Pengajuan::findOrFail($id);
+        $pengajuan = Pengajuan::with('user')->findOrFail($id);
 
         if (!$pengajuan->isPendingAdmin()) {
             return response()->json(['message' => 'Pengajuan is not pending admin verification'], 400);
@@ -118,6 +155,46 @@ class ApprovalController extends Controller
             'verified_at' => now(),
         ]);
 
+        // Send notification if document is marked as incomplete with notes
+        if ($request->status === 'tidak_lengkap' && $request->catatan) {
+            Notification::createForUser(
+                $pengajuan->user_id,
+                'warning',
+                'Dokumen Perlu Diperbaiki',
+                "Dokumen {$dokumen->file_name} ditandai sebagai tidak lengkap. Catatan: {$request->catatan}",
+                $pengajuan->id
+            );
+        }
+
         return response()->json($dokumen);
+    }
+
+    public function sendNotification(Request $request, string $id)
+    {
+        $pengajuan = Pengajuan::with('user')->findOrFail($id);
+
+        $request->validate([
+            'message' => 'required|string',
+            'type' => 'nullable|in:info,warning,success,error',
+        ]);
+
+        $type = $request->type ?? 'info';
+        $user = $request->user();
+        $senderRole = match (true) {
+            $user->isAdminBkpsdm() => 'Admin BKPSDM',
+            $user->isKepalaBkpsdm() => 'Kepala BKPSDM',
+            $user->isAtasan() => 'Atasan',
+            default => 'Sistem',
+        };
+
+        Notification::createForUser(
+            $pengajuan->user_id,
+            $type,
+            "Pesan dari $senderRole",
+            $request->message,
+            $pengajuan->id
+        );
+
+        return response()->json(['message' => 'Notification sent successfully']);
     }
 }

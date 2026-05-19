@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'pddikti' => [
+        'base_url' => env('PDDIKTI_BASE_URL', 'https://pddikti.rone.dev/api'),
+        'semester' => env('PDDIKTI_SEMESTER', '20241'),
+        'cache_ttl' => env('PDDIKTI_CACHE_TTL', 86400), // 24 jam
+    ],
+
 ];

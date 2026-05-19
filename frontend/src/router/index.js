@@ -55,6 +55,12 @@ const routes = [
     meta: { requiresAuth: true, roles: ['admin_bkpsdm'] },
   },
   {
+    path: '/admin/pegawai',
+    name: 'admin.pegawai',
+    component: () => import('@/views/admin/PegawaiView.vue'),
+    meta: { requiresAuth: true, roles: ['admin_bkpsdm'] },
+  },
+  {
     path: '/admin/surat/:id',
     name: 'admin.surat',
     component: () => import('@/views/admin/SuratView.vue'),
@@ -65,6 +71,12 @@ const routes = [
     name: 'kepala.signing',
     component: () => import('@/views/admin/SigningView.vue'),
     meta: { requiresAuth: true, roles: ['kepala_bkpsdm'] },
+  },
+  {
+    path: '/demo/loading',
+    name: 'demo.loading',
+    component: () => import('@/components/LoadingSpinnerDemo.vue'),
+    meta: { requiresAuth: false },
   },
 ]
 
