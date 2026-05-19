@@ -44,10 +44,8 @@ async function handleLogin() {
         <div class="max-w-md">
           <!-- Logo -->
           <div class="flex items-center gap-4 mb-8">
-            <div class="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
-              <svg class="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
-              </svg>
+            <div class="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center p-2">
+              <img src="/logo.png" alt="Logo" class="h-full w-auto object-contain" />
             </div>
             <div>
               <h1 class="text-3xl font-bold text-white">SIPINTAR</h1>
@@ -109,10 +107,8 @@ async function handleLogin() {
       <div class="w-full max-w-md">
         <!-- Mobile Logo -->
         <div class="lg:hidden flex items-center gap-3 mb-8 justify-center">
-          <div class="w-12 h-12 bg-gradient-to-br from-primary-600 to-accent rounded-xl flex items-center justify-center">
-            <svg class="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
-            </svg>
+          <div class="w-14 h-14 bg-white rounded-xl flex items-center justify-center p-1 shadow-soft">
+            <img src="/logo.png" alt="Logo" class="h-full w-auto object-contain" />
           </div>
           <div>
             <h1 class="text-xl font-bold text-secondary-800">SIPINTAR</h1>

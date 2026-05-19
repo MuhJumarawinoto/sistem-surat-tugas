@@ -23,12 +23,9 @@ function getInitials(name) {
     <div class="flex items-center justify-between">
       <!-- Logo & Title -->
       <div class="flex items-center gap-4">
-        <!-- Logo Pemda/BKPSDM -->
-        <div class="w-12 h-12 bg-gradient-to-br from-primary-600 to-accent rounded-xl flex items-center justify-center shadow-soft">
-          <img v-if="false" src="/logo-bkpsdm.png" alt="BKPSDM" class="w-8 h-8 object-contain" />
-          <svg v-else class="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
-          </svg>
+        <!-- Logo -->
+        <div class="w-14 h-14 flex items-center justify-center">
+          <img src="/logo.png" alt="Logo" class="h-12 w-auto object-contain" />
         </div>
 
         <div>
