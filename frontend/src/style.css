@@ -284,7 +284,7 @@
 
   /* Sidebar */
   .sidebar {
-    @apply w-64 bg-white border-r border-secondary-200 h-screen sticky top-0;
+    @apply w-64 bg-white border-r border-secondary-200 h-[calc(100vh-64px)];
   }
 
   .sidebar-header {
@@ -293,6 +293,7 @@
 
   .sidebar-nav {
     @apply p-4 space-y-1;
+    height: calc(100% - 73px);
   }
 
   /* Header */

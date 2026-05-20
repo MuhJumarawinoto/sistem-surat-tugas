@@ -32,7 +32,8 @@ class PengajuanController extends Controller
             // DEBUG: Log SQL
             \Log::info('SQL: ' . $query->toSql());
         } elseif ($user->isAdminBkpsdm()) {
-            $query->where('status', 'pending_admin');
+            // Admin melihat pengajuan yang pending_atasan dan pending_admin
+            $query->whereIn('status', ['pending_atasan', 'pending_admin']);
         }
 
         if ($request->has('status')) {

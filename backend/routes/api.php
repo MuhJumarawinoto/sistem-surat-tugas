@@ -11,6 +11,7 @@ use App\Http\Controllers\MasterController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PegawaiController;
 use App\Http\Controllers\PDDiktiController;
+use App\Http\Controllers\PDDiktiSyncController;
 
 Route::post('/login', [AuthController::class, 'login']);
 
@@ -80,5 +81,16 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/mark-all-read', [NotificationController::class, 'markAllAsRead']);
         Route::patch('/{id}/read', [NotificationController::class, 'markAsRead']);
         Route::delete('/{id}', [NotificationController::class, 'destroy']);
+    });
+
+    // PDDikti Sync (Admin only)
+    Route::prefix('admin/pddikti-sync')->middleware('admin')->group(function () {
+        Route::post('/universitas', [PDDiktiSyncController::class, 'syncUniversitas']);
+        Route::post('/prodi', [PDDiktiSyncController::class, 'syncProdi']);
+        Route::get('/stats', [PDDiktiSyncController::class, 'stats']);
+        Route::get('/', [PDDiktiSyncController::class, 'index']);
+        Route::get('/{id}', [PDDiktiSyncController::class, 'show']);
+        Route::get('/{id}/prodis', [PDDiktiSyncController::class, 'prodis']);
+        Route::delete('/{id}', [PDDiktiSyncController::class, 'destroy']);
     });
 });

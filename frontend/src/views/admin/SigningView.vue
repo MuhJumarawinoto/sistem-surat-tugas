@@ -3,8 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { usePengajuanStore } from '@/stores/pengajuan'
 import api from '@/services/api'
-import AppHeader from '@/components/layout/Header.vue'
-import AppSidebar from '@/components/layout/Sidebar.vue'
+import MainLayout from '@/components/layout/MainLayout.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
 import SendMessageModal from '@/components/SendMessageModal.vue'
@@ -66,21 +65,17 @@ function handleMessageSent() {
 </script>
 
 <template>
-  <div class="flex min-h-screen bg-secondary-50">
-    <AppSidebar />
-    <div class="flex-1 flex flex-col">
-      <AppHeader />
-      <main class="flex-1 p-6 overflow-y-auto">
-        <div v-if="loading" class="flex items-center justify-center py-12">
-          <LoadingSpinner size="md" text="Memuat..." />
-        </div>
+  <MainLayout>
+    <div v-if="loading" class="flex items-center justify-center py-12">
+      <LoadingSpinner size="md" text="Memuat..." />
+    </div>
 
-        <div v-else-if="pengajuan" class="space-y-6 animate-fade-in">
-          <Breadcrumb :current-page="pengajuan.nomor_pengajuan" />
+    <div v-else-if="pengajuan" class="space-y-6 animate-fade-in">
+      <Breadcrumb :current-page="pengajuan.nomor_pengajuan" />
 
-          <div class="mb-4">
-            <h2 class="text-2xl font-bold text-secondary-800">Verifikasi Pengajuan</h2>
-            <p class="text-secondary-500 mt-1">{{ pengajuan.nomor_pengajuan }}</p>
+      <div class="mb-4">
+        <h2 class="text-2xl font-bold text-secondary-800">Verifikasi Pengajuan</h2>
+        <p class="text-secondary-500 mt-1">{{ pengajuan.nomor_pengajuan }}</p>
           </div>
 
           <div class="card">
@@ -175,17 +170,15 @@ function handleMessageSent() {
               <i class="ri-close-line mr-2"></i>
               Tolak
             </button>
-          </div>
         </div>
-      </main>
-    </div>
-  </div>
+      </div>
 
-  <SendMessageModal
-    :show="showModal"
-    :pengajuan-id="route.params.id"
-    :pemohon-name="pengajuan?.user?.name"
-    @close="showModal = false"
-    @sent="handleMessageSent"
-  />
+    <SendMessageModal
+      :show="showModal"
+      :pengajuan-id="route.params.id"
+      :pemohon-name="pengajuan?.user?.name"
+      @close="showModal = false"
+      @sent="handleMessageSent"
+    />
+  </MainLayout>
 </template>

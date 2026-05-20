@@ -2,8 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { usePengajuanStore } from '@/stores/pengajuan'
 import api from '@/services/api'
-import AppHeader from '@/components/layout/Header.vue'
-import AppSidebar from '@/components/layout/Sidebar.vue'
+import MainLayout from '@/components/layout/MainLayout.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
 import SendMessageModal from '@/components/SendMessageModal.vue'
@@ -54,23 +53,19 @@ function handleMessageSent() {
 </script>
 
 <template>
-  <div class="flex min-h-screen bg-secondary-50">
-    <AppSidebar />
-    <div class="flex-1 flex flex-col">
-      <AppHeader />
-      <main class="flex-1 p-6 overflow-y-auto">
-        <div class="mb-6 animate-fade-in">
-          <h2 class="text-2xl font-bold text-secondary-800">Tanda Tangan Surat</h2>
-          <p class="text-secondary-500 mt-1">Daftar surat yang siap ditandatangani</p>
+  <MainLayout>
+    <div class="mb-6 animate-fade-in">
+      <h2 class="text-2xl font-bold text-secondary-800">Tanda Tangan Surat</h2>
+      <p class="text-secondary-500 mt-1">Daftar surat yang siap ditandatangani</p>
+    </div>
+
+    <div class="card animate-slide-up">
+      <div class="card-body">
+        <div v-if="loading" class="flex items-center justify-center py-12">
+          <LoadingSpinner size="md" text="Memuat..." />
         </div>
 
-        <div class="card animate-slide-up">
-          <div class="card-body">
-            <div v-if="loading" class="flex items-center justify-center py-12">
-              <LoadingSpinner size="md" text="Memuat..." />
-            </div>
-
-            <div v-else-if="suratList.length === 0" class="text-center py-12">
+        <div v-else-if="suratList.length === 0" class="text-center py-12">
               <div class="w-16 h-16 rounded-full bg-secondary-100 flex items-center justify-center mx-auto mb-4">
                 <i class="ri-file-sign-line text-3xl text-secondary-400"></i>
               </div>
@@ -100,18 +95,15 @@ function handleMessageSent() {
                   </div>
                 </div>
               </div>
-            </div>
           </div>
         </div>
-      </main>
-    </div>
-  </div>
 
-  <SendMessageModal
-    :show="showModal"
-    :pengajuan-id="selectedPengajuan?.id"
-    :pemohon-name="selectedPengajuan?.user?.name"
-    @close="showModal = false"
-    @sent="handleMessageSent"
-  />
+      <SendMessageModal
+        :show="showModal"
+        :pengajuan-id="selectedPengajuan?.id"
+        :pemohon-name="selectedPengajuan?.user?.name"
+        @close="showModal = false"
+        @sent="handleMessageSent"
+      />
+  </MainLayout>
 </template>

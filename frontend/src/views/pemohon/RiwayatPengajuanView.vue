@@ -3,8 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePengajuanStore } from '@/stores/pengajuan'
 import api from '@/services/api'
-import AppHeader from '@/components/layout/Header.vue'
-import AppSidebar from '@/components/layout/Sidebar.vue'
+import MainLayout from '@/components/layout/MainLayout.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
 
@@ -205,26 +204,22 @@ function getStatusIcon(status) {
 </script>
 
 <template>
-  <div class="flex min-h-screen bg-secondary-50">
-    <AppSidebar />
-    <div class="flex-1 flex flex-col">
-      <AppHeader />
-      <main class="flex-1 p-6 overflow-y-auto">
-        <Breadcrumb />
-        <div class="mb-6 animate-fade-in">
-          <div class="flex items-center justify-between">
-            <div>
-              <h2 class="text-2xl font-bold text-secondary-800">Riwayat Pengajuan</h2>
-              <p class="text-secondary-500 mt-1">Kelola dan pantau semua pengajuan izin belajar Anda</p>
-            </div>
-            <router-link to="/pengajuan/baru" class="btn btn-primary gap-2">
-              <i class="ri-add-line"></i>
-              <span>Buat Baru</span>
-            </router-link>
-          </div>
+  <MainLayout>
+    <Breadcrumb />
+    <div class="mb-6 animate-fade-in">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-2xl font-bold text-secondary-800">Riwayat Pengajuan</h2>
+          <p class="text-secondary-500 mt-1">Kelola dan pantau semua pengajuan izin belajar Anda</p>
         </div>
+        <router-link to="/pengajuan/baru" class="btn btn-primary gap-2">
+          <i class="ri-add-line"></i>
+          <span>Buat Baru</span>
+        </router-link>
+      </div>
+    </div>
 
-        <div class="card animate-slide-up">
+    <div class="card animate-slide-up">
           <div class="card-body">
             <div v-if="loading" class="flex items-center justify-center py-12">
               <LoadingSpinner size="md" text="Memuat data..." />
@@ -366,9 +361,8 @@ function getStatusIcon(status) {
             </div>
           </div>
         </div>
-      </main>
-    </div>
-  </div>
+      </div>
+  </MainLayout>
 </template>
 
 <style scoped>

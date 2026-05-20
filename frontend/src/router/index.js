@@ -43,6 +43,12 @@ const routes = [
     meta: { requiresAuth: true, roles: ['pemohon'] },
   },
   {
+    path: '/profile',
+    name: 'profile',
+    component: () => import('@/views/pemohon/ProfileView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/atasan/persetujuan',
     name: 'atasan.persetujuan',
     component: () => import('@/views/atasan/PersetujuanView.vue'),
@@ -58,6 +64,12 @@ const routes = [
     path: '/admin/pegawai',
     name: 'admin.pegawai',
     component: () => import('@/views/admin/PegawaiView.vue'),
+    meta: { requiresAuth: true, roles: ['admin_bkpsdm'] },
+  },
+  {
+    path: '/admin/pddikti-sync',
+    name: 'admin.pddikti-sync',
+    component: () => import('@/views/admin/PDDiktiSyncView.vue'),
     meta: { requiresAuth: true, roles: ['admin_bkpsdm'] },
   },
   {

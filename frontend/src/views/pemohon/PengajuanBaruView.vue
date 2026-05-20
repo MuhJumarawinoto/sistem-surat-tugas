@@ -3,9 +3,9 @@ import { ref, onMounted, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMasterStore } from '@/stores/master'
 import { usePengajuanStore } from '@/stores/pengajuan'
+import { useToastStore } from '@/stores/toast'
 import api from '@/services/api'
-import AppHeader from '@/components/layout/Header.vue'
-import AppSidebar from '@/components/layout/Sidebar.vue'
+import MainLayout from '@/components/layout/MainLayout.vue'
 import ImageModal from '@/components/ImageModal.vue'
 import FileUpload from '@/components/FileUpload.vue'
 import DocumentInfoTooltip from '@/components/DocumentInfoTooltip.vue'
@@ -16,6 +16,7 @@ import PDDiktiDropdown from '@/components/PDDiktiDropdown.vue'
 const router = useRouter()
 const masterStore = useMasterStore()
 const pengajuanStore = usePengajuanStore()
+const toast = useToastStore()
 
 const form = ref({
   jenjang_id: '',
@@ -31,6 +32,7 @@ const selectedPT = ref(null)
 const selectedProdi = ref(null)
 const loadingPTDetail = ref(false)
 const loadingProdiList = ref(false)
+const syncingPDDikti = ref(false)
 
 const documents = ref({
   sk_pangkat: null,
@@ -192,6 +194,69 @@ function getPreviewUrl(file) {
   }
 }
 
+function handleFileUpload(docKey, event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+
+  // Check file size (5MB)
+  const maxSize = 5 * 1024 * 1024
+  if (file.size > maxSize) {
+    toast.error('Ukuran file terlalu besar. Maksimum 5MB')
+    return
+  }
+
+  // Check file type
+  const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png']
+  if (!allowedTypes.includes(file.type)) {
+    toast.error('Tipe file tidak valid. Gunakan PDF, JPG, atau PNG')
+    return
+  }
+
+  documents.value[docKey] = file
+}
+
+function removeFile(docKey) {
+  documents.value[docKey] = null
+}
+
+// Sync PDDikti Data
+async function syncPDDiktiData() {
+  syncingPDDikti.value = true
+  try {
+    // Sync popular universities
+    const keywords = ['Universitas', 'Institut', 'Sekolah Tinggi']
+    let totalSynced = 0
+
+    for (const keyword of keywords.slice(0, 1)) { // Limit to 1 keyword for now
+      const response = await api.post('/admin/pddikti-sync/universitas', {
+        keyword: keyword,
+        limit: 50
+      })
+      totalSynced += response.data.data.total || 0
+    }
+
+    toast.success(`Berhasil sync ${totalSynced} data perguruan tinggi`)
+  } catch (error) {
+    console.error('Sync error:', error)
+    toast.warning('Fitur sync hanya untuk admin. Data akan diambil langsung dari PDDikti.')
+  } finally {
+    syncingPDDikti.value = false
+  }
+}
+
+// Get akreditasi badge class
+function getAkreditasiBadgeClass(akreditasi) {
+  const classes = {
+    'A': 'bg-green-600 text-white',
+    'B': 'bg-blue-600 text-white',
+    'C': 'bg-yellow-500 text-white',
+    'Unggul': 'bg-green-700 text-white',
+    'Baik Sekali': 'bg-blue-700 text-white',
+    'Baik': 'bg-cyan-600 text-white',
+  }
+  return classes[akreditasi] || 'bg-gray-200 text-gray-700'
+}
+
 async function saveDraftOnly() {
   saving.value = true
   try {
@@ -238,28 +303,51 @@ async function saveDraftOnly() {
     }
 
     if (failedDocs.length > 0) {
-      alert(`Beberapa dokumen gagal diupload:\n${failedDocs.join('\n')}\n\nAnda dapat menguploadnya kembali nanti.`)
+      toast.warning(`Beberapa dokumen gagal diupload. ${uploadedCount} berhasil, ${failedDocs.length} gagal.`, 5000)
     } else if (uploadedCount > 0) {
-      alert(`Draft berhasil disimpan dengan ${uploadedCount} dokumen. Sisa dokumen bisa ditambahkan nanti.`)
+      toast.success(`Draft berhasil disimpan dengan ${uploadedCount} dokumen. Sisa dokumen bisa ditambahkan nanti.`)
     } else {
-      alert('Draft berhasil disimpan. Anda bisa menambahkan dokumen nanti.')
+      toast.success('Draft berhasil disimpan. Anda bisa menambahkan dokumen nanti.')
     }
     router.push(`/pengajuan/${pengajuanId}`)
   } catch (error) {
-    alert(error.response?.data?.message || 'Gagal menyimpan draft')
+    toast.error(error.response?.data?.message || 'Gagal menyimpan draft')
   } finally {
     saving.value = false
   }
 }
 
-async function saveWithDocuments() {
+const showIncompleteConfirm = ref(false)
+const incompleteDocsList = ref([])
+
+function checkIncompleteDocs() {
   const missingDocs = jenisDokumenList.filter(doc => !documents.value[doc.key])
+
   if (missingDocs.length > 0) {
-    alert(`Semua dokumen wajib diupload terlebih dahulu.\n\nDokumen yang belum ada:\n${missingDocs.map(d => '- ' + d.label).join('\n')}`)
+    incompleteDocsList.value = missingDocs
+    showIncompleteConfirm.value = true
+    return false
+  }
+  return true
+}
+
+async function saveWithDocuments() {
+  // Check for incomplete documents
+  const missingDocs = jenisDokumenList.filter(doc => !documents.value[doc.key])
+
+  if (missingDocs.length > 0) {
+    incompleteDocsList.value = missingDocs
+    showIncompleteConfirm.value = true
     return
   }
 
+  await proceedWithSubmission()
+}
+
+async function proceedWithSubmission() {
+  showIncompleteConfirm.value = false
   saving.value = true
+
   try {
     const response = await pengajuanStore.createPengajuan(form.value)
     const pengajuanId = response.id
@@ -281,13 +369,24 @@ async function saveWithDocuments() {
       }
     }
 
-    alert('Pengajuan berhasil disimpan lengkap dengan semua dokumen.')
+    const uploadedDocCount = jenisDokumenList.filter(doc => documents.value[doc.key]).length
+
+    if (uploadedDocCount < 9) {
+      toast.warning(`Pengajuan dikirim dengan ${uploadedDocCount}/9 dokumen. Silakan lengkapi dokumen lainnya melalui menu Riwayat.`, 8000)
+    } else {
+      toast.success('Pengajuan berhasil dikirim dengan semua dokumen lengkap!')
+    }
+
     router.push(`/pengajuan/${pengajuanId}`)
   } catch (error) {
-    alert(error.response?.data?.message || 'Gagal menyimpan pengajuan')
+    toast.error(error.response?.data?.message || 'Gagal menyimpan pengajuan')
   } finally {
     saving.value = false
   }
+}
+
+function cancelIncompleteConfirm() {
+  showIncompleteConfirm.value = false
 }
 
 const uploadedCount = computed(() => {
@@ -295,261 +394,268 @@ const uploadedCount = computed(() => {
 })
 </script>
 
+<style scoped>
+.modal-enter-active,
+.modal-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
+}
+
+.modal-enter-active .relative,
+.modal-leave-active .relative {
+  transition: transform 0.3s ease;
+}
+
+.modal-enter-from .relative,
+.modal-leave-to .relative {
+  transform: scale(0.9);
+}
+</style>
+
 <template>
-  <div class="flex min-h-screen bg-secondary-50">
-    <AppSidebar />
-    <div class="flex-1 flex flex-col">
-      <AppHeader />
-      <main class="flex-1 p-6 overflow-y-auto">
-        <Breadcrumb :current-page="'Pengajuan Baru'" />
+  <MainLayout>
+    <Breadcrumb :current-page="'Pengajuan Baru'" />
 
-        <div class="mb-6 animate-fade-in">
-          <h2 class="text-2xl font-bold text-secondary-800">Pengajuan Baru</h2>
-          <p class="text-secondary-500 mt-1">Nomor Pengajuan: <span class="font-mono text-primary-600">{{ nomorPengajuan }}</span></p>
-        </div>
+    <div class="mb-6 animate-fade-in">
+      <h2 class="text-2xl font-bold text-secondary-800">Pengajuan Baru</h2>
+      <p class="text-secondary-500 mt-1">Nomor Pengajuan: <span class="font-mono text-primary-600">{{ nomorPengajuan }}</span></p>
+    </div>
 
-        <form @submit.prevent class="space-y-6">
-          <!-- Data Pendidikan -->
-          <div class="card animate-slide-up">
-            <div class="card-header">
-              <h3 class="card-title flex items-center gap-2">
-                <i class="ri-graduation-cap-line text-primary-600"></i>
-                Data Pendidikan
-              </h3>
+    <form @submit.prevent class="space-y-6">
+      <!-- Two Column Layout -->
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <!-- Data Pendidikan -->
+        <div class="card animate-slide-up">
+          <div class="card-header">
+            <h3 class="card-title flex items-center gap-2">
+              <i class="ri-graduation-cap-line text-lg text-primary-600"></i>
+              Data Pendidikan
+            </h3>
+          </div>
+          <div class="card-body">
+            <!-- Sync Button -->
+            <div class="flex items-center justify-end mb-4 pb-3 border-b border-secondary-200">
+              <button
+                type="button"
+                @click="syncPDDiktiData"
+                :disabled="syncingPDDikti"
+                class="flex items-center gap-2 text-xs text-primary-600 hover:text-primary-700 transition-colors"
+              >
+                <LoadingSpinner v-if="syncingPDDikti" size="xs" />
+                <i v-else class="ri-refresh-line"></i>
+                <span>Sync Data PDDikti</span>
+              </button>
             </div>
-            <div class="card-body">
-              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div>
-                  <label class="input-label">Jenjang</label>
-                  <div class="relative">
-                    <select
-                      v-model="form.jenjang_id"
-                      @focus="handleDropdownFocus('jenjang')"
-                      required
-                      class="select-field appearance-none pr-10"
-                      :disabled="loadingDropdown || masterStore.loading"
-                    >
-                      <option value="">Pilih Jenjang</option>
-                      <option v-if="loadingDropdown || masterStore.loading" disabled>Loading...</option>
-                      <option v-for="j in masterStore.jenjang" :key="j.id" :value="j.id">
-                        {{ j.nama }}
-                      </option>
-                    </select>
-                    <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                      <LoadingSpinner v-if="loadingDropdown || masterStore.loading" size="sm" />
-                      <i v-else class="ri-arrow-down-s-line text-secondary-400"></i>
-                    </div>
+
+            <div class="space-y-4">
+              <!-- 1. Jenjang -->
+              <div>
+                <label class="input-label">Jenjang</label>
+                <div class="relative">
+                  <select
+                    v-model="form.jenjang_id"
+                    @focus="handleDropdownFocus('jenjang')"
+                    required
+                    class="select-field appearance-none pr-10"
+                    :disabled="loadingDropdown || masterStore.loading"
+                  >
+                    <option value="">Pilih Jenjang</option>
+                    <option v-if="loadingDropdown || masterStore.loading" disabled>Loading...</option>
+                    <option v-for="j in masterStore.jenjang" :key="j.id" :value="j.id">
+                      {{ j.nama }}
+                    </option>
+                  </select>
+                  <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                    <LoadingSpinner v-if="loadingDropdown || masterStore.loading" size="sm" />
+                    <i v-else class="ri-arrow-down-s-line text-secondary-400"></i>
                   </div>
                 </div>
+              </div>
 
-                <div>
-                  <label class="input-label">Program Studi</label>
-                  <input v-model="form.nama_prodi" type="text" required class="input-field" placeholder="Nama program studi" />
-                </div>
+              <!-- 2. Perguruan Tinggi -->
+              <div>
+                <label class="input-label">Perguruan Tinggi</label>
+                <PDDiktiDropdown
+                  v-model="selectedPT"
+                  type="universitas"
+                  placeholder="Cari nama perguruan tinggi..."
+                  :required="true"
+                />
+              </div>
 
-                <div class="md:col-span-2 lg:col-span-3">
-                  <PDDiktiDropdown
-                    v-model="selectedPT"
-                    type="universitas"
-                    placeholder="Cari nama perguruan tinggi di PDDikti..."
-                    label="Perguruan Tinggi"
-                    :required="true"
-                  />
-                </div>
-
-                <div>
-                  <label class="input-label">Lokasi PT</label>
-                  <div class="relative">
-                    <input
-                      v-model="form.lokasi_pt"
-                      type="text"
-                      class="input-field pr-10"
-                      :class="{ 'pl-10': loadingPTDetail }"
-                      :placeholder="loadingPTDetail ? 'Memuat data...' : 'Otomatis dari PDDikti atau isi manual'"
-                    />
-                    <div v-if="loadingPTDetail" class="absolute inset-y-0 left-0 flex items-center pl-3">
-                      <LoadingSpinner size="sm" />
-                    </div>
-                    <div v-else-if="form.lokasi_pt" class="absolute inset-y-0 right-0 flex items-center pr-3">
-                      <i class="ri-check-line text-success text-lg"></i>
-                    </div>
-                  </div>
-                  <p class="text-xs text-secondary-500 mt-1">
-                    {{ loadingPTDetail ? 'Sedang mengambil data dari PDDikti...' : 'Otomatis dari PDDikti atau isi manual' }}
-                  </p>
-                </div>
-
-                <div class="md:col-span-2 lg:col-span-3">
-                  <PDDiktiDropdown
-                    v-model="selectedProdi"
-                    type="prodi"
-                    :id-pt="selectedPT?.id || selectedPT?.id"
-                    placeholder="Cari program studi di PDDikti..."
-                    label="Program Studi (dari PDDikti)"
-                    :disabled="!selectedPT || loadingPTDetail"
-                    :required="false"
-                  />
-                </div>
-
-                <div>
-                  <label class="input-label">Akreditasi Prodi</label>
-                  <div class="flex gap-2">
-                    <div class="relative flex-1">
-                      <input
-                        v-model="form.akreditasi_prodi"
-                        type="text"
-                        class="input-field pr-10"
-                        placeholder="Otomatis dari PDDikti atau isi manual"
-                      />
-                      <div v-if="form.akreditasi_prodi" class="absolute inset-y-0 right-0 flex items-center pr-3">
-                        <i class="ri-check-line text-success text-lg"></i>
-                      </div>
-                    </div>
-                    <select v-model="form.akreditasi_prodi" class="select-field w-24">
-                      <option value="">Pilih</option>
-                      <option value="A">A</option>
-                      <option value="B">B</option>
-                      <option value="C">C</option>
-                      <option value="Unggul">Unggul</option>
-                    </select>
-                  </div>
-                </div>
-
+              <!-- 3. Rencana Mulai & Selesai -->
+              <div class="grid grid-cols-2 gap-4">
                 <div>
                   <label class="input-label">Rencana Mulai</label>
                   <input v-model="form.rencana_mulai" type="date" required class="input-field" />
                 </div>
-
                 <div>
                   <label class="input-label">Rencana Selesai</label>
                   <input v-model="form.rencana_selesai" type="date" required class="input-field" />
                 </div>
               </div>
-            </div>
-          </div>
 
-          <!-- Upload Dokumen -->
-          <div class="card animate-slide-up" style="animation-delay: 50ms;">
-            <div class="card-header">
-              <div class="flex items-center justify-between">
-                <h3 class="card-title flex items-center gap-2">
-                  <i class="ri-file-upload-line text-primary-600"></i>
-                  Upload Dokumen
-                </h3>
-                <span class="badge badge-primary">{{ uploadedCount }}/9</span>
-              </div>
-              <p class="text-sm text-secondary-500 mt-1">Max 5MB per file. Opsional untuk draft, wajib lengkap untuk submit.</p>
-            </div>
-            <div class="card-body">
-              <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <!-- Form Upload -->
-                <div class="space-y-3">
-                  <h4 class="text-sm font-semibold text-secondary-700 flex items-center gap-2">
-                    <i class="ri-upload-cloud-2-line text-primary-600"></i>
-                    Upload Dokumen
-                  </h4>
-                  <div class="space-y-2 max-h-96 overflow-y-auto scrollbar-thin pr-2">
-                    <div v-for="doc in jenisDokumenList" :key="doc.key" class="p-3 border rounded-xl" :class="documents[doc.key] ? 'border-success bg-green-50' : 'border-secondary-200 hover:border-secondary-300'">
-                      <label class="block">
-                        <div class="flex items-center justify-between mb-2">
-                          <span class="flex items-center gap-2 text-sm font-medium text-secondary-700">
-                            <i :class="documents[doc.key] ? 'ri-checkbox-circle-fill text-success' : 'ri-checkbox-blank-circle-line text-secondary-400'"></i>
-                            <span class="truncate">{{ doc.label }}</span>
-                          </span>
-                          <DocumentInfoTooltip
-                            :title="doc.label"
-                            :requirements="doc.requirements"
-                            :notes="doc.notes"
-                          />
-                        </div>
-                      </label>
-                      <FileUpload
-                        v-model="documents[doc.key]"
-                        :preview="false"
-                        @preview="openImageModal"
-                      />
-                    </div>
+              <!-- 4. Lokasi PT (Auto-fill) -->
+              <div>
+                <label class="input-label">Lokasi Perguruan Tinggi</label>
+                <div class="relative">
+                  <input
+                    v-model="form.lokasi_pt"
+                    type="text"
+                    class="input-field pr-10"
+                    :class="{ 'pl-10': loadingPTDetail }"
+                    placeholder="Otomatis terisi saat memilih perguruan tinggi"
+                    readonly
+                  />
+                  <div v-if="loadingPTDetail" class="absolute inset-y-0 left-0 flex items-center pl-3">
+                    <LoadingSpinner size="sm" />
+                  </div>
+                  <div v-else-if="form.lokasi_pt" class="absolute inset-y-0 right-0 flex items-center pr-3">
+                    <i class="ri-check-line text-success text-lg"></i>
                   </div>
                 </div>
+              </div>
 
-                <!-- Preview & Checklist -->
-                <div class="space-y-4">
-                  <h4 class="text-sm font-semibold text-secondary-700 flex items-center gap-2">
-                    <i class="ri-eye-line text-primary-600"></i>
-                    Preview & Status
-                  </h4>
+              <!-- 5. Program Studi -->
+              <div>
+                <label class="input-label">Program Studi</label>
+                <PDDiktiDropdown
+                  v-model="selectedProdi"
+                  type="prodi"
+                  :id-pt="selectedPT?.id || selectedPT?.id"
+                  placeholder="Cari program studi di PDDikti..."
+                  :disabled="!selectedPT || loadingPTDetail"
+                  :required="false"
+                />
+              </div>
 
-                  <!-- Preview List -->
-                  <div class="space-y-2 max-h-64 overflow-y-auto scrollbar-thin">
-                    <div v-if="uploadedCount === 0" class="text-center py-8 border-2 border-dashed border-secondary-200 rounded-xl">
-                      <div class="w-12 h-12 rounded-full bg-secondary-100 flex items-center justify-center mx-auto mb-2">
-                        <i class="ri-file-upload-line text-2xl text-secondary-400"></i>
-                      </div>
-                      <p class="text-sm text-secondary-500">Belum ada dokumen</p>
-                    </div>
-
-                    <div v-for="doc in jenisDokumenList" :key="doc.key">
-                      <div v-if="documents[doc.key]" class="p-2 bg-secondary-50 rounded-lg">
-                        <div class="flex items-start justify-between">
-                          <div class="flex-1 min-w-0">
-                            <p class="text-sm font-medium text-secondary-800 truncate">{{ documents[doc.key].name }}</p>
-                            <p class="text-xs text-secondary-500">{{ (documents[doc.key].size / 1024 / 1024).toFixed(2) }} MB</p>
-                          </div>
-                          <span class="badge badge-success">✓</span>
-                        </div>
-                        <div v-if="documents[doc.key].type?.startsWith('image/')" class="mt-2">
-                          <img
-                            :src="getPreviewUrl(documents[doc.key])"
-                            class="max-w-full h-20 object-cover rounded-lg cursor-pointer hover:opacity-80"
-                            @click="openImageModal(getPreviewUrl(documents[doc.key]))"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- Checklist -->
-                  <div class="p-4 bg-primary-50 rounded-xl border border-primary-200">
-                    <p class="text-sm font-semibold text-primary-800 mb-2 flex items-center gap-1">
-                      <i class="ri-task-line"></i>
-                      Checklist Dokumen
-                    </p>
-                    <div class="grid grid-cols-1 gap-1 text-sm">
-                      <div v-for="doc in jenisDokumenList" :key="doc.key" class="flex items-center gap-2">
-                        <i :class="documents[doc.key] ? 'ri-checkbox-circle-fill text-success' : 'ri-checkbox-blank-circle-line text-secondary-400'"></i>
-                        <span :class="documents[doc.key] ? 'text-primary-800' : 'text-secondary-500'" class="truncate">{{ doc.key.replace(/_/g, ' ') }}</span>
-                      </div>
-                    </div>
+              <!-- 6. Akreditasi Prodi (Auto-fill) -->
+              <div>
+                <label class="input-label">Akreditasi Prodi</label>
+                <div class="relative">
+                  <input
+                    v-model="form.akreditasi_prodi"
+                    type="text"
+                    class="input-field pr-10"
+                    placeholder="Otomatis terisi saat memilih program studi"
+                    readonly
+                  />
+                  <div v-if="form.akreditasi_prodi" class="absolute inset-y-0 right-0 flex items-center pr-3">
+                    <span class="px-2 py-1 rounded text-xs font-bold" :class="getAkreditasiBadgeClass(form.akreditasi_prodi)">
+                      {{ form.akreditasi_prodi }}
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
           </div>
+        </div>
 
-          <!-- Action Buttons -->
-          <div class="flex flex-col sm:flex-row gap-3 animate-slide-up" style="animation-delay: 100ms;">
-            <button type="button" @click.prevent="saveDraftOnly" :disabled="saving" class="btn btn-secondary flex-1 justify-center">
-              <LoadingSpinner v-if="saving" size="sm" />
-              <span v-else class="flex items-center gap-2">
-                <i class="ri-save-line"></i>
-                <span>Simpan Draft</span>
-              </span>
-            </button>
-            <button type="button" @click.prevent="saveWithDocuments" :disabled="saving" class="btn btn-primary flex-1 justify-center">
-              <LoadingSpinner v-if="saving" size="sm" />
-              <span v-else class="flex items-center gap-2">
-                <i class="ri-send-plane-fill"></i>
-                <span>Simpan & Kirim</span>
-              </span>
-            </button>
-            <router-link to="/pengajuan" class="btn btn-ghost flex-1 justify-center">
-              <i class="ri-close-line"></i>
-              <span>Batal</span>
-            </router-link>
+        <!-- Upload Dokumen -->
+        <div class="card animate-slide-up" style="animation-delay: 50ms;">
+          <div class="card-header">
+            <div class="flex items-center justify-between">
+              <h3 class="card-title flex items-center gap-2">
+                <i class="ri-file-upload-line text-lg text-primary-600"></i>
+                Upload Dokumen
+              </h3>
+              <span class="badge badge-primary">{{ uploadedCount }}/9</span>
+            </div>
+            <p class="text-sm text-secondary-500 mt-1">Max 5MB per file. PDF, JPG, PNG.</p>
           </div>
-        </form>
-      </main>
-    </div>
+          <div class="card-body">
+            <!-- Minimalis List Layout -->
+            <div class="space-y-2">
+              <div
+                v-for="(doc, index) in jenisDokumenList"
+                :key="doc.key"
+                class="flex items-center gap-2 p-2 border rounded-lg"
+                :class="documents[doc.key] ? 'border-success bg-green-50' : 'border-secondary-200'"
+              >
+                <!-- Nomor -->
+                <span class="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold" :class="documents[doc.key] ? 'bg-success text-white' : 'bg-secondary-200 text-secondary-600'">
+                  {{ index + 1 }}
+                </span>
+
+                <!-- Info Dokumen -->
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs font-medium text-secondary-800 truncate">{{ doc.label }}</p>
+                  <p v-if="documents[doc.key]" class="text-xs text-secondary-500">
+                    {{ documents[doc.key].name }} ({{ (documents[doc.key].size / 1024 / 1024).toFixed(2) }} MB)
+                  </p>
+                </div>
+
+                <!-- Tombol Aksi -->
+                <div class="flex items-center gap-1 flex-shrink-0">
+                  <DocumentInfoTooltip
+                    :title="doc.label"
+                    :requirements="doc.requirements"
+                    :notes="doc.notes"
+                  />
+
+                  <!-- Upload Button -->
+                  <label class="cursor-pointer p-1.5 rounded-lg transition-colors" :class="documents[doc.key] ? 'bg-success text-white hover:bg-green-600' : 'bg-primary-600 text-white hover:bg-primary-700'">
+                    <i :class="documents[doc.key] ? 'ri-check-line' : 'ri-upload-line'" class="text-sm"></i>
+                    <input
+                      type="file"
+                      class="hidden"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      @change="(e) => handleFileUpload(doc.key, e)"
+                    />
+                  </label>
+
+                  <!-- Remove Button (jika sudah upload) -->
+                  <button
+                    v-if="documents[doc.key]"
+                    @click="removeFile(doc.key)"
+                    class="p-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
+                  >
+                    <i class="ri-delete-bin-line text-sm"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="mt-4 pt-3 border-t border-secondary-200">
+              <div class="flex items-center justify-between text-xs text-secondary-600 mb-1">
+                <span>Progress Dokumen</span>
+                <span class="font-semibold" :class="uploadedCount === 9 ? 'text-success' : 'text-primary-600'">{{ uploadedCount }} dari 9 lengkap</span>
+              </div>
+              <div class="w-full bg-secondary-200 rounded-full h-2">
+                <div class="h-2 rounded-full transition-all duration-300" :class="uploadedCount === 9 ? 'bg-success' : 'bg-primary-600'" :style="{ width: (uploadedCount / 9 * 100) + '%' }"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex flex-col sm:flex-row gap-3 animate-slide-up" style="animation-delay: 100ms;">
+        <button type="button" @click.prevent="saveDraftOnly" :disabled="saving" class="btn btn-secondary flex-1 justify-center">
+          <LoadingSpinner v-if="saving" size="sm" />
+          <span v-else class="flex items-center gap-2">
+            <i class="ri-save-line"></i>
+            <span>Simpan Draft</span>
+          </span>
+        </button>
+        <button type="button" @click.prevent="saveWithDocuments" :disabled="saving" class="btn btn-primary flex-1 justify-center">
+          <LoadingSpinner v-if="saving" size="sm" />
+          <span v-else class="flex items-center gap-2">
+            <i class="ri-send-plane-fill"></i>
+            <span>Simpan & Kirim</span>
+          </span>
+        </button>
+        <router-link to="/pengajuan" class="btn btn-ghost flex-1 justify-center">
+          <i class="ri-close-line"></i>
+          <span>Batal</span>
+        </router-link>
+      </div>
+    </form>
 
     <ImageModal
       :show="showImageModal"
@@ -557,5 +663,55 @@ const uploadedCount = computed(() => {
       :alt="currentImageAlt"
       @close="showImageModal = false"
     />
-  </div>
+
+    <!-- Incomplete Documents Confirmation Modal -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="showIncompleteConfirm" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="cancelIncompleteConfirm"></div>
+          <div class="relative bg-white rounded-2xl shadow-soft max-w-md w-full overflow-hidden animate-slide-up">
+            <!-- Header -->
+            <div class="p-4 border-b border-secondary-100">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+                  <i class="ri-alert-line text-xl text-amber-600"></i>
+                </div>
+                <div class="flex-1">
+                  <h3 class="text-sm font-bold text-secondary-800">Dokumen Belum Lengkap</h3>
+                  <p class="text-xs text-secondary-500">{{ incompleteDocsList.length }} dari 9 dokumen belum diupload</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Body -->
+            <div class="p-4">
+              <p class="text-sm text-secondary-700 mb-3">
+                Anda dapat menambahkan dokumen lainnya nanti melalui menu Riwayat Pengajuan.
+              </p>
+              <div class="max-h-48 overflow-y-auto space-y-1.5">
+                <div v-for="doc in incompleteDocsList" :key="doc.key" class="flex items-center gap-2 p-2 bg-secondary-50 rounded-lg">
+                  <span class="w-5 h-5 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-bold">
+                    <i class="ri-close-line"></i>
+                  </span>
+                  <p class="text-xs text-secondary-700">{{ doc.label }}</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="p-4 bg-secondary-50 flex gap-2">
+              <button @click="cancelIncompleteConfirm" class="btn btn-secondary flex-1">
+                <i class="ri-arrow-left-line"></i>
+                Lengkapi Dulu
+              </button>
+              <button @click="proceedWithSubmission" class="btn btn-primary flex-1">
+                <i class="ri-send-plane-fill"></i>
+                Tetap Kirim
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+  </MainLayout>
 </template>

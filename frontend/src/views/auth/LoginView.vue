@@ -48,8 +48,8 @@ async function handleLogin() {
               <img src="/logo.png" alt="Logo" class="h-full w-auto object-contain" />
             </div>
             <div>
-              <h1 class="text-3xl font-bold text-white">SIPINTAR</h1>
-              <p class="text-white/80">Sistem Informasi Pendidikan & Tunjangan</p>
+              <h1 class="text-3xl font-bold text-white">Sistem Surat Belajar Mandiri</h1>
+              <p class="text-white/80">BKPSDM Kabupaten Sukabumi</p>
             </div>
           </div>
 

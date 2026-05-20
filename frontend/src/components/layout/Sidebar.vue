@@ -32,6 +32,7 @@ const menuGroups = computed(() => {
       { path: '/admin/verifikasi', label: 'Verifikasi', icon: 'ri-verified-badge-line', badge: null },
       { path: '/admin/surat', label: 'Tanda Tangan Surat', icon: 'ri-edit-sign-line', badge: null },
       { path: '/admin/pegawai', label: 'Data Pegawai', icon: 'ri-team-line', badge: null },
+      { path: '/admin/pddikti-sync', label: 'Sync PDDikti', icon: 'ri-refresh-line', badge: null },
     )
   }
 
@@ -63,22 +64,20 @@ function isActive(path) {
 <template>
   <aside class="sidebar bg-white">
     <!-- Sidebar Header -->
-    <div class="sidebar-header">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 bg-gradient-to-br from-primary-600 to-accent rounded-lg flex items-center justify-center">
-          <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
-          </svg>
-        </div>
-        <div>
-          <p class="text-sm font-bold text-secondary-800">BKPSDM</p>
-          <p class="text-xs text-secondary-500">Kab. Sukabumi</p>
-        </div>
-      </div>
-    </div>
+    <!-- <div class="sidebar-header border-b border-primary-100">
+      <div class="flex items-center gap-3"> -->
+        <!-- <div class="w-10 h-10 bg-gradient-to-br from-primary-600 to-accent rounded-lg flex items-center justify-center">
+          <img src="/logo.png" alt="Logo" class="w-6 h-6 object-contain" />
+        </div> -->
+        <!-- <div> -->
+          <!-- <p class="text-sm font-bold text-secondary-800">Menu Utama</p>
+          <p class="text-xs text-secondary-500">Navigasi Aplikasi</p> -->
+        <!-- </div> -->
+      <!-- </div>
+    </div> -->
 
     <!-- Sidebar Navigation -->
-    <nav class="sidebar-nav overflow-y-auto scrollbar-thin" style="max-height: calc(100vh - 80px);">
+    <nav class="sidebar-nav overflow-y-auto scrollbar-thin">
       <div v-for="(group, groupIndex) in menuGroups" :key="groupIndex" class="mb-6">
         <p v-if="group.title" class="px-3 mb-2 text-xs font-semibold text-secondary-400 uppercase tracking-wider">
           {{ group.title }}
