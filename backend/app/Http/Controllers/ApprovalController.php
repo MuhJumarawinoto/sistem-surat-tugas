@@ -169,6 +169,45 @@ class ApprovalController extends Controller
         return response()->json($dokumen);
     }
 
+    /**
+     * Verify a single document (used by frontend modal)
+     */
+    public function verifyDocument(Request $request, string $dokumenId)
+    {
+        $request->validate([
+            'status' => 'required|in:lengkap,tidak_lengkap',
+            'catatan' => 'nullable|string',
+        ]);
+
+        $dokumen = \App\Models\DokumenPengajuan::with('pengajuan.user')->findOrFail($dokumenId);
+
+        $pengajuan = $dokumen->pengajuan;
+        if (!$pengajuan->isPendingAdmin()) {
+            return response()->json(['message' => 'Pengajuan is not pending admin verification'], 400);
+        }
+
+        $oldStatus = $dokumen->status_verifikasi;
+        $dokumen->update([
+            'status_verifikasi' => $request->status,
+            'catatan' => $request->catatan,
+            'verified_by' => $request->user()->id,
+            'verified_at' => now(),
+        ]);
+
+        // Send notification if document is marked as incomplete with notes
+        if ($request->status === 'tidak_lengkap' && $request->catatan && $oldStatus !== 'tidak_lengkap') {
+            Notification::createForUser(
+                $pengajuan->user_id,
+                'warning',
+                'Dokumen Perlu Diperbaiki',
+                "Dokumen {$dokumen->file_name} ditandai sebagai tidak lengkap. Catatan: {$request->catatan}",
+                $pengajuan->id
+            );
+        }
+
+        return response()->json($dokumen);
+    }
+
     public function sendNotification(Request $request, string $id)
     {
         $pengajuan = Pengajuan::with('user')->findOrFail($id);

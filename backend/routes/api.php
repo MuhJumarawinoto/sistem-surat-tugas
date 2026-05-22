@@ -55,19 +55,24 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/{id}', [PengajuanController::class, 'update']);
         Route::delete('/{id}', [PengajuanController::class, 'destroy']);
         Route::post('/{id}/submit', [PengajuanController::class, 'submit']);
+        Route::post('/{id}/cancel', [PengajuanController::class, 'cancel']);
 
         Route::prefix('/{pengajuanId}/dokumen')->group(function () {
             Route::get('/', [DokumenController::class, 'index']);
             Route::post('/', [DokumenController::class, 'store']);
         });
 
-        Route::post('/{id}/approve-atasan', [ApprovalController::class, 'approveAtasan']);
-        Route::post('/{id}/approve-admin', [ApprovalController::class, 'approveAdmin']);
+        // Approval & Verification routes (Admin only)
+        Route::post('/{id}/approve', [ApprovalController::class, 'approveAdmin'])->middleware('admin');
         Route::post('/{id}/reject', [ApprovalController::class, 'reject']);
-        Route::post('/{id}/verify-documents', [ApprovalController::class, 'verifyDocuments']);
+        Route::post('/{id}/approve-atasan', [ApprovalController::class, 'approveAtasan']);
+        Route::post('/{id}/verify-documents', [ApprovalController::class, 'verifyDocuments'])->middleware('admin');
         Route::post('/{id}/send-notification', [ApprovalController::class, 'sendNotification']);
         Route::post('/{id}/generate-surat', [SuratTugasController::class, 'generate']);
     });
+
+    // Document verification route
+    Route::put('/dokumen/{id}/verify', [ApprovalController::class, 'verifyDocument'])->middleware('admin');
 
     Route::prefix('surat')->group(function () {
         Route::get('/{id}', [SuratTugasController::class, 'show']);
@@ -101,5 +106,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{id}', [PDDiktiSyncController::class, 'show']);
         Route::get('/{id}/prodis', [PDDiktiSyncController::class, 'prodis']);
         Route::delete('/{id}', [PDDiktiSyncController::class, 'destroy']);
+    });
+
+    // Cache Management (Admin only)
+    Route::prefix('admin/cache')->middleware('admin')->group(function () {
+        Route::post('/clear', [MasterController::class, 'clearCache']);
     });
 });

@@ -11,7 +11,11 @@ class PengajuanController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $query = Pengajuan::with(['user', 'user.atasan', 'user.atasan.role', 'jenjang', 'dokumen', 'approvedByAtasan']);
+        $query = Pengajuan::with([
+            'user:id,name,nip,jabatan,unit_kerja_id',
+            'jenjang:id,nama,kode,urutan',
+            'dokumen:id,pengajuan_id,jenis_dokumen,file_path,status_verifikasi',
+        ]);
 
         if ($user->isPemohon()) {
             // Pemohon biasa: hanya melihat pengajuan sendiri
@@ -39,7 +43,19 @@ class PengajuanController extends Controller
             // Admin melihat semua pengajuan (all statuses)
             // Default filter: show pending first, then others
             if (!$request->has('status')) {
-                $query->orderByRaw("FIELD(status, 'pending_admin', 'pending_atasan', 'verified', 'disetujui', 'ditolak', 'draft', 'signed', 'completed')");
+                // Use case-when instead of FIELD for better compatibility
+                $query->orderByRaw("
+                    CASE status
+                        WHEN 'pending_admin' THEN 1
+                        WHEN 'verified' THEN 2
+                        WHEN 'disetujui' THEN 3
+                        WHEN 'ditolak' THEN 4
+                        WHEN 'draft' THEN 5
+                        WHEN 'signed' THEN 6
+                        WHEN 'completed' THEN 7
+                        ELSE 8
+                    END
+                ");
             }
         }
 
@@ -168,6 +184,33 @@ class PengajuanController extends Controller
         return response()->json(['message' => 'Pengajuan deleted successfully']);
     }
 
+    public function cancel(Request $request, string $id)
+    {
+        $pengajuan = Pengajuan::findOrFail($id);
+
+        $user = $request->user();
+
+        // Pemohon biasa dan Atasan: hanya bisa cancel pengajuan sendiri
+        if (($user->isPemohon() || $user->isAtasan()) && $pengajuan->user_id !== $user->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // Hanya bisa cancel jika status pending atau verified
+        if (!in_array($pengajuan->status, ['pending_atasan', 'pending_admin', 'verified'])) {
+            return response()->json(['message' => 'Hanya dapat menarik pengajuan dengan status Pending atau Terverifikasi'], 400);
+        }
+
+        $pengajuan->update([
+            'status' => 'draft',
+            'catatan_tolak' => 'Pengajuan ditarik kembali oleh pemohon',
+            'tanggal_submit_atasan' => null,
+            'tanggal_approve_atasan' => null,
+            'tanggal_approve_admin' => null,
+        ]);
+
+        return response()->json($pengajuan->load(['user', 'jenjang']));
+    }
+
     public function submit(Request $request, string $id)
     {
         $pengajuan = Pengajuan::findOrFail($id);
@@ -184,11 +227,12 @@ class PengajuanController extends Controller
         }
 
         // Validasi dokumen dihapus - pengajuan bisa dikirim meskipun dokumen tidak lengkap
-        // Atasan/Admin akan menilai kelengkapan dokumen saat verifikasi
+        // Admin akan menilai kelengkapan dokumen saat verifikasi
+        // Langsung ke admin tanpa approval atasan
 
         $pengajuan->update([
-            'status' => 'pending_atasan',
-            'tanggal_submit_atasan' => now(),
+            'status' => 'pending_admin',
+            'tanggal_submit_admin' => now(),
         ]);
 
         return response()->json($pengajuan->load(['user', 'jenjang']));

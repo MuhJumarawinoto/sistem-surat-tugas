@@ -5,25 +5,44 @@ namespace App\Http\Controllers;
 use App\Models\JenjangPendidikan;
 use App\Models\UnitKerja;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class MasterController extends Controller
 {
+    private const CACHE_TTL = 3600; // 1 hour
+
     public function jenjang()
     {
-        $jenjang = JenjangPendidikan::where('is_active', true)
-            ->orderBy('urutan')
-            ->get();
+        $jenjang = Cache::remember('master:jenjang', self::CACHE_TTL, function () {
+            return JenjangPendidikan::where('is_active', true)
+                ->orderBy('urutan')
+                ->get(['id', 'nama', 'jenjang', 'urutan']);
+        });
 
         return response()->json($jenjang);
     }
 
     public function unitKerja()
     {
-        $unitKerja = UnitKerja::where('is_active', true)
-            ->orderBy('nama')
-            ->get();
+        $unitKerja = Cache::remember('master:unit_kerja', self::CACHE_TTL, function () {
+            return UnitKerja::where('is_active', true)
+                ->orderBy('nama')
+                ->get(['id', 'nama', 'singkatan']);
+        });
 
         return response()->json($unitKerja);
+    }
+
+    /**
+     * Clear all master data cache
+     * Call this after updating master data
+     */
+    public function clearCache()
+    {
+        Cache::forget('master:jenjang');
+        Cache::forget('master:unit_kerja');
+
+        return response()->json(['message' => 'Master data cache cleared']);
     }
 
     public function statusPengajuan()

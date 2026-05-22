@@ -1,28 +1,45 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePengajuanStore } from '@/stores/pengajuan'
 import api from '@/services/api'
 import MainLayout from '@/components/layout/MainLayout.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import DocumentPreviewModal from '@/components/DocumentPreviewModal.vue'
+import PengajuanMilestone from '@/components/PengajuanMilestone.vue'
 
 const router = useRouter()
 const pengajuanStore = usePengajuanStore()
 
+// Page header actions
+const headerActions = computed(() => [
+  {
+    label: 'Buat Baru',
+    icon: 'ri-add-line',
+    to: '/pengajuan/baru',
+    variant: 'btn-primary'
+  }
+])
+
 const pengajuanList = ref([])
 const allPengajuanList = ref([]) // Store all data for client-side filtering
 const loading = ref(false)
-const deleting = ref(false)
 const currentPage = ref(1)
 const perPage = ref(10)
 const total = ref(0)
 const totalPages = ref(1)
 const lastPage = ref(1)
-const openMenuId = ref(null)
-const menuPosition = ref({ top: 0, right: 0 })
 const searchQuery = ref('')
+const filterStatus = ref('')
+
+const statusOptions = [
+  { value: '', label: 'Semua Status' },
+  { value: 'terverifikasi', label: 'Terverifikasi' },
+  { value: 'selesai', label: 'Selesai' },
+  { value: 'ditolak', label: 'Ditolak' },
+]
 
 // Modal states
 const showDetailModal = ref(false)
@@ -128,28 +145,7 @@ function downloadDocument(doc) {
   document.body.removeChild(link)
 }
 
-function closeAllMenus() {
-  openMenuId.value = null
-}
-
-function toggleMenu(id, event) {
-  event.stopPropagation()
-
-  if (openMenuId.value === id) {
-    openMenuId.value = null
-  } else {
-    openMenuId.value = id
-    const button = event.currentTarget
-    const rect = button.getBoundingClientRect()
-    menuPosition.value = {
-      top: rect.bottom + window.scrollY + 4,
-      right: window.innerWidth - rect.right
-    }
-  }
-}
-
 async function openDetailModal(id) {
-  closeAllMenus()
   loadingDetail.value = true
   showDetailModal.value = true
   selectedPengajuan.value = null
@@ -172,14 +168,11 @@ function closeDetailModal() {
 }
 
 onMounted(() => {
-  document.addEventListener('click', closeAllMenus)
-  window.addEventListener('scroll', closeAllMenus, true)
   loadPengajuan()
 })
 
 onUnmounted(() => {
-  document.removeEventListener('click', closeAllMenus)
-  window.removeEventListener('scroll', closeAllMenus, true)
+  // Cleanup if needed
 })
 
 async function loadPengajuan() {
@@ -191,7 +184,11 @@ async function loadPengajuan() {
     })
 
     if (response.data) {
-      allPengajuanList.value = response.data.data || response.data || []
+      // Filter: hanya berhasil (terverifikasi, selesai) dan gagal (ditolak)
+      const rawData = response.data.data || response.data || []
+      allPengajuanList.value = rawData.filter(p =>
+        ['terverifikasi', 'selesai', 'ditolak'].includes(p.status)
+      )
       applyFilter()
     } else {
       allPengajuanList.value = []
@@ -227,6 +224,11 @@ function applyFilter() {
         (item.status && item.status.toLowerCase().includes(query))
       )
     })
+  }
+
+  // Apply status filter
+  if (filterStatus.value) {
+    filtered = filtered.filter(p => p.status === filterStatus.value)
   }
 
   total.value = filtered.length
@@ -305,40 +307,11 @@ const displayedPages = computed(() => {
   return pages
 })
 
-function canEdit(status) {
-  return status === 'draft' || status === 'ditolak'
-}
-
-function canDelete(status) {
-  return status === 'draft'
-}
-
-async function deletePengajuan(id) {
-  if (!confirm('Apakah Anda yakin ingin menghapus pengajuan ini? Tindakan ini tidak dapat dibatalkan.')) {
-    return
-  }
-
-  deleting.value = true
-  try {
-    await api.delete(`/pengajuan/${id}`)
-    alert('Pengajuan berhasil dihapus')
-    if (pengajuanList.value.length === 1 && currentPage.value > 1) {
-      currentPage.value = 1
-    }
-    await loadPengajuan()
-  } catch (error) {
-    alert(error.response?.data?.message || 'Gagal menghapus pengajuan')
-  } finally {
-    deleting.value = false
-  }
-}
-
 function getStatusLabel(status) {
   const labels = {
     draft: 'Draft',
-    pending_atasan: 'Pending Atasan',
-    pending_admin: 'Pending Admin',
-    disetujui: 'Disetujui',
+    kirim: 'Dikirim',
+    terverifikasi: 'Terverifikasi',
     ditolak: 'Ditolak',
     selesai: 'Selesai',
   }
@@ -348,11 +321,10 @@ function getStatusLabel(status) {
 function getStatusBadge(status) {
   const badges = {
     draft: 'badge-default',
-    pending_atasan: 'badge-warning',
-    pending_admin: 'badge-info',
-    disetujui: 'badge-success',
+    kirim: 'badge-warning',
+    terverifikasi: 'badge-info',
     ditolak: 'badge-danger',
-    selesai: 'badge-purple',
+    selesai: 'badge-success',
   }
   return badges[status] || 'badge-default'
 }
@@ -360,9 +332,8 @@ function getStatusBadge(status) {
 function getStatusIcon(status) {
   const icons = {
     draft: 'ri-draft-line',
-    pending_atasan: 'ri-time-line',
-    pending_admin: 'ri-time-line',
-    disetujui: 'ri-check-line',
+    kirim: 'ri-send-plane-line',
+    terverifikasi: 'ri-verified-badge-line',
     ditolak: 'ri-close-line',
     selesai: 'ri-checkbox-circle-line',
   }
@@ -370,8 +341,13 @@ function getStatusIcon(status) {
 }
 
 function getDocumentCount(pengajuan) {
-  if (!pengajuan || !pengajuan.dokumen) return 0
-  return pengajuan.dokumen.length
+  return pengajuan.dokumen?.length || 0
+}
+
+// Riwayat pengajuan is read-only - no editing allowed for completed/rejected applications
+function canEdit(status) {
+  // Always return false for riwayat (history) view
+  return false
 }
 
 // Watch for search query changes
@@ -384,36 +360,36 @@ watch(searchQuery, () => {
 <template>
   <MainLayout>
     <Breadcrumb />
-    <div class="mb-6 animate-fade-in">
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 class="text-2xl font-bold text-secondary-800">Riwayat Pengajuan</h2>
-          <p class="text-secondary-500 mt-1">Kelola dan pantau semua pengajuan izin belajar Anda</p>
-        </div>
-        <router-link to="/pengajuan/baru" class="btn btn-primary gap-2 sm:w-auto w-full justify-center">
-          <i class="ri-add-line"></i>
-          <span>Buat Baru</span>
-        </router-link>
-      </div>
-    </div>
+    <PageHeader
+      title="Riwayat Pengajuan"
+      subtitle="Daftar pengajuan yang telah selesai diproses (berhasil/gagal)"
+      :actions="headerActions"
+    />
 
-    <!-- Search Box -->
+    <!-- Search & Filter -->
     <div class="mb-4 animate-fade-in">
-      <div class="relative">
-        <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-secondary-400"></i>
-        <input
-          v-model="searchQuery"
-          type="text"
-          placeholder="Cari berdasarkan nomor, jenjang, prodi, universitas, lokasi, atau status..."
-          class="w-full pl-10 pr-4 py-2.5 border border-secondary-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-        />
-        <button
-          v-if="searchQuery"
-          @click="searchQuery = ''"
-          class="absolute right-3 top-1/2 -translate-y-1/2 text-secondary-400 hover:text-secondary-600"
-        >
-          <i class="ri-close-line"></i>
-        </button>
+      <div class="flex flex-col sm:flex-row gap-3">
+        <div class="relative flex-1">
+          <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-secondary-400"></i>
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Cari berdasarkan nomor, prodi, universitas, atau status..."
+            class="w-full pl-10 pr-4 py-2.5 border border-secondary-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          />
+          <button
+            v-if="searchQuery"
+            @click="searchQuery = ''"
+            class="absolute right-3 top-1/2 -translate-y-1/2 text-secondary-400 hover:text-secondary-600"
+          >
+            <i class="ri-close-line"></i>
+          </button>
+        </div>
+        <select v-model="filterStatus" class="select-field sm:w-48">
+          <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
+            {{ opt.label }}
+          </option>
+        </select>
       </div>
       <p v-if="searchQuery" class="text-sm text-secondary-500 mt-2">
         Menampilkan {{ total }} hasil pencarian untuk "{{ searchQuery }}"
@@ -428,101 +404,57 @@ watch(searchQuery, () => {
 
             <div v-else-if="pengajuanList.length === 0" class="text-center py-12">
               <div class="w-16 h-16 rounded-full bg-secondary-100 flex items-center justify-center mx-auto mb-4">
-                <i class="ri-inbox-line text-3xl text-secondary-400"></i>
+                <i class="ri-history-line text-3xl text-secondary-400"></i>
               </div>
-              <p class="text-secondary-500 mb-4">Belum ada pengajuan</p>
-              <router-link to="/pengajuan/baru" class="btn btn-primary">
-                <i class="ri-add-line mr-2"></i>
-                Buat Pengajuan Baru
-              </router-link>
+              <p class="text-secondary-500 mb-4">Belum ada riwayat pengajuan</p>
+              <p class="text-sm text-secondary-400">Pengajuan yang selesai diproses akan muncul di sini</p>
             </div>
 
-            <div v-else>
-              <div class="table-container">
-                <table class="data-table">
-                  <thead>
-                    <tr>
-                      <th>Nomor</th>
-                      <th>Jenjang</th>
-                      <th>Prodi</th>
-                      <th>Universitas</th>
-                      <th>Tanggal</th>
-                      <th>Status</th>
-                      <th class="text-right">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="item in pengajuanList" :key="item.id">
-                      <td class="font-medium">{{ item.nomor_pengajuan || '-' }}</td>
-                      <td>{{ item.jenjang?.nama }}</td>
-                      <td>{{ item.nama_prodi }}</td>
-                      <td>{{ item.perguruan_tinggi }}</td>
-                      <td class="text-secondary-500">
-                        {{ new Date(item.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) }}
-                      </td>
-                      <td>
-                        <span :class="['badge', 'flex items-center gap-1 w-fit', getStatusBadge(item.status)]">
+            <div v-else class="space-y-4">
+              <!-- Pengajuan Cards with Milestone -->
+              <div
+                v-for="item in pengajuanList"
+                :key="item.id"
+                class="border border-secondary-200 rounded-xl hover:border-primary-300 hover:shadow-sm transition-all overflow-hidden"
+              >
+                <!-- Main Row -->
+                <div class="p-4">
+                  <div class="flex flex-col lg:flex-row lg:items-center gap-4">
+                    <!-- Info -->
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2 mb-2 flex-wrap">
+                        <span class="font-semibold text-secondary-800">{{ item.nomor_pengajuan || '-' }}</span>
+                        <span :class="['badge', 'flex items-center gap-1', getStatusBadge(item.status)]">
                           <i :class="getStatusIcon(item.status)"></i>
                           {{ getStatusLabel(item.status) }}
                         </span>
-                      </td>
-                      <td class="text-right">
-                        <div class="relative inline-block">
-                          <button
-                            @click="toggleMenu(item.id, $event)"
-                            class="btn btn-ghost btn-icon"
-                          >
-                            <i class="ri-more-2-fill text-lg"></i>
-                          </button>
-
-                          <Teleport to="body">
-                            <Transition name="dropdown">
-                              <div
-                                v-if="openMenuId === item.id"
-                                class="dropdown-menu"
-                                :style="{ top: `${menuPosition.top}px`, right: `${menuPosition.right}px` }"
-                                @click.stop
-                              >
-                                <button
-                                  @click="openDetailModal(item.id)"
-                                  class="dropdown-item"
-                                >
-                                  <i class="ri-eye-line"></i>
-                                  <span>Lihat Detail</span>
-                                </button>
-
-                                <router-link
-                                  v-if="canEdit(item.status)"
-                                  :to="`/pengajuan/${item.id}/edit`"
-                                  class="dropdown-item"
-                                >
-                                  <i class="ri-edit-line"></i>
-                                  <span>Edit</span>
-                                </router-link>
-
-                                <div v-if="canDelete(item.status)" class="border-t border-secondary-100 my-1"></div>
-
-                                <button
-                                  v-if="canDelete(item.status)"
-                                  @click="deletePengajuan(item.id)"
-                                  :disabled="deleting"
-                                  class="dropdown-item text-danger hover:bg-red-50"
-                                >
-                                  <i class="ri-delete-bin-line"></i>
-                                  <span>Hapus</span>
-                                </button>
-                              </div>
-                            </Transition>
-                          </Teleport>
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                        <span class="text-xs text-secondary-500 bg-secondary-100 px-2 py-0.5 rounded">
+                          {{ item.jenjang?.nama }}
+                        </span>
+                      </div>
+                      <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-secondary-600">
+                        <span><i class="ri-graduation-cap-line mr-1"></i>{{ item.nama_prodi }}</span>
+                        <span><i class="ri-building-line mr-1"></i>{{ item.perguruan_tinggi }}</span>
+                        <span><i class="ri-calendar-line mr-1"></i>{{ new Date(item.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) }}</span>
+                      </div>
+                    </div>
+                    <!-- Actions -->
+                    <div class="flex items-center gap-2">
+                      <button
+                        @click="openDetailModal(item.id)"
+                        class="btn btn-primary btn-sm"
+                      >
+                        <i class="ri-eye-line mr-1"></i>
+                        Lihat Detail
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
+            </div>
 
-              <!-- Pagination -->
-              <div v-if="totalPages > 1" class="flex items-center justify-between mt-4 pt-4 border-t border-secondary-200">
+            <!-- Pagination -->
+            <div v-if="totalPages > 1" class="flex items-center justify-between mt-4 pt-4 border-t border-secondary-200">
                 <div class="text-sm text-secondary-500">
                   Menampilkan {{ fromItem }} - {{ toItem }} dari {{ total }} pengajuan
                 </div>
@@ -561,7 +493,6 @@ watch(searchQuery, () => {
               </div>
             </div>
           </div>
-        </div>
 
     <!-- Detail Modal -->
     <Teleport to="body">
@@ -603,6 +534,12 @@ watch(searchQuery, () => {
                   <span :class="['badge badge-lg', getStatusBadge(selectedPengajuan.status)]">
                     <i :class="getStatusIcon(selectedPengajuan.status)"></i>
                   </span>
+                </div>
+
+                <!-- Progress Milestone -->
+                <div>
+                  <h4 class="text-sm font-semibold text-secondary-600 uppercase mb-3">Progress Pengajuan</h4>
+                  <PengajuanMilestone :pengajuan-id="selectedPengajuan.id" />
                 </div>
 
                 <!-- Info Pendidikan -->

@@ -65,11 +65,18 @@ sipintar/
 3. **Route-based Code Splitting**: Lazy-loaded routes in router
 4. **API Service Layer**: Single Axios instance with interceptors for auth tokens
 5. **Role-based Access Control**: Different views for pemohon, atasan, admin, kepala
-6. **Modal Pattern**: Details viewed in modal using Teleport for proper z-index layering
+6. **Page Header Pattern**: Consistent page layout using `PageHeader` component
+   - Auto-generates title and subtitle based on route
+   - Supports action buttons (router-link, button, or badge)
+   - Example: `<PageHeader title="Title" subtitle="Description" :actions="actions" />`
+7. **Breadcrumb Pattern**: Automatic breadcrumb navigation based on route path
+   - Uses icons for visual clarity
+   - Skips action routes (baru, edit) in breadcrumb
+8. **Modal Pattern**: Details viewed in modal using Teleport for proper z-index layering
    - Example: "Lihat Pengajuan" opens detail modal instead of separate page
    - Use `Teleport to="body"` with overlay background
    - Include loading states, close on backdrop click, and ESC key handling
-7. **Responsive Action Buttons**: Desktop shows buttons inline, Mobile shows dots menu
+9. **Responsive Action Buttons**: Desktop shows buttons inline, Mobile shows dots menu
    - Use `hidden sm:flex` for desktop buttons
    - Use `sm:hidden` for mobile dropdown trigger
    - Dropdown menu positioned absolute with `right-0 top-full`
@@ -157,6 +164,47 @@ npm run dev
 2. Add route in `frontend/src/router/index.js`
 3. Update sidebar if needed in `frontend/src/components/layout/Sidebar.vue`
 
+### Using PageHeader Component
+
+Use this pattern for consistent page headers across all views:
+
+```vue
+<script setup>
+import { computed } from 'vue'
+import PageHeader from '@/components/PageHeader.vue'
+
+// Define actions for the header
+const headerActions = computed(() => [
+  {
+    label: 'Create New',
+    icon: 'ri-add-line',
+    to: '/resource/create',      // Use 'to' for router-link
+    variant: 'btn-primary'
+  },
+  {
+    label: 'Export',
+    icon: 'ri-download-line',
+    onClick: handleExport,        // Use 'onClick' for button
+    variant: 'btn-secondary'
+  },
+  {
+    label: 'Status',
+    icon: 'ri-check-line',
+    isBadge: true,                // Use 'isBadge' for non-clickable badge
+    variant: 'badge-success'
+  }
+])
+</script>
+
+<template>
+  <PageHeader
+    title="Page Title"
+    subtitle="Optional description"
+    :actions="headerActions"
+  />
+</template>
+```
+
 ### Creating a Detail Modal
 
 Use this pattern for viewing item details without page navigation:
@@ -233,6 +281,64 @@ function closeDetailModal() {
   opacity: 0;
 }
 </style>
+```
+
+### Creating a Verification Modal
+
+For admin verification workflows, use this pattern similar to VerificationDetailModal:
+
+```javascript
+// State for modal
+const showVerificationModal = ref(false)
+const selectedId = ref(null)
+const loading = ref(false)
+const submitting = ref(false)
+const data = ref(null)
+
+// Open modal
+function openVerificationModal(id) {
+  selectedId.value = id
+  showVerificationModal.value = true
+}
+
+// Load data when modal opens
+watch(() => showVerificationModal.value, async (newVal) => {
+  if (newVal && selectedId.value) {
+    await loadData()
+  }
+})
+
+async function loadData() {
+  loading.value = true
+  try {
+    const response = await api.get(`/endpoint/${selectedId.value}`)
+    data.value = response.data
+  } finally {
+    loading.value = false
+  }
+}
+
+// Approve action
+async function handleApprove() {
+  submitting.value = true
+  try {
+    await api.post(`/endpoint/${selectedId.value}/approve`)
+    emit('verified')
+    emit('close')
+  } finally {
+    submitting.value = false
+  }
+}
+```
+
+```vue
+<!-- Template -->
+<VerificationDetailModal
+  :show="showVerificationModal"
+  :pengajuan-id="selectedId"
+  @close="showVerificationModal = false"
+  @verified="handleVerified"
+/>
 ```
 
 ### Styling Guidelines
@@ -314,12 +420,13 @@ Error:
 ### Pengajuan
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/pengajuan` | List all pengajuan (filtered by role) |
+| GET | `/api/pengajuan` | List all pengajuan (filtered by role, paginated) |
 | POST | `/api/pengajuan` | Create new pengajuan |
 | GET | `/api/pengajuan/{id}` | Get detail pengajuan |
 | PUT | `/api/pengajuan/{id}` | Update pengajuan |
 | DELETE | `/api/pengajuan/{id}` | Delete pengajuan (draft only) |
 | POST | `/api/pengajuan/{id}/submit` | Submit pengajuan for approval |
+| POST | `/api/pengajuan/{id}/cancel` | Cancel/withdraw pengajuan (owner, pending/verified only) |
 
 ### Documents
 | Method | Endpoint | Description |
@@ -424,9 +531,12 @@ state: {
   list: [],             // Array of pengajuan
   detail: null,         // Current pengajuan detail
   draft: null           // Draft pengajuan in progress
+  loading: false,       // Loading state
+  error: null           // Error message
 }
 actions: {
-  fetchList(), fetchDetail(id), create(data), update(id, data)
+  fetchList(params), fetchDetail(id), create(data), update(id, data),
+  submitPengajuan(id), cancelPengajuan(id), deletePengajuan(id)
 }
 ```
 
@@ -468,21 +578,27 @@ actions: {
 ## Pengajuan Status Flow
 
 ```
-draft → submitted → approved_atasan → verified → approved_admin → signed → completed
-                                  ↓
-                              rejected
+draft → pending_atasan → pending_admin → verified → disetujui → signed → selesai/completed
+                               ↓                              ↓
+                            ditolak                        ditolak
 ```
 
-| Status | Description | Can Edit |
-|--------|-------------|----------|
-| `draft` | Initial state, not submitted | Yes |
-| `submitted` | Waiting for atasan approval | No |
-| `approved_atasan` | Approved by atasan, waiting admin | No |
-| `rejected` | Rejected by atasan/admin | No |
-| `verified` | Documents verified by admin | No |
-| `approved_admin` | Approved by admin, waiting signing | No |
-| `signed` | Surat signed by kepala | No |
-| `completed` | Process complete | No |
+| Status | Penjelasan | Bisa Edit/Hapus | Bisa Dicabut |
+|--------|------------|-----------------|--------------|
+| `draft` | Pengajuan dibuat, belum dikirim | Ya | Ya |
+| `pending_atasan` | Menunggu approval atasan langsung | Tidak | Ya |
+| `pending_admin` | Menunggu verifikasi admin | Tidak | Ya |
+| `verified` | Dokumen diverifikasi admin | Tidak | Ya |
+| `disetujui` | Disetujui oleh penandatangan | Tidak | Tidak |
+| `signed` | Surat ditandatangani (TTE) | Tidak | Tidak |
+| `ditolak` | Ditolak admin/atasan | Tidak | Tidak |
+| `selesai` | Surat selesai | Tidak | Tidak |
+| `completed` | Proses lengkap | Tidak | Tidak |
+
+**Alur Singkat:**
+1. **User** → Buat & kirim pengajuan
+2. **Admin** → Verifikasi → TTD elektronik
+3. **Selesai** → User unduh surat
 
 ## Custom Tailwind Classes
 
@@ -527,8 +643,87 @@ npm run test
 3. **Use Laravel Telescope** (if installed) for backend debugging
 4. **Clear browser cache** when experiencing auth issues
 5. **Run `php artisan config:clear`** after changing backend config
+6. **Clear application cache** after updating master data: `POST /api/admin/cache/clear`
+
+### Cache Management
+
+**Cached Data:**
+- Master data (jenjang pendidikan, unit kerja) - 1 hour TTL
+- Notification count - 30 seconds TTL
+- Notification list - 1 minute TTL
+
+**Cache Invalidation:**
+- Manual: `POST /api/admin/cache/clear` (admin only)
+- Automatic: After updating master data (jenjang, unit kerja)
+
+### Performance Monitoring
+
+**Key Metrics:**
+- API response time should be < 100ms for cached endpoints
+- Notification polling: every 90 seconds
+- Pagination: 10 items per page for pengajuan list
+
+## Business Process Flow
+
+Complete business process documentation is available at [docs/business-flow.md](docs/business-flow.md) with Mermaid.js diagrams covering:
+
+- **Main Application Flow** - End-to-end pengajuan process
+- **Admin Verification Flow** - Document verification workflow
+- **Jabatan Verification Matrix** - Approval chain by position
+- **Atasan Approval Flow** - For atasan who submit their own pengajuan
+- **Status State Diagram** - All possible status transitions
+- **Surat Generation Flow** - Letter creation and TTE process
+- **Required Documents** - 9 document types overview
+- **Role & Permission Matrix** - User roles and their permissions
 
 ## Recent Changes (2026-05-22)
+
+### Admin Verification System
+Complete implementation of admin document verification with modal interface:
+
+**New Components:**
+- **VerificationDetailModal**: Comprehensive modal for admin to verify pengajuan
+  - View complete pengajuan details (pegawai info, pendidikan info)
+  - View verification chain with current status
+  - Preview all uploaded documents
+  - Mark each document as "Lengkap" or "Tidak Lengkap"
+  - Add notes for each document
+  - Approve or reject pengajuan after verification
+  - View final signer information
+
+**Frontend Features:**
+- **VerifikasiView**: Updated to use new modal
+  - Click "Verifikasi" button opens detail modal
+  - Shows verification status (all complete, incomplete, or pending)
+  - Can approve only when all documents are marked complete
+  - Reject with reason for incomplete applications
+
+**Backend API Endpoints:**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| PUT | `/api/dokumen/{id}/verify` | Verify individual document (lengkap/tidak_lengkap) |
+| POST | `/api/pengajuan/{id}/approve` | Approve pengajuan (admin only) |
+| POST | `/api/pengajuan/{id}/reject` | Reject pengajuan with reason |
+| GET | `/api/verification/pengajuan/{id}` | Get verification chain & signer info |
+
+**Verification Workflow:**
+1. Admin opens verification modal from list
+2. Review all pengajuan details
+3. Preview and verify each document
+4. Mark documents as complete/incomplete with notes
+5. When all documents complete → Approve button enabled
+6. If documents incomplete → Reject with reason
+
+**Document Types:**
+- SK Pangkat Terakhir
+- SK CPNS
+- SKP 2 Tahun Terakhir
+- Surat Keterangan Lulus/Diterima
+- Jadwal Perkuliahan
+- Sertifikat Akreditasi Prodi
+- Surat Pernyataan Biaya Mandiri
+- Surat Pernyataan Tidak Menuntut Ijazah
+- Surat Keterangan Sehat
 
 ### Role-Based Verification System
 Complete implementation of jabatan-based verification matrix:
@@ -582,6 +777,114 @@ ALTER TABLE users ADD COLUMN atasan_id BIGINT UNSIGNED NULL;
 ALTER TABLE users ADD COLUMN jabatan_kategori VARCHAR(50) NULL;
 ALTER TABLE users ADD FOREIGN KEY (atasan_id) REFERENCES users(id);
 ```
+
+---
+
+## Recent Changes (2026-05-23)
+
+### Performance Optimizations
+
+**Database Indexes:**
+- Added composite index `(user_id, is_read)` on `notifications` table for faster query
+- Added indexes on `pengajuans` table: `(user_id, status)`, `status`, `created_at`, `jenjang_id`
+- Added indexes on `users` table: `unit_kerja_id`, `jabatan_kategori`, `atasan_id`
+- Added indexes on `dokumen_pengajuan` table: `(pengajuan_id, jenis_dokumen)`, `status_verifikasi`
+- Migration: `2026_05_23_000001_add_indexes_to_notifications_table.php`
+- Migration: `2026_05_23_000002_add_performance_indexes.php`
+
+**API Service Layer:**
+- Multiple axios instances with different timeouts:
+  - `api` - 30s timeout (default)
+  - `apiQuick` - 5s timeout (for non-critical requests like notifications)
+  - `apiLong` - 60s timeout (for file uploads)
+- Import: `import { apiQuick, apiLong } from '@/services/api'`
+
+**Caching System:**
+- Master data caching with 1-hour TTL (jenjang, unit kerja)
+- Cache invalidation endpoint: `POST /api/admin/cache/clear` (admin only)
+- Implemented in `MasterController.php`
+
+**Notification Polling Optimization:**
+- Reduced polling frequency: 60s → 90s
+- Smart polling: fetch `unread-count` first, only fetch full list if count increased
+- Client-side caching: 30s for count, 60s for list
+- Implemented in `ToastAutoNotifier.vue` and `notification.js`
+
+**Query Optimization:**
+- Selective eager loading with specific fields instead of `*`
+- Example: `'user:id,name,nip,jabatan,unit_kerja_id'` instead of full user object
+- Reduces data transfer by ~50%
+
+**Loading States:**
+- Skeleton animations for all data loading states
+- Error states with retry button
+- Implemented in `DashboardView.vue`
+
+### Cabut Berkas Pengajuan Feature
+
+**Backend Implementation:**
+- New endpoint: `POST /api/pengajuan/{id}/cancel`
+- Method: `PengajuanController::cancel()`
+- Rules:
+  - Only owner can cancel their own pengajuan
+  - Cancellable statuses: `pending_atasan`, `pending_admin`, `verified`
+  - Status changes back to `draft`
+  - Resets timestamps: `tanggal_submit_atasan`, `tanggal_approve_atasan`, `tanggal_approve_admin`
+
+**Frontend Implementation:**
+- Store method: `pengajuanStore.cancelPengajuan(id)`
+- Dashboard actions:
+  - Desktop: Inline button "Cabut Berkas" (red)
+  - Mobile: Dropdown menu with "Cabut Berkas" option
+  - Draft: Shows "Hapus" button instead
+- Confirmation modal with warning message
+- Toast notifications for success/error
+
+### Dashboard Status Update
+
+**New Status Cards (6 cards):**
+1. **Draft** - Pengajuan belum dikirim
+2. **Pending** - `pending_atasan` + `pending_admin`
+3. **Terverifikasi** - `verified` status
+4. **Disetujui** - `disetujui` + `signed`
+5. **Ditolak** - `ditolak`
+6. **Selesai** - `selesai` + `completed`
+
+**Status Mapping:**
+| Database Status | Display Label | Badge Color |
+|-----------------|---------------|-------------|
+| `draft` | Draft | Gray |
+| `pending_atasan` | Pending Atasan | Yellow |
+| `pending_admin` | Pending Admin | Yellow |
+| `verified` | Terverifikasi | Blue |
+| `disetujui` | Disetujui | Primary |
+| `signed` | Signed | Primary |
+| `ditolak` | Ditolak | Red |
+| `selesai` | Selesai | Green |
+| `completed` | Completed | Green |
+
+**Milestone Steps (5 steps):**
+1. Dikirim
+2. Verifikasi
+3. Disetujui
+4. TTE (Tanda Tangan Elektronik)
+5. Selesai
+
+### Bug Fixes
+
+**Database Column Names:**
+- Fixed eager load queries to use correct column names:
+  - `users.nama` → `users.name`
+  - `jenjang_pendidikan.jenjang` → `jenjang_pendidikan.kode`
+  - `dokumen_pengajuan.jenis` → `dokumen_pengajuan.jenis_dokumen`
+  - `dokumen_pengajuan.is_verified` → `dokumen_pengajuan.status_verifikasi`
+
+### API Endpoints Added
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/pengajuan/{id}/cancel` | Cancel/withdraw pengajuan (owner only) |
+| POST | `/api/admin/cache/clear` | Clear master data cache (admin only) |
 
 ---
 
@@ -779,7 +1082,13 @@ getRoleLabel()     // Get user role display label
 
 ### Recent Updates (2026-05-22)
 
-#### Document Preview in Detail Modal
+#### Riwayat Pengajuan Filter Update
+- **Menu Riwayat Pengajuan** now only displays completed pengajuan (berhasil/gagal)
+- Shows only: Disetujui, Ditolak, Selesai, Sudah Ditandatangani
+- Hides: Draft, Submitted, pending approvals
+- This keeps history focused on final outcomes only
+
+### Document Preview in Detail Modal
 - Added **document preview feature** in pengajuan detail modal
 - Support for image preview with zoom & pan (scroll to zoom, drag to pan)
 - Support for PDF preview in iframe

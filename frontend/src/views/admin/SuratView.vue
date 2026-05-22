@@ -5,7 +5,9 @@ import api from '@/services/api'
 import MainLayout from '@/components/layout/MainLayout.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import SendMessageModal from '@/components/SendMessageModal.vue'
+import PengajuanMilestone from '@/components/PengajuanMilestone.vue'
 
 const pengajuanStore = usePengajuanStore()
 
@@ -54,10 +56,11 @@ function handleMessageSent() {
 
 <template>
   <MainLayout>
-    <div class="mb-6 animate-fade-in">
-      <h2 class="text-2xl font-bold text-secondary-800">Tanda Tangan Surat</h2>
-      <p class="text-secondary-500 mt-1">Daftar surat yang siap ditandatangani</p>
-    </div>
+    <Breadcrumb />
+    <PageHeader
+      title="Tanda Tangan Surat"
+      subtitle="Daftar surat yang siap ditandatangani"
+    />
 
     <div class="card animate-slide-up">
       <div class="card-body">
@@ -72,26 +75,67 @@ function handleMessageSent() {
               <p class="text-secondary-500">Tidak ada surat yang menunggu tanda tangan</p>
             </div>
 
-            <div v-else class="space-y-3">
-              <div v-for="item in suratList" :key="item.id" class="p-4 border border-secondary-200 rounded-xl hover:border-primary-300 hover:shadow-sm transition-all">
-                <div class="flex justify-between items-start">
-                  <div class="flex-1">
-                    <p class="text-base font-semibold text-secondary-800">{{ item.nomor_pengajuan }}</p>
-                    <p class="text-sm text-secondary-600 mt-1">{{ item.user?.name }}</p>
-                    <p class="text-sm text-secondary-500">{{ item.nama_prodi }} - {{ item.perguruan_tinggi }}</p>
+            <div v-else class="space-y-4">
+              <div
+                v-for="item in suratList"
+                :key="item.id"
+                class="card border-l-4 border-l-success"
+              >
+                <div class="card-body">
+                  <!-- Card Header -->
+                  <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 pb-3 border-b border-secondary-100">
+                    <div class="flex-1">
+                      <div class="flex items-center gap-2 mb-1">
+                        <p class="text-base font-semibold text-secondary-800">{{ item.nomor_pengajuan }}</p>
+                        <span class="badge badge-success">
+                          <i class="ri-check-line"></i>
+                          Siap TTD
+                        </span>
+                      </div>
+                      <p class="text-sm font-medium text-secondary-800">{{ item.user?.name }}</p>
+                      <p class="text-xs text-secondary-500">NIP: {{ item.user?.nip }}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <button
+                        @click="openSendMessageModal(item)"
+                        class="btn btn-ghost btn-sm"
+                        title="Kirim Pesan"
+                      >
+                        <i class="ri-message-3-line text-lg"></i>
+                      </button>
+                      <button @click="signSurat(item.id)" class="btn btn-primary btn-sm">
+                        <i class="ri-edit-line mr-1"></i>
+                        Tanda Tangan
+                      </button>
+                    </div>
                   </div>
-                  <div class="flex items-center gap-2">
-                    <button
-                      @click="openSendMessageModal(item)"
-                      class="btn btn-ghost btn-sm"
-                      title="Kirim Pesan"
-                    >
-                      <i class="ri-message-3-line text-lg"></i>
-                    </button>
-                    <button @click="signSurat(item.id)" class="btn btn-primary btn-sm">
-                      <i class="ri-edit-line mr-1"></i>
-                      Tanda Tangan
-                    </button>
+
+                  <!-- Education Info -->
+                  <div class="mt-3 p-3 bg-secondary-50 rounded-lg">
+                    <div class="flex items-center gap-4 text-sm">
+                      <span class="flex items-center gap-1 text-secondary-700">
+                        <i class="ri-graduation-cap-line"></i>
+                        {{ item.nama_prodi }}
+                      </span>
+                      <span class="text-secondary-400">•</span>
+                      <span class="flex items-center gap-1 text-secondary-700">
+                        <i class="ri-building-line"></i>
+                        {{ item.perguruan_tinggi }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- Inline Milestone -->
+                  <div class="mt-4">
+                    <div class="flex items-center justify-between mb-2">
+                      <span class="text-sm font-medium text-secondary-700 flex items-center gap-1">
+                        <i class="ri-route-line text-primary-600"></i>
+                        Progress Pengajuan
+                      </span>
+                    </div>
+                    <div class="bg-secondary-50 rounded-lg p-3">
+                      <PengajuanMilestone :pengajuan-id="item.id" />
+                    </div>
                   </div>
                 </div>
               </div>

@@ -4,6 +4,7 @@ import api from '@/services/api'
 import MainLayout from '@/components/layout/MainLayout.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
+import PageHeader from '@/components/PageHeader.vue'
 
 const pegawaiList = ref([])
 const loading = ref(false)
@@ -214,10 +215,11 @@ function resetFilters() {
 
 <template>
   <MainLayout>
-    <div class="mb-6 animate-fade-in">
-      <h2 class="text-2xl font-bold text-secondary-800">Data Pegawai</h2>
-      <p class="text-secondary-500 mt-1">Kelola data pegawai BKPSDM</p>
-    </div>
+    <Breadcrumb />
+    <PageHeader
+      title="Data Pegawai"
+      subtitle="Kelola data pegawai dan atasan"
+    />
 
     <!-- Filters -->
     <div class="card animate-slide-up">

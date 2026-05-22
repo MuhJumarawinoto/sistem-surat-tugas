@@ -6,7 +6,9 @@ import api from '@/services/api'
 import MainLayout from '@/components/layout/MainLayout.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import SendMessageModal from '@/components/SendMessageModal.vue'
+import PengajuanMilestone from '@/components/PengajuanMilestone.vue'
 
 const route = useRoute()
 const pengajuanStore = usePengajuanStore()
@@ -71,12 +73,12 @@ function handleMessageSent() {
     </div>
 
     <div v-else-if="pengajuan" class="space-y-6 animate-fade-in">
-      <Breadcrumb :current-page="pengajuan.nomor_pengajuan" />
+      <Breadcrumb />
 
-      <div class="mb-4">
-        <h2 class="text-2xl font-bold text-secondary-800">Verifikasi Pengajuan</h2>
-        <p class="text-secondary-500 mt-1">{{ pengajuan.nomor_pengajuan }}</p>
-          </div>
+      <PageHeader
+        title="Tanda Tangan Surat"
+        :subtitle="`Nomor Pengajuan: ${pengajuan.nomor_pengajuan}`"
+      />
 
           <div class="card">
             <div class="card-header">
@@ -133,6 +135,19 @@ function handleMessageSent() {
                   <dd class="text-secondary-800 font-medium">{{ pengajuan.akreditasi_prodi }}</dd>
                 </div>
               </dl>
+            </div>
+          </div>
+
+          <!-- Progress Milestone -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title flex items-center gap-2">
+                <i class="ri-route-line text-primary-600"></i>
+                Progress Pengajuan
+              </h3>
+            </div>
+            <div class="card-body">
+              <PengajuanMilestone :pengajuan-id="route.params.id" />
             </div>
           </div>
 

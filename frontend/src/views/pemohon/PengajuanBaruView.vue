@@ -11,12 +11,18 @@ import FileUpload from '@/components/FileUpload.vue'
 import DocumentInfoTooltip from '@/components/DocumentInfoTooltip.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import PDDiktiDropdown from '@/components/PDDiktiDropdown.vue'
 
 const router = useRouter()
 const masterStore = useMasterStore()
 const pengajuanStore = usePengajuanStore()
 const toast = useToastStore()
+
+// Page header subtitle with nomor pengajuan
+const headerSubtitle = computed(() => {
+  return nomorPengajuan.value ? `Nomor: ${nomorPengajuan.value}` : 'Isi formulir untuk mengajukan izin belajar mandiri'
+})
 
 const form = ref({
   jenjang_id: '',
@@ -418,12 +424,12 @@ const uploadedCount = computed(() => {
 
 <template>
   <MainLayout>
-    <Breadcrumb :current-page="'Pengajuan Baru'" />
+    <Breadcrumb />
 
-    <div class="mb-6 animate-fade-in">
-      <h2 class="text-2xl font-bold text-secondary-800">Pengajuan Baru</h2>
-      <p class="text-secondary-500 mt-1">Nomor Pengajuan: <span class="font-mono text-primary-600">{{ nomorPengajuan }}</span></p>
-    </div>
+    <PageHeader
+      title="Buat Pengajuan Baru"
+      :subtitle="headerSubtitle"
+    />
 
     <form @submit.prevent class="space-y-6">
       <!-- Two Column Layout -->

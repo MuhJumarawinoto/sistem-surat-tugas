@@ -2,127 +2,149 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
-const props = defineProps({
-  items: {
-    type: Array,
-    default: () => []
-  },
-  currentPage: {
-    type: String,
-    default: ''
-  }
-})
-
 const route = useRoute()
 
-// Generate breadcrumbs from route if not provided
+// Generate breadcrumbs from route
 const breadcrumbs = computed(() => {
-  if (props.items.length > 0) {
-    return props.items
-  }
-
-  // Default breadcrumbs based on route
   const pathSegments = route.path.split('/').filter(Boolean)
   const crumbs = []
 
   // Always add home
-  crumbs.push({ label: 'Beranda', to: '/dashboard' })
+  crumbs.push({ label: 'Beranda', to: '/dashboard', icon: 'ri-home-line' })
 
-  // Build from path
-  let currentPath = ''
   const routeMap = {
-    'dashboard': { label: 'Dashboard', to: '/dashboard' },
-    'pengajuan': { label: 'Pengajuan', to: '/pengajuan' },
-    'baru': { label: 'Buat Pengajuan', to: '/pengajuan/baru' },
-    'edit': { label: 'Edit', to: null },
-    'atasan': { label: 'Atasan', to: null },
-    'persetujuan': { label: 'Persetujuan', to: '/atasan/persetujuan' },
-    'admin': { label: 'Admin', to: null },
-    'verifikasi': { label: 'Verifikasi', to: '/admin/verifikasi' },
-    'surat': { label: 'Surat', to: null },
-    'signing': { label: 'Tanda Tangan', to: '/kepala/signing' },
-    'kepala': { label: 'Kepala BKPSDM', to: null },
+    'dashboard': { label: 'Dashboard', icon: 'ri-dashboard-line' },
+    'pengajuan': { label: 'Pengajuan', icon: 'ri-file-list-3-line' },
+    'baru': { label: 'Buat Baru', icon: 'ri-add-circle-line' },
+    'edit': { label: 'Edit', icon: 'ri-edit-line' },
+    'profile': { label: 'Profil', icon: 'ri-user-line' },
+    'admin': { label: 'Admin', icon: 'ri-admin-line' },
+    'verifikasi': { label: 'Verifikasi', icon: 'ri-verified-badge-line' },
+    'surat': { label: 'Surat', icon: 'ri-file-text-line' },
+    'pegawai': { label: 'Pegawai', icon: 'ri-team-line' },
+    'pddikti-sync': { label: 'Sync PDDikti', icon: 'ri-refresh-line' },
+    'kepala': { label: 'Kepala', icon: 'ri-shield-line' },
+    'signing': { label: 'Tanda Tangan', icon: 'ri-edit-sign-line' },
   }
 
+  let accumulatedPath = ''
+
   pathSegments.forEach((segment, index) => {
-    currentPath += '/' + segment
+    accumulatedPath += '/' + segment
+    const isLast = index === pathSegments.length - 1
     const routeInfo = routeMap[segment]
 
-    if (routeInfo) {
-      if (routeInfo.to) {
-        crumbs.push({ label: routeInfo.label, to: routeInfo.to })
-      } else if (index === pathSegments.length - 1) {
-        // Last segment without to becomes current page
-        // Skip adding as it will be shown as current page
-      } else {
-        crumbs.push({ label: routeInfo.label, to: currentPath })
+    // Handle dynamic segments (IDs)
+    if (segment.match(/^\d+$/)) {
+      const prevSegment = pathSegments[index - 1]
+
+      // Check if we came from dashboard
+      const fromDashboard = history.state?.from === 'dashboard'
+
+      if (prevSegment === 'pengajuan') {
+        if (fromDashboard) {
+          // From dashboard, don't show Riwayat in breadcrumb
+          // Just show the detail as current
+        } else {
+          // From riwayat, show Riwayat
+          crumbs.push({
+            label: 'Riwayat',
+            icon: 'ri-file-list-3-line',
+            to: '/pengajuan'
+          })
+        }
+        // Current page (detail) - don't add to breadcrumbs, will be shown as title
+      } else if (prevSegment === 'surat') {
+        crumbs.push({
+          label: 'Surat',
+          icon: 'ri-file-text-line',
+          to: isLast ? null : accumulatedPath
+        })
       }
-    } else if (segment.match(/^\d+$/)) {
-      // ID parameter
-      crumbs.push({ label: 'Detail', to: currentPath })
+    } else if (routeInfo) {
+      // Skip 'baru' and 'edit' from breadcrumbs (they're actions, not pages)
+      if (segment === 'baru' || segment === 'edit') {
+        return
+      }
+      crumbs.push({
+        label: routeInfo.label,
+        icon: routeInfo.icon,
+        to: isLast ? null : accumulatedPath
+      })
     }
   })
 
-  return crumbs
+  // Remove duplicates and filter out nulls
+  return crumbs.filter((crumb, index, self) =>
+    index === self.findIndex(c => c.label === crumb.label)
+  )
 })
 
-const displayCurrentPage = computed(() => {
-  return props.currentPage || route.meta?.title || getCurrentPageTitle()
-})
-
-function getCurrentPageTitle() {
+const currentPageTitle = computed(() => {
   const pathSegments = route.path.split('/').filter(Boolean)
   const lastSegment = pathSegments[pathSegments.length - 1]
+
+  if (lastSegment?.match(/^\d+$/)) {
+    return 'Detail'
+  }
 
   const titleMap = {
     'dashboard': 'Dashboard',
     'pengajuan': 'Riwayat Pengajuan',
     'baru': 'Buat Pengajuan Baru',
-    'persetujuan': 'Persetujuan Pengajuan',
-    'verifikasi': 'Verifikasi Pengajuan',
-    'signing': 'Tanda Tangan Surat',
-  }
-
-  if (lastSegment?.match(/^\d+$/)) {
-    return 'Detail Pengajuan'
+    'edit': 'Edit Pengajuan',
+    'verifikasi': 'Verifikasi',
+    'pegawai': 'Data Pegawai',
+    'pddikti-sync': 'Sync PDDikti',
+    'signing': 'Tanda Tangan',
+    'profile': 'Profil',
   }
 
   return titleMap[lastSegment] || 'Halaman'
-}
+})
 </script>
 
 <template>
-  <nav class="flex mb-2" aria-label="Breadcrumb">
-    <ol class="flex items-center space-x-1 text-xs">
+  <nav class="flex items-center mb-4" aria-label="Breadcrumb">
+    <ol class="flex items-center gap-1 text-sm">
       <!-- Breadcrumb Items -->
-      <li v-for="(item, index) in breadcrumbs" :key="index" class="flex items-center">
-        <!-- Chevron Separator -->
-        <svg v-if="index > 0" class="w-3 h-3 text-gray-400 mx-0.5" fill="currentColor" viewBox="0 0 20 20">
-          <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
-        </svg>
+      <li v-for="(crumb, index) in breadcrumbs" :key="index" class="flex items-center">
+        <!-- Separator -->
+        <span v-if="index > 0" class="mx-2 text-secondary-300">
+          <i class="ri-arrow-right-s-line text-lg"></i>
+        </span>
 
         <!-- Breadcrumb Link -->
-        <router-link
-          v-if="item.to && index < breadcrumbs.length - 1"
-          :to="item.to"
-          class="text-blue-600 hover:text-blue-800 font-medium transition-colors"
+        <component
+          :is="crumb.to ? 'router-link' : 'span'"
+          :to="crumb.to"
+          class="flex items-center gap-1.5 transition-colors"
+          :class="crumb.to || index === breadcrumbs.length - 1
+            ? 'text-secondary-800 font-semibold'
+            : 'text-secondary-500 hover:text-secondary-700'"
         >
-          {{ item.label }}
-        </router-link>
-
-        <!-- Current Page -->
-        <span v-else class="text-gray-500 font-medium">
-          {{ item.label }}
-        </span>
-      </li>
-
-      <!-- Current Page (if not already shown in breadcrumbs) -->
-      <li v-if="displayCurrentPage && (!breadcrumbs.length || breadcrumbs[breadcrumbs.length - 1]?.label !== displayCurrentPage)">
-        <svg class="w-3 h-3 text-gray-400 mx-0.5" fill="currentColor" viewBox="0 0 20 20">
-          <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
-        </svg>
-        <span class="text-gray-500 font-medium">{{ displayCurrentPage }}</span>
+          <i v-if="crumb.icon" :class="crumb.icon" class="text-base"></i>
+          <span>{{ crumb.label }}</span>
+        </component>
       </li>
     </ol>
   </nav>
 </template>
+
+<style scoped>
+/* Subtle animation for breadcrumb links */
+a {
+  position: relative;
+}
+
+a:hover::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-color: currentColor;
+  opacity: 0.3;
+}
+</style>

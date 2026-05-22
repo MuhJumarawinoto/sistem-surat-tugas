@@ -15,8 +15,8 @@ export const usePengajuanStore = defineStore('pengajuan', {
       this.error = null
       try {
         const response = await api.get('/pengajuan', { params })
-        this.pengajuanList = response.data.data
-        return response.data
+        this.pengajuanList = response.data.data || []
+        return response.data.data || []
       } catch (error) {
         this.error = error.response?.data?.message || 'Failed to fetch pengajuan'
         throw error
@@ -96,6 +96,27 @@ export const usePengajuanStore = defineStore('pengajuan', {
         return response.data
       } catch (error) {
         this.error = error.response?.data?.message || 'Failed to submit pengajuan'
+        throw error
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async cancelPengajuan(id) {
+      this.loading = true
+      this.error = null
+      try {
+        const response = await api.post(`/pengajuan/${id}/cancel`)
+
+        // Update pengajuan in the list
+        const index = this.pengajuanList.findIndex(p => p.id === id)
+        if (index !== -1) {
+          this.pengajuanList[index] = response.data
+        }
+
+        return response.data
+      } catch (error) {
+        this.error = error.response?.data?.message || 'Failed to cancel pengajuan'
         throw error
       } finally {
         this.loading = false

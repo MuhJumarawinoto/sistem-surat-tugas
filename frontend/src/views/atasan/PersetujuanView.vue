@@ -7,6 +7,7 @@ import MainLayout from '@/components/layout/MainLayout.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
 import SendMessageModal from '@/components/SendMessageModal.vue'
+import PengajuanMilestone from '@/components/PengajuanMilestone.vue'
 
 const pengajuanStore = usePengajuanStore()
 const authStore = useAuthStore()
@@ -17,6 +18,8 @@ const filterStatus = ref('pending_atasan')
 const approving = ref(false)
 const showModal = ref(false)
 const selectedPengajuan = ref(null)
+const showMilestoneModal = ref(false)
+const selectedPengajuanId = ref(null)
 
 const statusOptions = [
   { value: '', label: 'Semua Status' },
@@ -137,6 +140,11 @@ function openSendMessageModal(pengajuan) {
 function handleMessageSent() {
   alert('Pesan berhasil dikirim ke pemohon')
 }
+
+function openMilestoneModal(pengajuanId) {
+  selectedPengajuanId.value = pengajuanId
+  showMilestoneModal.value = true
+}
 </script>
 
 <template>
@@ -169,71 +177,109 @@ function handleMessageSent() {
               <p class="text-sm text-secondary-400">Pastikan pemohon sudah submit pengajuan dan berada di unit kerja yang sama</p>
             </div>
 
-            <div v-else class="table-container">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>Nomor</th>
-                    <th>Pemohon</th>
-                    <th>Prodi</th>
-                    <th>Universitas</th>
-                    <th>Status</th>
-                    <th>Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="item in pengajuanList" :key="item.id">
-                    <td class="font-medium">{{ item.nomor_pengajuan }}</td>
-                    <td>
-                      <p class="font-medium text-secondary-800">{{ item.user?.name }}</p>
-                      <p class="text-sm text-secondary-500">NIP: {{ item.user?.nip }}</p>
-                    </td>
-                    <td>{{ item.nama_prodi }}</td>
-                    <td>{{ item.perguruan_tinggi }}</td>
-                    <td>
-                      <span :class="['badge', getStatusBadge(item.status), 'flex items-center gap-1 w-fit']">
-                        <i :class="getStatusIcon(item.status)"></i>
-                        {{ getStatusLabel(item.status) }}
-                      </span>
-                    </td>
-                    <td>
-                      <div class="flex items-center gap-1">
-                        <button
-                          @click="openSendMessageModal(item)"
-                          class="btn btn-ghost btn-sm"
-                          title="Kirim Pesan"
-                        >
-                          <i class="ri-message-3-line"></i>
-                        </button>
-                        <template v-if="item.status === 'pending_atasan'">
-                          <button
-                            @click="approvePengajuan(item.id)"
-                            :disabled="approving"
-                            class="btn btn-primary btn-sm"
-                          >
-                            <LoadingSpinner v-if="approving" size="sm" color="white" />
-                            <span v-else class="flex items-center gap-1">
-                              <i class="ri-check-line"></i>
-                              Setujui
-                            </span>
-                          </button>
-                          <button
-                            @click="rejectPengajuan(item.id)"
-                            :disabled="approving"
-                            class="btn btn-danger btn-sm"
-                          >
-                            <LoadingSpinner v-if="approving" size="sm" color="white" />
-                            <span v-else class="flex items-center gap-1">
-                              <i class="ri-close-line"></i>
-                              Tolak
-                            </span>
-                          </button>
-                        </template>
+            <div v-else class="space-y-4">
+              <!-- Pengajuan Cards with Inline Milestone -->
+              <div
+                v-for="item in pengajuanList"
+                :key="item.id"
+                class="card border-l-4"
+                :class="{
+                  'border-l-warning': item.status === 'pending_atasan',
+                  'border-l-success': item.status === 'disetujui',
+                  'border-l-danger': item.status === 'ditolak',
+                  'border-l-info': item.status === 'pending_admin'
+                }"
+              >
+                <div class="card-body">
+                  <!-- Card Header -->
+                  <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 pb-3 border-b border-secondary-100">
+                    <div class="flex-1">
+                      <div class="flex items-center gap-2 mb-1 flex-wrap">
+                        <p class="text-base font-semibold text-secondary-800">{{ item.nomor_pengajuan }}</p>
+                        <span :class="['badge', getStatusBadge(item.status), 'flex items-center gap-1']">
+                          <i :class="getStatusIcon(item.status)"></i>
+                          {{ getStatusLabel(item.status) }}
+                        </span>
                       </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                      <p class="text-sm text-secondary-800 font-medium">{{ item.user?.name }}</p>
+                      <p class="text-xs text-secondary-500">NIP: {{ item.user?.nip }}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <button
+                        @click="openSendMessageModal(item)"
+                        class="btn btn-ghost btn-sm"
+                        title="Kirim Pesan"
+                      >
+                        <i class="ri-message-3-line text-lg"></i>
+                      </button>
+                      <template v-if="item.status === 'pending_atasan'">
+                        <button
+                          @click="approvePengajuan(item.id)"
+                          :disabled="approving"
+                          class="btn btn-primary btn-sm"
+                        >
+                          <LoadingSpinner v-if="approving" size="sm" color="white" />
+                          <span v-else class="flex items-center gap-1">
+                            <i class="ri-check-line"></i>
+                            Setujui
+                          </span>
+                        </button>
+                        <button
+                          @click="rejectPengajuan(item.id)"
+                          :disabled="approving"
+                          class="btn btn-danger btn-sm"
+                        >
+                          <LoadingSpinner v-if="approving" size="sm" color="white" />
+                          <span v-else class="flex items-center gap-1">
+                            <i class="ri-close-line"></i>
+                            Tolak
+                          </span>
+                        </button>
+                      </template>
+                    </div>
+                  </div>
+
+                  <!-- Education Info -->
+                  <div class="mt-3 p-3 bg-secondary-50 rounded-lg">
+                    <div class="flex items-center gap-4 text-sm">
+                      <span class="flex items-center gap-1 text-secondary-700">
+                        <i class="ri-graduation-cap-line"></i>
+                        {{ item.nama_prodi }}
+                      </span>
+                      <span class="text-secondary-400">•</span>
+                      <span class="flex items-center gap-1 text-secondary-700">
+                        <i class="ri-building-line"></i>
+                        {{ item.perguruan_tinggi }}
+                      </span>
+                      <span class="text-secondary-400">•</span>
+                      <span class="flex items-center gap-1 text-secondary-700">
+                        <i class="ri-calendar-line"></i>
+                        {{ new Date(item.created_at).toLocaleDateString('id-ID') }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- Inline Milestone -->
+                  <div class="mt-4">
+                    <div class="flex items-center justify-between mb-2">
+                      <span class="text-sm font-medium text-secondary-700 flex items-center gap-1">
+                        <i class="ri-route-line text-primary-600"></i>
+                        Progress Pengajuan
+                      </span>
+                      <button
+                        @click="openMilestoneModal(item.id)"
+                        class="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                      >
+                        Lihat Detail
+                        <i class="ri-arrow-right-s-line"></i>
+                      </button>
+                    </div>
+                    <div class="bg-secondary-50 rounded-lg p-3">
+                      <PengajuanMilestone :pengajuan-id="item.id" />
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -245,5 +291,37 @@ function handleMessageSent() {
         @close="showModal = false"
         @sent="handleMessageSent"
       />
+
+      <!-- Milestone Modal -->
+      <Teleport to="body">
+        <Transition name="modal">
+          <div
+            v-if="showMilestoneModal"
+            class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            @click.self="showMilestoneModal = false"
+          >
+            <div class="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden">
+              <div class="flex items-center justify-between p-4 border-b">
+                <h3 class="text-lg font-semibold">Progress Pengajuan</h3>
+                <button @click="showMilestoneModal = false" class="btn btn-ghost btn-icon">
+                  <i class="ri-close-line text-xl"></i>
+                </button>
+              </div>
+              <div class="p-4 max-h-[70vh] overflow-y-auto">
+                <PengajuanMilestone :pengajuan-id="selectedPengajuanId" />
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
   </MainLayout>
 </template>
+
+<style scoped>
+.modal-enter-active, .modal-leave-active {
+  transition: opacity 0.3s ease;
+}
+.modal-enter-from, .modal-leave-to {
+  opacity: 0;
+}
+</style>

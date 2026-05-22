@@ -9,45 +9,58 @@ const authStore = useAuthStore()
 const menuGroups = computed(() => {
   const groups = []
 
-  // Main Menu
-  const mainMenu = [
-    { path: '/dashboard', label: 'Dashboard', icon: 'ri-dashboard-line', badge: null },
-  ]
+  // ========== MENU PEMOHON & ATASAN ==========
+  if (authStore.isPemohon || authStore.isAtasan) {
+    // Menu Utama with Dashboard
+    groups.push({
+      title: 'Menu Utama',
+      items: [
+        { path: '/dashboard', label: 'Dashboard', icon: 'ri-dashboard-line' },
+      ],
+    })
 
-  if (authStore.isPemohon) {
-    mainMenu.push(
-      { path: '/pengajuan', label: 'Riwayat Pengajuan', icon: 'ri-file-list-3-line', badge: null },
-      { path: '/pengajuan/baru', label: 'Buat Pengajuan Baru', icon: 'ri-add-circle-line', badge: null },
-    )
+    groups.push({
+      title: 'Pengajuan',
+      items: [
+        { path: '/pengajuan', label: 'Riwayat Pengajuan', icon: 'ri-file-list-3-line' },
+        { path: '/pengajuan/baru', label: 'Buat Pengajuan Baru', icon: 'ri-add-circle-line' },
+      ],
+    })
   }
 
-  if (authStore.isAtasan) {
-    mainMenu.push(
-      { path: '/pengajuan', label: 'Riwayat Pengajuan', icon: 'ri-file-list-3-line', badge: null },
-      { path: '/pengajuan/baru', label: 'Buat Pengajuan Baru', icon: 'ri-add-circle-line', badge: null },
-      { path: '/atasan/persetujuan', label: 'Persetujuan Bawahan', icon: 'ri-check-double-line', badge: null },
-    )
-  }
-
+  // ========== MENU ADMIN BKPSDM ==========
   if (authStore.isAdmin) {
-    mainMenu.push(
-      { path: '/admin/verifikasi', label: 'Verifikasi', icon: 'ri-verified-badge-line', badge: null },
-      { path: '/admin/surat', label: 'Tanda Tangan Surat', icon: 'ri-edit-sign-line', badge: null },
-      { path: '/admin/pegawai', label: 'Data Pegawai', icon: 'ri-team-line', badge: null },
-      { path: '/admin/pddikti-sync', label: 'Sync PDDikti', icon: 'ri-refresh-line', badge: null },
-    )
+    // Admin starts directly with Verifikasi (no Dashboard)
+    groups.push({
+      title: 'Verifikasi',
+      items: [
+        { path: '/admin/verifikasi', label: 'Verifikasi Dokumen', icon: 'ri-verified-badge-line' },
+      ],
+    })
+    groups.push({
+      title: 'Manajemen',
+      items: [
+        { path: '/admin/surat', label: 'Surat Izin Belajar', icon: 'ri-file-text-line' },
+        { path: '/admin/pegawai', label: 'Data Pegawai', icon: 'ri-team-line' },
+      ],
+    })
+    groups.push({
+      title: 'Master Data',
+      items: [
+        { path: '/admin/pddikti-sync', label: 'Sync PDDikti', icon: 'ri-refresh-line' },
+      ],
+    })
   }
 
+  // ========== MENU KEPALA BKPSDM ==========
   if (authStore.isKepala) {
-    mainMenu.push(
-      { path: '/kepala/signing', label: 'Tanda Tangan Surat', icon: 'ri-edit-sign-line', badge: null },
-    )
+    groups.push({
+      title: 'Tanda Tangan',
+      items: [
+        { path: '/kepala/signing', label: 'Surat Perlu TTE', icon: 'ri-edit-sign-line' },
+      ],
+    })
   }
-
-  groups.push({
-    title: 'Menu Utama',
-    items: mainMenu,
-  })
 
   return groups
 })
@@ -56,8 +69,8 @@ function isActive(path) {
   if (path === '/dashboard') {
     return route.path === '/dashboard'
   }
-  if (path === '/admin/surat') {
-    return route.path.match(/^\/admin\/surat\/?\d*$/) && route.path !== '/admin/surat/create'
+  if (path.startsWith('/admin/surat')) {
+    return route.path.startsWith('/admin/surat')
   }
   return route.path.startsWith(path)
 }
@@ -65,19 +78,6 @@ function isActive(path) {
 
 <template>
   <aside class="sidebar bg-white">
-    <!-- Sidebar Header -->
-    <!-- <div class="sidebar-header border-b border-primary-100">
-      <div class="flex items-center gap-3"> -->
-        <!-- <div class="w-10 h-10 bg-gradient-to-br from-primary-600 to-accent rounded-lg flex items-center justify-center">
-          <img src="/logo.png" alt="Logo" class="w-6 h-6 object-contain" />
-        </div> -->
-        <!-- <div> -->
-          <!-- <p class="text-sm font-bold text-secondary-800">Menu Utama</p>
-          <p class="text-xs text-secondary-500">Navigasi Aplikasi</p> -->
-        <!-- </div> -->
-      <!-- </div>
-    </div> -->
-
     <!-- Sidebar Navigation -->
     <nav class="sidebar-nav overflow-y-auto scrollbar-thin">
       <div v-for="(group, groupIndex) in menuGroups" :key="groupIndex" class="mb-6">
@@ -94,7 +94,6 @@ function isActive(path) {
           >
             <i :class="item.icon" class="text-lg"></i>
             <span>{{ item.label }}</span>
-            <span v-if="item.badge" class="ml-auto badge badge-primary">{{ item.badge }}</span>
           </router-link>
         </div>
       </div>

@@ -10,6 +10,8 @@ import FileUpload from '@/components/FileUpload.vue'
 import DocumentInfoTooltip from '@/components/DocumentInfoTooltip.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
+import PageHeader from '@/components/PageHeader.vue'
+import PengajuanMilestone from '@/components/PengajuanMilestone.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -271,11 +273,24 @@ const totalDocs = computed(() => {
     </div>
 
     <div v-else class="space-y-6 animate-fade-in">
-      <Breadcrumb :current-page="'Edit Pengajuan'" />
+      <Breadcrumb />
 
-      <div class="mb-4">
-        <h2 class="text-2xl font-bold text-secondary-800">Edit Pengajuan</h2>
-        <p class="text-secondary-500 mt-1">ID: <span class="font-mono">{{ route.params.id }}</span></p>
+      <PageHeader
+        title="Edit Pengajuan"
+        :subtitle="`ID: ${route.params.id}`"
+      />
+
+          <!-- Progress Milestone -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title flex items-center gap-2">
+                <i class="ri-route-line text-primary-600"></i>
+                Progress Pengajuan
+              </h3>
+            </div>
+            <div class="card-body">
+              <PengajuanMilestone :pengajuan-id="route.params.id" />
+            </div>
           </div>
 
           <form @submit.prevent="updatePengajuan" class="space-y-6">

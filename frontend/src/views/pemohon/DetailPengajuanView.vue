@@ -9,6 +9,8 @@ import FileUpload from '@/components/FileUpload.vue'
 import DocumentInfoTooltip from '@/components/DocumentInfoTooltip.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
+import PageHeader from '@/components/PageHeader.vue'
+import PengajuanMilestone from '@/components/PengajuanMilestone.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -241,11 +243,47 @@ async function uploadAdditionalDocument() {
   }
 }
 
+// Header actions for PageHeader
+const headerActions = computed(() => {
+  const actions = []
+
+  if (pengajuan.value) {
+    // Add status badge (display only, not clickable)
+    actions.push({
+      label: getStatusLabel(pengajuan.value.status),
+      icon: getStatusIcon(pengajuan.value.status),
+      variant: getStatusBadge(pengajuan.value.status),
+      isBadge: true, // Render as badge instead of button
+    })
+
+    // Add edit button if can edit
+    if (canEdit.value) {
+      actions.push({
+        label: 'Edit',
+        icon: 'ri-edit-line',
+        variant: 'btn-secondary',
+        onClick: editPengajuan,
+      })
+    }
+
+    // Add submit button if can submit
+    if (canSubmit.value) {
+      actions.push({
+        label: submitting.value ? 'Mengirim...' : 'Kirim',
+        icon: submitting.value ? '' : 'ri-send-plane-fill',
+        variant: 'btn-primary',
+        onClick: submitPengajuan,
+      })
+    }
+  }
+
+  return actions
+})
+
 function getStatusLabel(status) {
   const labels = {
     draft: 'Draft',
-    pending_atasan: 'Pending Atasan',
-    pending_admin: 'Pending Admin',
+    pending_admin: 'Menunggu Verifikasi',
     disetujui: 'Disetujui',
     ditolak: 'Ditolak',
     selesai: 'Selesai',
@@ -288,8 +326,7 @@ function openImageModal(url) {
 function getStatusBadge(status) {
   const badges = {
     draft: 'badge-default',
-    pending_atasan: 'badge-warning',
-    pending_admin: 'badge-info',
+    pending_admin: 'badge-warning',
     disetujui: 'badge-success',
     ditolak: 'badge-danger',
     selesai: 'badge-purple',
@@ -300,7 +337,6 @@ function getStatusBadge(status) {
 function getStatusIcon(status) {
   const icons = {
     draft: 'ri-draft-line',
-    pending_atasan: 'ri-time-line',
     pending_admin: 'ri-time-line',
     disetujui: 'ri-check-line',
     ditolak: 'ri-close-line',
@@ -317,36 +353,24 @@ function getStatusIcon(status) {
     </div>
 
     <div v-else-if="pengajuan" class="space-y-6 animate-fade-in">
-      <Breadcrumb :current-page="pengajuan.nomor_pengajuan" />
+      <Breadcrumb />
 
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 class="text-2xl font-bold text-secondary-800">Detail Pengajuan</h2>
-              <p class="text-secondary-500 mt-1">{{ pengajuan.nomor_pengajuan }}</p>
+      <PageHeader
+        title="Detail Pengajuan"
+        :subtitle="pengajuan.nomor_pengajuan"
+        :actions="headerActions"
+      />
+
+      <!-- Progress Milestone -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title flex items-center gap-2">
+                <i class="ri-route-line text-primary-600"></i>
+                Progress Pengajuan
+              </h3>
             </div>
-            <div class="flex items-center gap-2">
-              <span :class="['badge', 'flex items-center gap-1', getStatusBadge(pengajuan.status)]">
-                <i :class="getStatusIcon(pengajuan.status)"></i>
-                {{ getStatusLabel(pengajuan.status) }}
-              </span>
-              <button v-if="canEdit" @click="editPengajuan" class="btn btn-secondary gap-2">
-                <i class="ri-edit-line"></i>
-                <span>Edit</span>
-              </button>
-              <button
-                v-if="canSubmit"
-                @click="submitPengajuan"
-                :disabled="submitting"
-                class="btn btn-primary gap-2"
-              >
-                <LoadingSpinner v-if="submitting" size="sm" color="white" />
-                <span v-else class="flex items-center gap-1">
-                  <i class="ri-send-plane-fill"></i>
-                  <span>Kirim</span>
-                  <span v-if="!isDocumentsComplete" class="badge badge-warning">{{ 9 - missingDocumentsCount }}/9</span>
-                  <span v-else class="badge badge-success">✓</span>
-                </span>
-              </button>
+            <div class="card-body">
+              <PengajuanMilestone :pengajuan-id="route.params.id" />
             </div>
           </div>
 
