@@ -95,6 +95,7 @@ function handleMessageSent() {
                   </div>
                 </div>
               </div>
+            </div>
           </div>
         </div>
 

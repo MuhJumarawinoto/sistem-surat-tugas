@@ -35,7 +35,7 @@ function getInitials(name) {
       </div>
 
       <!-- User Info & Actions -->
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-4">
         <!-- Notification Bell -->
         <NotificationBell v-if="authStore.isPemohon" />
 

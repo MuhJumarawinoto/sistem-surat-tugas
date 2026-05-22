@@ -23,7 +23,9 @@ const menuGroups = computed(() => {
 
   if (authStore.isAtasan) {
     mainMenu.push(
-      { path: '/atasan/persetujuan', label: 'Persetujuan', icon: 'ri-check-double-line', badge: null },
+      { path: '/pengajuan', label: 'Riwayat Pengajuan', icon: 'ri-file-list-3-line', badge: null },
+      { path: '/pengajuan/baru', label: 'Buat Pengajuan Baru', icon: 'ri-add-circle-line', badge: null },
+      { path: '/atasan/persetujuan', label: 'Persetujuan Bawahan', icon: 'ri-check-double-line', badge: null },
     )
   }
 

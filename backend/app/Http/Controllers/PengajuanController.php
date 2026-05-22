@@ -11,29 +11,36 @@ class PengajuanController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $query = Pengajuan::with(['user', 'jenjang', 'dokumen']);
+        $query = Pengajuan::with(['user', 'user.atasan', 'user.atasan.role', 'jenjang', 'dokumen', 'approvedByAtasan']);
 
         if ($user->isPemohon()) {
+            // Pemohon biasa: hanya melihat pengajuan sendiri
             $query->where('user_id', $user->id);
         } elseif ($user->isAtasan()) {
-            // DEBUG: Log unit kerja
-            \Log::info('Atasan unit_kerja_id: ' . $user->unit_kerja_id);
-
-            // Atasan hanya melihat pengajuan dari unit kerja yang sama
-            $query->whereHas('user', function ($q) use ($user) {
-                $q->where('unit_kerja_id', $user->unit_kerja_id);
+            // Atasan: melihat pengajuan sendiri + pengajuan dari unit kerja yang sama
+            $query->where(function ($q) use ($user) {
+                $q->where('user_id', $user->id) // Pengajuan sendiri
+                  ->orWhereHas('user', function ($subQuery) use ($user) {
+                      $subQuery->where('unit_kerja_id', $user->unit_kerja_id);
+                  }); // Pengajuan unit kerja
             });
 
-            // Default filter untuk atasan: hanya yang pending
-            if (!$request->has('status')) {
-                $query->where('status', 'pending_atasan');
+            // Default filter untuk atasan: hanya yang pending (untuk approval)
+            if (!$request->has('status') && !$request->has('mine')) {
+                $query->where('status', 'pending_atasan')
+                      ->where('user_id', '!=', $user->id); // Exclude pengajuan sendiri untuk approval list
             }
 
-            // DEBUG: Log SQL
-            \Log::info('SQL: ' . $query->toSql());
+            // Filter 'mine' untuk melihat pengajuan sendiri
+            if ($request->has('mine') && $request->get('mine') === '1') {
+                $query->where('user_id', $user->id);
+            }
         } elseif ($user->isAdminBkpsdm()) {
-            // Admin melihat pengajuan yang pending_atasan dan pending_admin
-            $query->whereIn('status', ['pending_atasan', 'pending_admin']);
+            // Admin melihat semua pengajuan (all statuses)
+            // Default filter: show pending first, then others
+            if (!$request->has('status')) {
+                $query->orderByRaw("FIELD(status, 'pending_admin', 'pending_atasan', 'verified', 'disetujui', 'ditolak', 'draft', 'signed', 'completed')");
+            }
         }
 
         if ($request->has('status')) {
@@ -57,11 +64,15 @@ class PengajuanController extends Controller
             'rencana_selesai' => 'required|date|after:rencana_mulai',
         ]);
 
+        $user = $request->user();
         $nomorPengajuan = $this->generateNomorPengajuan();
+
+        // Set approval_level based on user role
+        $approvalLevel = $user->isAtasan() ? 'atasan' : 'biasa';
 
         $pengajuan = Pengajuan::create([
             'nomor_pengajuan' => $nomorPengajuan,
-            'user_id' => $request->user()->id,
+            'user_id' => $user->id,
             'jenjang_id' => $request->jenjang_id,
             'nama_prodi' => $request->nama_prodi,
             'perguruan_tinggi' => $request->perguruan_tinggi,
@@ -70,6 +81,7 @@ class PengajuanController extends Controller
             'rencana_mulai' => $request->rencana_mulai,
             'rencana_selesai' => $request->rencana_selesai,
             'status' => 'draft',
+            'approval_level' => $approvalLevel,
         ]);
 
         return response()->json($pengajuan->load(['user', 'jenjang']), 201);
@@ -77,13 +89,22 @@ class PengajuanController extends Controller
 
     public function show(string $id)
     {
-        $pengajuan = Pengajuan::with(['user', 'jenjang', 'dokumen', 'approvalHistory.approver'])
+        $pengajuan = Pengajuan::with(['user', 'jenjang', 'dokumen', 'approvalHistory.approver', 'approvedByAtasan'])
             ->findOrFail($id);
 
         $user = request()->user();
 
+        // Pemohon biasa: hanya bisa lihat pengajuan sendiri
         if ($user->isPemohon() && $pengajuan->user_id !== $user->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // Atasan: bisa lihat pengajuan sendiri OR pengajuan dari unit kerja
+        if ($user->isAtasan() && $pengajuan->user_id !== $user->id) {
+            // Cek apakah pengajuan dari unit kerja yang sama
+            if ($pengajuan->user->unit_kerja_id !== $user->unit_kerja_id) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
         }
 
         return response()->json($pengajuan);
@@ -95,11 +116,12 @@ class PengajuanController extends Controller
 
         $user = $request->user();
 
-        if ($user->isPemohon() && $pengajuan->user_id !== $user->id) {
+        // Pemohon biasa dan Atasan: hanya bisa edit pengajuan sendiri
+        if (($user->isPemohon() || $user->isAtasan()) && $pengajuan->user_id !== $user->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        if (!$pengajuan->isDraft()) {
+        if (!$pengajuan->isDraft() && !$pengajuan->isDitolak()) {
             return response()->json(['message' => 'Cannot update submitted pengajuan'], 400);
         }
 
@@ -132,7 +154,8 @@ class PengajuanController extends Controller
 
         $user = request()->user();
 
-        if ($user->isPemohon() && $pengajuan->user_id !== $user->id) {
+        // Pemohon biasa dan Atasan: hanya bisa delete pengajuan sendiri
+        if (($user->isPemohon() || $user->isAtasan()) && $pengajuan->user_id !== $user->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -151,7 +174,8 @@ class PengajuanController extends Controller
 
         $user = $request->user();
 
-        if ($user->isPemohon() && $pengajuan->user_id !== $user->id) {
+        // Pemohon biasa dan Atasan: hanya bisa submit pengajuan sendiri
+        if (($user->isPemohon() || $user->isAtasan()) && $pengajuan->user_id !== $user->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 

@@ -19,6 +19,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'rencana_selesai',
     'status',
     'catatan_tolak',
+    'approval_level',
+    'approved_by_atasan',
+    'approved_at_atasan',
     'tanggal_submit_atasan',
     'tanggal_approve_atasan',
     'tanggal_approve_admin',
@@ -32,6 +35,7 @@ class Pengajuan extends Model
         return [
             'rencana_mulai' => 'date',
             'rencana_selesai' => 'date',
+            'approved_at_atasan' => 'datetime',
             'tanggal_submit_atasan' => 'datetime',
             'tanggal_approve_atasan' => 'datetime',
             'tanggal_approve_admin' => 'datetime',
@@ -41,6 +45,11 @@ class Pengajuan extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function approvedByAtasan(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by_atasan');
     }
 
     public function jenjang(): BelongsTo
@@ -91,6 +100,16 @@ class Pengajuan extends Model
     public function isSelesai(): bool
     {
         return $this->status === 'selesai';
+    }
+
+    public function isAtasanApplicant(): bool
+    {
+        return $this->approval_level === 'atasan';
+    }
+
+    public function requiresSpecialApproval(): bool
+    {
+        return $this->approval_level === 'atasan';
     }
 
     public function getAllDocumentsUploaded(): bool

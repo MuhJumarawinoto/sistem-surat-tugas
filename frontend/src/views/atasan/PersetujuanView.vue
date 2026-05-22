@@ -234,6 +234,7 @@ function handleMessageSent() {
                   </tr>
                 </tbody>
               </table>
+            </div>
           </div>
         </div>
 

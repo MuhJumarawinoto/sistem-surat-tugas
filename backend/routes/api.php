@@ -12,6 +12,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PegawaiController;
 use App\Http\Controllers\PDDiktiController;
 use App\Http\Controllers\PDDiktiSyncController;
+use App\Http\Controllers\VerificationController;
 
 Route::post('/login', [AuthController::class, 'login']);
 
@@ -34,8 +35,16 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/roles', [PegawaiController::class, 'getRoles']);
         Route::get('/unit-kerjas', [PegawaiController::class, 'getUnitKerjas']);
         Route::get('/{id}', [PegawaiController::class, 'show']);
+        Route::get('/{id}/structure', [PegawaiController::class, 'getStructure']);
         Route::put('/{id}', [PegawaiController::class, 'update']);
         Route::delete('/{id}', [PegawaiController::class, 'destroy']);
+    });
+
+    // Verification routes
+    Route::prefix('verification')->group(function () {
+        Route::get('/rules', [VerificationController::class, 'getRules']);
+        Route::get('/categories', [VerificationController::class, 'getJabatanCategories']);
+        Route::get('/pengajuan/{id}', [VerificationController::class, 'getVerificationInfo']);
     });
 
     Route::prefix('pengajuan')->group(function () {

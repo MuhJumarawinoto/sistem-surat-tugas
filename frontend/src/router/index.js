@@ -28,7 +28,7 @@ const routes = [
     path: '/pengajuan/baru',
     name: 'pengajuan.create',
     component: () => import('@/views/pemohon/PengajuanBaruView.vue'),
-    meta: { requiresAuth: true, roles: ['pemohon'] },
+    meta: { requiresAuth: true, roles: ['pemohon', 'atasan'] },
   },
   {
     path: '/pengajuan/:id',
@@ -40,7 +40,7 @@ const routes = [
     path: '/pengajuan/:id/edit',
     name: 'pengajuan.edit',
     component: () => import('@/views/pemohon/EditPengajuanView.vue'),
-    meta: { requiresAuth: true, roles: ['pemohon'] },
+    meta: { requiresAuth: true, roles: ['pemohon', 'atasan'] },
   },
   {
     path: '/profile',

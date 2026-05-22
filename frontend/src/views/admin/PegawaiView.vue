@@ -14,6 +14,7 @@ const filterStatus = ref('')
 
 const roles = ref([])
 const unitKerjas = ref([])
+const jabatanCategories = ref([])
 
 const pagination = ref({
   current_page: 1,
@@ -25,7 +26,16 @@ const pagination = ref({
 // Modal states
 const showEditModal = ref(false)
 const showDeleteModal = ref(false)
+const showStructureModal = ref(false)
 const selectedPegawai = ref(null)
+
+// Structure modal states
+const structureData = ref({
+  pegawai: null,
+  atasan_chain: [],
+  bawahan: []
+})
+const loadingStructure = ref(false)
 
 const editForm = ref({
   name: '',
@@ -33,6 +43,8 @@ const editForm = ref({
   nip: '',
   role_id: '',
   unit_kerja_id: '',
+  atasan_id: '',
+  jabatan_kategori: '',
   pangkat_gol: '',
   jabatan: '',
   no_hp: '',
@@ -44,6 +56,7 @@ onMounted(async () => {
   await loadPegawai()
   await loadRoles()
   await loadUnitKerjas()
+  await loadJabatanCategories()
 })
 
 async function loadPegawai(page = 1) {
@@ -92,6 +105,15 @@ async function loadUnitKerjas() {
   }
 }
 
+async function loadJabatanCategories() {
+  try {
+    const response = await api.get('/verification/categories')
+    jabatanCategories.value = response.data || []
+  } catch (error) {
+    console.error('Failed to load jabatan categories:', error)
+  }
+}
+
 function openEditModal(pegawai) {
   selectedPegawai.value = pegawai
   editForm.value = {
@@ -100,6 +122,8 @@ function openEditModal(pegawai) {
     nip: pegawai.nip,
     role_id: pegawai.role_id,
     unit_kerja_id: pegawai.unit_kerja_id,
+    atasan_id: pegawai.atasan_id || '',
+    jabatan_kategori: pegawai.jabatan_kategori || '',
     pangkat_gol: pegawai.pangkat_gol || '',
     jabatan: pegawai.jabatan || '',
     no_hp: pegawai.no_hp || '',
@@ -112,6 +136,31 @@ function openEditModal(pegawai) {
 function openDeleteModal(pegawai) {
   selectedPegawai.value = pegawai
   showDeleteModal.value = true
+}
+
+async function openStructureModal(pegawai) {
+  selectedPegawai.value = pegawai
+  loadingStructure.value = true
+  showStructureModal.value = true
+
+  try {
+    const response = await api.get(`/pegawai/${pegawai.id}/structure`)
+    structureData.value = response.data
+  } catch (error) {
+    console.error('Failed to load structure:', error)
+    showStructureModal.value = false
+  } finally {
+    loadingStructure.value = false
+  }
+}
+
+function closeStructureModal() {
+  showStructureModal.value = false
+  structureData.value = {
+    pegawai: null,
+    atasan_chain: [],
+    bawahan: []
+  }
 }
 
 async function updatePegawai() {
@@ -276,6 +325,13 @@ function resetFilters() {
                     <td class="px-3 py-2">
                       <div class="flex items-center justify-center gap-1">
                         <button
+                          @click="openStructureModal(pegawai)"
+                          class="p-1.5 rounded text-blue-600 hover:bg-blue-50 transition-colors"
+                          title="Lihat Struktur"
+                        >
+                          <i class="ri-organization-chart text-sm"></i>
+                        </button>
+                        <button
                           @click="openEditModal(pegawai)"
                           class="p-1.5 rounded text-primary-600 hover:bg-primary-50 transition-colors"
                           title="Edit"
@@ -373,6 +429,24 @@ function resetFilters() {
                       </option>
                     </select>
                   </div>
+                  <div>
+                    <label class="input-label">Atasan Langsung</label>
+                    <select v-model="editForm.atasan_id" class="select-field">
+                      <option value="">Pilih Atasan</option>
+                      <option v-for="staff in pegawaiList" :key="staff.id" :value="staff.id">
+                        {{ staff.name }} - {{ staff.nip }}
+                      </option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="input-label">Kategori Jabatan</label>
+                    <select v-model="editForm.jabatan_kategori" class="select-field">
+                      <option value="">Pilih Kategori</option>
+                      <option v-for="cat in jabatanCategories" :key="cat.kode" :value="cat.kode">
+                        {{ cat.nama_jabatan }}
+                      </option>
+                    </select>
+                  </div>
                   <div class="md:col-span-2">
                     <label class="input-label">Alamat</label>
                     <textarea v-model="editForm.alamat" rows="2" class="input-field"></textarea>
@@ -418,6 +492,113 @@ function resetFilters() {
                     Hapus
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
+
+      <!-- Structure Modal -->
+      <Teleport to="body">
+        <Transition name="modal">
+          <div v-if="showStructureModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="closeStructureModal">
+            <div class="relative bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+              <div class="card-header">
+                <h3 class="card-title">Struktur Organisasi</h3>
+                <button @click="closeStructureModal" class="btn btn-ghost btn-icon">
+                  <i class="ri-close-line text-xl"></i>
+                </button>
+              </div>
+              <div class="card-body overflow-y-auto flex-1">
+                <LoadingSpinner v-if="loadingStructure" text="Memuat struktur..." />
+
+                <div v-else-if="structureData.pegawai" class="space-y-6">
+                  <!-- Pegawai Info -->
+                  <div class="bg-primary-50 rounded-lg p-4 border-2 border-primary-200">
+                    <div class="flex items-center gap-3">
+                      <div class="w-12 h-12 rounded-full bg-primary-100 flex items-center justify-center">
+                        <i class="ri-user-line text-xl text-primary-600"></i>
+                      </div>
+                      <div>
+                        <p class="font-semibold text-primary-900">{{ structureData.pegawai.name }}</p>
+                        <p class="text-sm text-primary-700">{{ structureData.pegawai.nip }}</p>
+                        <p class="text-xs text-primary-600 mt-1">{{ structureData.pegawai.jabatan || '-' }} {{ structureData.pegawai.unit_kerja?.nama ? '• ' + structureData.pegawai.unit_kerja.nama : '' }}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Atasan Chain -->
+                  <div>
+                    <h4 class="text-sm font-semibold text-secondary-700 mb-3 flex items-center gap-2">
+                      <i class="ri-arrow-up-circle-fill text-green-600"></i>
+                      Atasan Langsung
+                    </h4>
+                    <div v-if="structureData.atasan_chain.length === 0" class="text-sm text-secondary-500 italic bg-secondary-50 rounded-lg p-4">
+                      Tidak ada atasan yang ditetapkan untuk pegawai ini.
+                    </div>
+                    <div v-else class="space-y-2">
+                      <div
+                        v-for="(atasan, index) in structureData.atasan_chain"
+                        :key="atasan.id"
+                        class="flex items-start gap-3 bg-green-50 rounded-lg p-3 border border-green-200"
+                      >
+                        <div class="flex flex-col items-center">
+                          <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                            <i class="ri-user-star-line text-green-700"></i>
+                          </div>
+                          <div v-if="index < structureData.atasan_chain.length - 1" class="w-0.5 flex-1 bg-green-300 my-1"></div>
+                        </div>
+                        <div class="flex-1">
+                          <div class="flex items-center justify-between">
+                            <p class="font-medium text-green-900">{{ atasan.name }}</p>
+                            <span class="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                              {{ getRoleName(atasan.role_id) }}
+                            </span>
+                          </div>
+                          <p class="text-sm text-green-700">{{ atasan.nip }}</p>
+                          <p class="text-xs text-green-600 mt-1">{{ atasan.jabatan || '-' }} {{ atasan.unit_kerja?.nama ? '• ' + atasan.unit_kerja.nama : '' }}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Bawahan -->
+                  <div>
+                    <h4 class="text-sm font-semibold text-secondary-700 mb-3 flex items-center gap-2">
+                      <i class="ri-arrow-down-circle-fill text-blue-600"></i>
+                      Bawahan Langsung
+                    </h4>
+                    <div v-if="structureData.bawahan.length === 0" class="text-sm text-secondary-500 italic bg-secondary-50 rounded-lg p-4">
+                      Pegawai ini tidak memiliki bawahan.
+                    </div>
+                    <div v-else class="grid grid-cols-1 gap-2">
+                      <div
+                        v-for="bawahan in structureData.bawahan"
+                        :key="bawahan.id"
+                        class="flex items-center gap-3 bg-blue-50 rounded-lg p-3 border border-blue-200"
+                      >
+                        <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                          <i class="ri-user-line text-blue-700"></i>
+                        </div>
+                        <div class="flex-1">
+                          <div class="flex items-center justify-between">
+                            <p class="font-medium text-blue-900">{{ bawahan.name }}</p>
+                            <span class="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                              {{ getRoleName(bawahan.role_id) }}
+                            </span>
+                          </div>
+                          <p class="text-sm text-blue-700">{{ bawahan.nip }}</p>
+                          <p class="text-xs text-blue-600 mt-1">{{ bawahan.jabatan || '-' }} {{ bawahan.unit_kerja?.nama ? '• ' + bawahan.unit_kerja.nama : '' }}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="card-footer flex justify-end">
+                <button @click="closeStructureModal" class="btn btn-secondary">
+                  Tutup
+                </button>
               </div>
             </div>
           </div>

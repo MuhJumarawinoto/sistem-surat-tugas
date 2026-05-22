@@ -10,7 +10,7 @@ class PegawaiController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = User::with(['role', 'unitKerja'])
+        $query = User::with(['role', 'unitKerja', 'atasan'])
             ->whereNotNull('nip');
 
         // Search
@@ -46,7 +46,7 @@ class PegawaiController extends Controller
 
     public function show(Request $request, string $id): JsonResponse
     {
-        $pegawai = User::with(['role', 'unitKerja'])
+        $pegawai = User::with(['role', 'unitKerja', 'atasan'])
             ->where('id', $id)
             ->orWhere('nip', $id)
             ->firstOrFail();
@@ -64,6 +64,8 @@ class PegawaiController extends Controller
             'nip' => 'sometimes|required|string|unique:users,nip,' . $id,
             'role_id' => 'sometimes|required|exists:roles,id',
             'unit_kerja_id' => 'sometimes|nullable|exists:unit_kerja,id',
+            'atasan_id' => 'sometimes|nullable|exists:users,id',
+            'jabatan_kategori' => 'sometimes|nullable|string|max:50',
             'pangkat_gol' => 'sometimes|nullable|string|max:50',
             'jabatan' => 'sometimes|nullable|string|max:255',
             'no_hp' => 'sometimes|nullable|string|max:20',
@@ -94,5 +96,45 @@ class PegawaiController extends Controller
     {
         $unitKerjas = \App\Models\UnitKerja::where('is_active', true)->get();
         return response()->json($unitKerjas);
+    }
+
+    public function getStructure(Request $request, string $id): JsonResponse
+    {
+        $pegawai = User::with(['role', 'unitKerja', 'atasan.role', 'atasan.unitKerja'])
+            ->where('id', $id)
+            ->orWhere('nip', $id)
+            ->firstOrFail();
+
+        // Build the atasan chain (hierarchy)
+        $chain = collect();
+        $current = $pegawai;
+
+        while ($current && $current->atasan_id) {
+            $atasan = User::with(['role', 'unitKerja'])
+                ->find($current->atasan_id);
+
+            if (!$atasan) {
+                break;
+            }
+
+            $chain->push($atasan);
+            $current = $atasan;
+
+            // Prevent infinite loops
+            if ($chain->count() > 10) {
+                break;
+            }
+        }
+
+        // Get bawahan (direct reports)
+        $bawahan = User::with(['role', 'unitKerja'])
+            ->where('atasan_id', $pegawai->id)
+            ->get();
+
+        return response()->json([
+            'pegawai' => $pegawai,
+            'atasan_chain' => $chain,
+            'bawahan' => $bawahan,
+        ]);
     }
 }

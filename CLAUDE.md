@@ -26,7 +26,7 @@ sipintar/
 ├── frontend/                # Vue 3 SPA
 │   ├── src/
 │   │   ├── components/         # Reusable components
-│   │   │   ├── layout/         # Layout components (Header, Sidebar)
+│   │   │   ├── layout/         # Layout components (TopNavbar, Sidebar)
 │   │   │   ├── Breadcrumb.vue
 │   │   │   ├── DocumentInfoTooltip.vue
 │   │   │   ├── FileUpload.vue
@@ -34,6 +34,7 @@ sipintar/
 │   │   │   ├── NotificationBell.vue
 │   │   │   ├── PDDiktiDropdown.vue
 │   │   │   ├── SendMessageModal.vue
+│   │   │   ├── DetailModal.vue  # Reusable detail modal pattern
 │   │   │   └── ...
 │   │   ├── views/              # Page components organized by role
 │   │   │   ├── auth/           # Login page
@@ -64,6 +65,14 @@ sipintar/
 3. **Route-based Code Splitting**: Lazy-loaded routes in router
 4. **API Service Layer**: Single Axios instance with interceptors for auth tokens
 5. **Role-based Access Control**: Different views for pemohon, atasan, admin, kepala
+6. **Modal Pattern**: Details viewed in modal using Teleport for proper z-index layering
+   - Example: "Lihat Pengajuan" opens detail modal instead of separate page
+   - Use `Teleport to="body"` with overlay background
+   - Include loading states, close on backdrop click, and ESC key handling
+7. **Responsive Action Buttons**: Desktop shows buttons inline, Mobile shows dots menu
+   - Use `hidden sm:flex` for desktop buttons
+   - Use `sm:hidden` for mobile dropdown trigger
+   - Dropdown menu positioned absolute with `right-0 top-full`
 
 ### Backend Patterns
 
@@ -77,9 +86,46 @@ sipintar/
 | Role | Code | Permissions |
 |------|------|-------------|
 | Pemohon (PNS) | `pemohon` | Create, view, edit own pengajuan; upload documents |
-| Atasan Langsung | `atasan` | View, approve/reject pengajuan from unit kerja |
-| Admin BKPSDM | `admin` | Verify documents, approve/reject, generate surat |
+| Atasan Langsung | `atasan` | Create own pengajuan; view, approve/reject pengajuan from unit kerja |
+| Admin BKPSDM | `admin` | Verify documents, approve/reject, generate surat; manage pegawai |
 | Kepala BKPSDM | `kepala` | Sign surat with TTE |
+
+### Note: Atasan Can Submit Pengajuan
+Based on research of current regulations, **atasan (pejabat eselon) ARE ALLOWED** to submit study permit applications (izin belajar) with proper approval from higher authorities (PPK/Bupati). The system supports this use case.
+
+### Eligibility Requirements (Perbup Sukabumi No. 2 Tahun 2022)
+**Semua PNS berhak mengajukan izin belajar mandiri** dengan ketentuan:
+- PNS berstatus aktif (bukan PNS pensiunan/mutasi)
+- Masa kerja minimum sesuai ketentuan (biasanya 2-5 tahun)
+- Tidak sedang menjalankan hukuman disiplin
+- Memiliki penilaian kinerja yang baik (minimal 2 tahun terakhir)
+- Pendidikan yang diambil sesuai dengan kebutuhan organisasi/relevan dengan jabatan
+- Mendapat rekomendasi dari atasan langsung
+- Biaya pendidikan ditanggung sendiri (tidak membebankan APBD)
+
+### Verification Matrix (Role-Based Approval)
+
+Sistem menggunakan matriks verifikasi berdasarkan jabatan pemohon:
+
+| Jabatan Pemohon | Atasan Langsung | Penandatangan S1 | Penandatangan S2 | Penandatangan S3 |
+|----------------|-----------------|-----------------|-----------------|-----------------|
+| Staf/Pelaksana | Kepala Seksi/Kasubbag | Kepala BKPSDM | Sekda | Bupati |
+| Kepala Seksi/Kasubbag | Kepala Bidang | Kepala BKPSDM | Sekda | Bupati |
+| Kepala Bidang | Kepala Dinas | Kepala BKPSDM | Sekda | Bupati |
+| Kepala Dinas (non-BKPSDM) | Sekda | Kepala BKPSDM | Sekda | Bupati |
+| Kepala BKPSDM | Sekda | Kepala BKPSDM | Sekda | Bupati |
+| Sekda | Bupati | Kepala BKPSDM | Sekda | Bupati |
+| Bupati/Wakil Bupati | - | Sekda | Bupati | Bupati |
+
+**Implementation:**
+- `users.jabatan_kategori`: Field kategori untuk mapping ke atasan
+- `users.atasan_id`: Relasi ke atasan langsung (self-referential)
+- `verification_rules`: Tabel aturan verifikasi per jabatan
+- Penandatangan ditentukan berdasarkan jenjang pendidikan
+- Memiliki penilaian kinerja yang baik (minimal 2 tahun terakhir)
+- Pendidikan yang diambil sesuai dengan kebutuhan organisasi/relevan dengan jabatan
+- Mendapat rekomendasi dari atasan langsung
+- Biaya pendidikan ditanggung sendiri (tidak membebankan APBD)
 
 ## Common Tasks
 
@@ -110,6 +156,84 @@ npm run dev
 1. Create view component in `frontend/src/views/{role}/`
 2. Add route in `frontend/src/router/index.js`
 3. Update sidebar if needed in `frontend/src/components/layout/Sidebar.vue`
+
+### Creating a Detail Modal
+
+Use this pattern for viewing item details without page navigation:
+
+```javascript
+// In your component
+const showDetailModal = ref(false)
+const selectedItem = ref(null)
+const loadingDetail = ref(false)
+
+async function openDetailModal(id) {
+  closeAllMenus() // Close any open dropdowns
+  loadingDetail.value = true
+  showDetailModal.value = true
+  selectedItem.value = null
+
+  try {
+    const response = await api.get(`/resource/${id}`)
+    selectedItem.value = response.data
+  } catch (error) {
+    console.error('Failed to load detail:', error)
+    showDetailModal.value = false
+  } finally {
+    loadingDetail.value = false
+  }
+}
+
+function closeDetailModal() {
+  showDetailModal.value = false
+  selectedItem.value = null
+}
+```
+
+```vue
+<!-- Template -->
+<Teleport to="body">
+  <Transition name="modal">
+    <div
+      v-if="showDetailModal"
+      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+      @click.self="closeDetailModal"
+    >
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between p-6 border-b">
+          <h3 class="text-lg font-semibold">Detail Item</h3>
+          <button @click="closeDetailModal" class="btn btn-ghost btn-icon">
+            <i class="ri-close-line text-xl"></i>
+          </button>
+        </div>
+
+        <!-- Modal Body -->
+        <div class="p-6 overflow-y-auto flex-1">
+          <LoadingSpinner v-if="loadingDetail" />
+          <div v-else-if="selectedItem">
+            <!-- Your detail content here -->
+          </div>
+        </div>
+
+        <!-- Modal Footer -->
+        <div class="flex justify-end gap-2 p-6 border-t">
+          <button @click="closeDetailModal" class="btn btn-ghost">Tutup</button>
+        </div>
+      </div>
+    </div>
+  </Transition>
+</Teleport>
+
+<style scoped>
+.modal-enter-active, .modal-leave-active {
+  transition: opacity 0.3s ease;
+}
+.modal-enter-from, .modal-leave-to {
+  opacity: 0;
+}
+</style>
+```
 
 ### Styling Guidelines
 
@@ -249,10 +373,36 @@ Error:
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/pegawai` | List all pegawai |
+| GET | `/api/pegawai/{id}` | Get pegawai detail |
+| GET | `/api/pegawai/{id}/structure` | Get pegawai structure (atasan chain & bawahan) |
 | POST | `/api/pegawai` | Create new pegawai |
-| PUT | `/api/pegawai/{id}` | Update pegawai |
+| PUT | `/api/pegawai/{id}` | Update pegawai (including atasan assignment) |
 | DELETE | `/api/pegawai/{id}` | Delete pegawai |
-| POST | `/api/pegawai/sync-simpeg` | Sync data from SIMPEG |
+| GET | `/api/pegawai/roles` | List all roles |
+| GET | `/api/pegawai/unit-kerjas` | List all unit kerjas |
+
+### Verification
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/verification/rules` | List all verification rules |
+| GET | `/api/verification/categories` | List jabatan categories for dropdown |
+| GET | `/api/verification/pengajuan/{id}` | Get verification chain & signer for pengajuan |
+
+**Verification Response Structure:**
+```json
+{
+  "verification_chain": [
+    { "level": "atasan_langsung", "nama": "Kabid...", "status": "completed", "urutan": 1 },
+    { "level": "admin_bkpsdm", "nama": "Admin BKPSDM", "status": "current", "urutan": 2 },
+    { "level": "final_signer", "nama": "Kepala BKPSDM", "status": "pending", "urutan": 3 }
+  ],
+  "final_signer": {
+    "nama": "Kepala BKPSDM",
+    "jabatan": "Penandatangan Surat",
+    "level": "kepala_bkpsdm"
+  }
+}
+```
 
 ## Pinia Store Structure
 
@@ -378,6 +528,63 @@ npm run test
 4. **Clear browser cache** when experiencing auth issues
 5. **Run `php artisan config:clear`** after changing backend config
 
+## Recent Changes (2026-05-22)
+
+### Role-Based Verification System
+Complete implementation of jabatan-based verification matrix:
+
+**Database Changes:**
+- `verification_rules` table: Stores verification rules per jabatan category
+- `users.jabatan_kategori`: Field to categorize employees for verification
+- `users.atasan_id`: Self-referential relationship for direct supervisor
+- Seeder populated with 10 jabatan categories (staf, kasi, kabid, kadis, sekda, bupati, etc.)
+
+**Backend Implementation:**
+- **VerificationController**: New controller for verification logic
+  - `getVerificationInfo()`: Returns verification chain & final signer
+  - `getRules()`: List all verification rules
+  - `getJabatanCategories()`: Dropdown options for admin
+- **VerificationRule Model**: Methods for signer determination by jenjang
+- API Endpoints: `/api/verification/*` for verification-related data
+
+**Frontend Updates:**
+- **VerifikasiView**: 
+  - Stats dashboard (total, pending atasan, pending admin, verified)
+  - Atasan info displayed next to status badge
+  - Warning when atasan not assigned (orange badge)
+- **PegawaiView**:
+  - "Struktur" button to view hierarchy
+  - "Kategori Jabatan" dropdown in edit form
+  - "Atasan Langsung" assignment dropdown
+
+**Verification Flow by Jenjang:**
+- D1/D2/D3/S1 → Kepala BKPSDM signs
+- S2/Profesi → Sekretaris Daerah signs
+- S3 → Bupati signs
+
+### Database Schema
+```sql
+-- verification_rules table
+CREATE TABLE verification_rules (
+  id BIGINT PRIMARY KEY,
+  kode VARCHAR UNIQUE,              -- staf, kasi, kabid, kadis, sekda, bupati
+  nama_jabatan VARCHAR,
+  atasan_level VARCHAR,             -- Required atasan level
+  signer_s1 VARCHAR DEFAULT 'Kepala BKPSDM',
+  signer_s2 VARCHAR DEFAULT 'Sekretaris Daerah',
+  signer_s3 VARCHAR DEFAULT 'Bupati',
+  urutan INT,                       -- 1=lowest, 10=highest
+  is_active BOOLEAN DEFAULT TRUE
+);
+
+-- users table additions
+ALTER TABLE users ADD COLUMN atasan_id BIGINT UNSIGNED NULL;
+ALTER TABLE users ADD COLUMN jabatan_kategori VARCHAR(50) NULL;
+ALTER TABLE users ADD FOREIGN KEY (atasan_id) REFERENCES users(id);
+```
+
+---
+
 ## Recent Changes (2026-05-19)
 
 ### Layout System Update
@@ -472,3 +679,298 @@ DB_DATABASE=your_db_name
 DB_USERNAME=your_db_user
 DB_PASSWORD=your_db_password
 ```
+
+---
+
+## Template Surat Tugas Belajar Mandiri
+
+### Document Overview
+**Jenis:** Surat Tugas Belajar Mandiri (Tidak Diberhentikan dari Jabatan)
+**Penerbit:** Kepala BKPSDM Kabupaten Sukabumi
+**Penandatanganan:** Tanda Tangan Elektronik (TTE) BSrE BSSN
+
+### Struktur Dokumen
+
+```
+┌─────────────────────────────────────────────────────┐
+│  PEMERINTAH KABUPATEN SUKABUMI                     │
+│  BADAN KEPEGAWAIAN DAN PENGEMBANGAN                │
+│  SUMBER DAYA MANUSIA                               │
+│                                                     │
+│  SURAT TUGAS                                       │
+│  NOMOR: 800.1.3.1/.../BKPSDM/Thn                   │
+│                                                     │
+│  TENTANG                                           │
+│  BELAJAR MANDIRI TIDAK DIBERHENTIKAN DARI JABATAN  │
+│  JENJANG PENDIDIKAN ...                            │
+└─────────────────────────────────────────────────────┘
+```
+
+### Dasar Hukum (6 Points)
+| No | Dasar Hukum |
+|----|-------------|
+| 1 | UU Nomor 20 Tahun 2003 - Sistem Pendidikan Nasional |
+| 2 | UU Nomor 20 Tahun 2023 - Aparatur Sipil Negara |
+| 3 | PP Nomor 17 Tahun 2020 - Manajemen PNS |
+| 4 | Perda Kab. Sukabumi No. 3 Tahun 2024 - Perangkat Daerah |
+| 5 | **Perbup Sukabumi No. 2 Tahun 2022** - Pedoman Tugas Belajar |
+| 6 | Surat Kepala Dinas ... Nomor: ... tanggal ... |
+
+### Data Pegawai (MENUGASKAN)
+- Nama: [Nama Pegawai]
+- NIP: [NIP]
+- Pangkat/Gol.Ruang: [Pangkat/Golongan]
+- Jabatan: [Jabatan] pada [Unit Kerja]
+
+### Tujuan Pendidikan
+- Jenjang: [D1/D2/D3/S1/S2/S3/Profesi]
+- Program Studi: [Nama Prodi]
+- Perguruan Tinggi: [Nama PT]
+
+### Ketentuan (5 Poin)
+| No | Ketentuan |
+|----|-----------|
+| 1 | Tugas mengikuti pendidikan diberikan di luar jam kerja |
+| 2 | Tidak mengganggu tugas-tugas kedinasan |
+| 3 | Pendidikan harus sesuai norma dan kaidah akademik |
+| 4 | Biaya pendidikan sepenuhnya ditanggung yang bersangkutan |
+| 5 | Tidak menuntut penyesuaian kenaikan pangkat dan pengakuan gelar akademik kecuali formasi memungkinkan |
+
+### Format Penomoran Surat
+Format: `800.1.3.1/[Nomor Urut]/BKPSDM/[Tahun]`
+
+### Placeholder untuk Diisi
+- Nomor Surat
+- Jenjang Pendidikan
+- Nama Dinas (rekomendasi atasan)
+- Nomor/Tanggal Surat Dinas
+- Nama, NIP, Pangkat, Jabatan Pegawai
+- Jenjang, Program Studi, Perguruan Tinggi
+- Tanggal Penetapan
+
+---
+
+## TopNavbar Component
+
+### Location
+`frontend/src/components/layout/TopNavbar.vue`
+
+### Features
+- Gradient background (primary-700 → accent)
+- Logo + Title (clickable to go home/dashboard)
+- User info display when logged in
+- **Avatar dropdown menu** with Profile and Logout options
+- Login button when logged out
+- Responsive design (mobile/desktop)
+
+### User Dropdown Menu
+When logged in, clicking the avatar shows:
+1. **Profile** - Navigate to `/profile`
+2. **Logout** - Logout and redirect to login
+
+### Key Functions
+```javascript
+goHome()          // Navigate to dashboard or login
+toggleMenu()       // Show/hide user dropdown
+handleLogout()     // Logout action
+getInitials()      // Get user initials from name
+getRoleLabel()     // Get user role display label
+```
+
+### Recent Updates (2026-05-22)
+
+#### Document Preview in Detail Modal
+- Added **document preview feature** in pengajuan detail modal
+- Support for image preview with zoom & pan (scroll to zoom, drag to pan)
+- Support for PDF preview in iframe
+- Document icon based on file type (PDF, Word, Excel, Image)
+- **Responsive action buttons**: Desktop shows both buttons, Mobile shows dots menu (3 dots)
+- Download button for all document types
+- Document verification status display (Lengkap/Perlu Cek)
+
+#### Search Feature in Riwayat Pengajuan
+- Added **search box** for filtering pengajuan list
+- Client-side filtering with real-time search
+- Search across: nomor pengajuan, jenjang, prodi, universitas, lokasi, status
+- Shows search result count
+- Clear button to reset search
+
+#### Navigation Fixes
+- Fixed tombol "Batal" in EditPengajuanView - now correctly navigates to `/pengajuan` (riwayat list)
+- Previously navigated to detail page causing confusion
+
+#### Bug Fixes
+- Fixed syntax errors in RiwayatPengajuanView.vue (invalid end tag)
+- Fixed syntax errors in PersetujuanView.vue (missing end tag)
+- Fixed syntax errors in SuratView.vue (missing end tag)
+- All Vue components now build successfully
+
+#### New Components
+- **DocumentPreviewModal.vue** - Modal for previewing PDF and image documents
+  - PDF viewer using iframe
+  - Image viewer with zoom controls
+  - Download and open in new tab options
+  - Keyboard shortcuts (ESC to close, scroll to zoom for images)
+
+#### Previous Updates (2026-05-20)
+
+##### TopNavbar Component
+- Added user dropdown menu on avatar click
+- Profile and Logout in dropdown
+- Improved responsive layout
+- Fixed z-index and positioning issues
+
+##### Atasan Approval Flow Feature
+- **Atasan can now create pengajuan** for themselves (based on regulation research)
+- Added `approval_level` field to `pengajuan` table ('biasa' or 'atasan')
+- Added `approved_by_atasan` and `approved_at_atasan` fields for tracking higher-level approval
+- Updated frontend router to allow atasan access to pengajuan routes
+- Updated sidebar to show "Buat Pengajuan Baru" and "Riwayat Pengajuan" for atasan
+- Approval flow for atasan applicants: Eselon IV → Kabid → Kepala Dinas → Sekda/Bupati
+- Backend API updated to handle atasan creating their own pengajuan
+
+---
+
+## Surat Tugas - Implementation Requirements
+
+### Template Analysis Summary
+
+**Document Type:** Surat Tugas Belajar Mandiri (Tidak Diberhentikan dari Jabatan)
+
+| Aspect | Detail |
+|--------|--------|
+| Penerbit | Kepala BKPSDM Kabupaten Sukabumi |
+| Signing Method | Tanda Tangan Elektronik (TTE) BSrE BSSN |
+| Key Regulation | Perbup Sukabumi No. 2 Tahun 2022 |
+| Number Format | `800.1.3.1/[Nomor Urut]/BKPSDM/[Tahun]` |
+
+### Required Data Fields for PDF Generation
+
+```javascript
+// Surat Tugas Data Structure
+{
+  nomor_surat: "800.1.3.1/001/BKPSDM/2026",
+  tanggal_surat: "2026-05-20",
+
+  // Pegawai Data
+  pegawai: {
+    nama: "Drajat Sukmana, S.IP",
+    nip: "197506152005011002",
+    pangkat: "Pembina",
+    golongan: "IV/a",
+    jabatan: "Kepala Seki",
+    unit_kerja: "Dinas Pendidikan"
+  },
+
+  // Pendidikan Data
+  pendidikan: {
+    jenjang: "S2",
+    program_studi: "Magister Hukum",
+    perguruan_tinggi: "Universitas Padjadjaran"
+  },
+
+  // Rekomendasi Atasan
+  rekomendasi: {
+    nama_dinas: "Dinas Pendidikan",
+    nomor_surat: "005/123/DISDIK/2026",
+    tanggal_surat: "2026-05-15"
+  }
+}
+```
+
+### Implementation Checklist
+
+#### Backend Requirements
+- [ ] **Nomor Surat Generator** - Auto-increment format `800.1.3.1/XXX/BKPSDM/YYYY`
+- [ ] **PDF Template** - Using DOMPDF/snappy with official letterhead
+- [ ] **TTE Integration** - BSrE BSSN API for electronic signature
+- [ ] **QR Code Generator** - For document verification
+- [ ] **Surat Model & Migration** - Store generated surat data
+
+#### Frontend Requirements
+- [ ] **Preview Surat** - Show PDF preview before signing
+- [ ] **Download Surat** - Allow pemohon to download signed surat
+- [ ] **Status Tracking** - Show surat status (draft, signed, completed)
+
+#### Database Schema Addition
+```sql
+-- Surat Tugas Table
+CREATE TABLE surat_tugas (
+  id BIGINT PRIMARY KEY,
+  pengajuan_id BIGINT,
+  nomor_surat VARCHAR(100),
+  tanggal_surat DATE,
+  file_path VARCHAR(255),
+  tte_path VARCHAR(255),
+  qr_code VARCHAR(255),
+  status ENUM('draft', 'signed', 'completed'),
+  signed_at TIMESTAMP NULL,
+  signed_by VARCHAR(100),
+  created_at TIMESTAMP,
+  FOREIGN KEY (pengajuan_id) REFERENCES pengajuan(id)
+);
+```
+
+### Surat Generation Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    ALUR GENERATE SURAT TUGAS                    │
+└─────────────────────────────────────────────────────────────────┘
+
+  [Admin BKPSDM]
+       │
+       ├─ Verify Pengajuan
+       ├─ Input Rekomendasi Atasan (Nomor & Tanggal Surat)
+       ├─ Generate Nomor Surat (Otomatis)
+       │
+       ▼
+  [Generate PDF Draft]
+       │
+       ├─ Load Template
+       ├─ Fill Data (Pegawai, Pendidikan, Rekomendasi)
+       ├─ Generate QR Code
+       │
+       ▼
+  [Kepala BKPSDM]
+       │
+       ├─ Preview Surat
+       ├─ Sign with TTE (BSrE BSSN)
+       │
+       ▼
+  [Surat Terbit]
+       │
+       ├─ Status: Signed
+       ├─ Send Notification to Pemohon
+       │
+       ▼
+  [Pemohon]
+       │
+       └─ Download / Print Surat
+```
+
+### API Endpoints (Additional)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/surat/generate` | Generate surat PDF draft |
+| GET | `/api/surat/{id}/preview` | Preview surat before signing |
+| POST | `/api/surat/{id}/sign` | Sign surat with TTE |
+| GET | `/api/surat/{id}/download` | Download signed surat |
+| GET | `/api/surat/verify/{qr}` | Verify surat authenticity |
+
+### 5 Ketentuan Surat (Hardcoded in Template)
+
+1. Tugas mengikuti pendidikan diberikan di luar jam kerja
+2. Tidak mengganggu tugas-tugas kedinasan
+3. Pendidikan yang diikuti harus sesuai norma dan kaidah akademik
+4. Biaya pendidikan sepenuhnya ditanggung oleh yang bersangkutan
+5. Tidak menuntut penyesuaian kenaikan pangkat dan pengakuan gelar akademik kecuali formasi memungkinkan
+
+### Notes for Development
+
+- **Letterhead positioning**: Ensure proper margins for official BKPSDM letterhead
+- **TTE placement**: Reserve space in bottom-right for Kepala BKPSDM signature
+- **QR Code**: Include verification URL or unique identifier
+- **Font**: Use Times New Roman or similar for official document feel
+- **Paper size**: A4 with standard margins

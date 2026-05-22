@@ -10,7 +10,15 @@
       "Bash(awk '/<template>/,0' /c/Users/Bahlil/Downloads/Documents/Sistem-Surat-Belajar-Mandiri/frontend/src/views/admin/PegawaiView.vue)",
       "Bash(awk '/<template>/,/<\\\\/template>/' /c/Users/Bahlil/Downloads/Documents/Sistem-Surat-Belajar-Mandiri/frontend/src/views/admin/PegawaiView.vue)",
       "Bash(curl -s \"https://maas-log-prod.cn-wlcb.ufileos.com/anthropic/1bcac87f-587e-4c68-b69b-03fe77967817/28e2d7d206a4fb054a60145baf2cf573.png?UCloudPublicKey=TOKEN_e15ba47a-d098-4fbd-9afc-a0dcf0e4e621&Expires=1779182495&Signature=BzUERJ2Fxwh39JygGXmUQUEiqfs=\" -o /c/Users/Bahlil/Downloads/Documents/Sistem-Surat-Belajar-Mandiri/frontend/public/logo.png)",
-      "Bash(awk '/<template>/,/<\\\\/template>/' /c/Users/Bahlil/Downloads/Documents/Sistem-Surat-Belajar-Mandiri/frontend/src/views/pemohon/DashboardView.vue)"
+      "Bash(awk '/<template>/,/<\\\\/template>/' /c/Users/Bahlil/Downloads/Documents/Sistem-Surat-Belajar-Mandiri/frontend/src/views/pemohon/DashboardView.vue)",
+      "Bash(node node_modules\\\\vite\\\\bin\\\\vite.js --optimize)",
+      "Bash(node node_modules/vite/bin/vite.js --optimize)",
+      "Bash(node node_modules/vite/bin/vite.js build --mode development)",
+      "Bash(awk 'NR>=320 && NR<=470 {printf \"%4d: %s\\\\n\", NR, $0}' RiwayatPengajuanView.vue)",
+      "Bash(awk 'NR>=323 && NR<=466 {printf \"%4d: %s\\\\n\", NR, $0}' RiwayatPengajuanView.vue)",
+      "Bash(awk 'NR>=164 && NR<=172 {printf \"%4d: %s\\\\n\", NR, $0}' PersetujuanView.vue)",
+      "Bash(awk 'NR>=158 && NR<=240 {printf \"%4d: %s\\\\n\", NR, $0}' PersetujuanView.vue)",
+      "Bash(node node_modules/vite/bin/vite.js build)"
     ]
   }
 }

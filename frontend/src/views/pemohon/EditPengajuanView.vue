@@ -444,7 +444,7 @@ const totalDocs = computed(() => {
                   <span>Simpan Perubahan</span>
                 </span>
               </button>
-              <router-link :to="`/pengajuan/${route.params.id}`" class="btn btn-secondary flex-1 justify-center">
+              <router-link to="/pengajuan" class="btn btn-secondary flex-1 justify-center">
                 <i class="ri-close-line"></i>
                 <span>Batal</span>
               </router-link>
