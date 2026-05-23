@@ -56,6 +56,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/{id}', [PengajuanController::class, 'destroy']);
         Route::post('/{id}/submit', [PengajuanController::class, 'submit']);
         Route::post('/{id}/cancel', [PengajuanController::class, 'cancel']);
+        Route::post('/{id}/restore', [PengajuanController::class, 'restore']);
 
         Route::prefix('/{pengajuanId}/dokumen')->group(function () {
             Route::get('/', [DokumenController::class, 'index']);

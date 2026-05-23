@@ -17,9 +17,17 @@ class PengajuanController extends Controller
             'dokumen:id,pengajuan_id,jenis_dokumen,file_path,status_verifikasi',
         ]);
 
+        // Check if client wants to include deleted (dicabut) pengajuan
+        $includeDeleted = $request->has('include_deleted') && $request->get('include_deleted') === '1';
+
         if ($user->isPemohon()) {
             // Pemohon biasa: hanya melihat pengajuan sendiri
             $query->where('user_id', $user->id);
+
+            // Exclude 'dicabut' unless explicitly requested
+            if (!$includeDeleted) {
+                $query->where('status', '!=', 'dicabut');
+            }
         } elseif ($user->isAtasan()) {
             // Atasan: melihat pengajuan sendiri + pengajuan dari unit kerja yang sama
             $query->where(function ($q) use ($user) {
@@ -29,8 +37,13 @@ class PengajuanController extends Controller
                   }); // Pengajuan unit kerja
             });
 
+            // Exclude 'dicabut' unless explicitly requested
+            if (!$includeDeleted) {
+                $query->where('status', '!=', 'dicabut');
+            }
+
             // Default filter untuk atasan: hanya yang pending (untuk approval)
-            if (!$request->has('status') && !$request->has('mine')) {
+            if (!$request->has('status') && !$request->has('mine') && !$includeDeleted) {
                 $query->where('status', 'pending_atasan')
                       ->where('user_id', '!=', $user->id); // Exclude pengajuan sendiri untuk approval list
             }
@@ -175,13 +188,18 @@ class PengajuanController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        if (!$pengajuan->isDraft()) {
-            return response()->json(['message' => 'Cannot delete submitted pengajuan'], 400);
+        // Bisa delete draft atau yang sudah dicabut (untuk masuk riwayat)
+        if (!$pengajuan->isDraft() && $pengajuan->status !== 'dicabut') {
+            return response()->json(['message' => 'Hanya dapat menghapus pengajuan draft atau yang sudah dicabut'], 400);
         }
 
-        $pengajuan->delete();
+        // Soft delete: change status to 'dicabut' instead of deleting record
+        $pengajuan->update([
+            'status' => 'dicabut',
+            'catatan_tolak' => 'Pengajuan dihapus oleh pemohon',
+        ]);
 
-        return response()->json(['message' => 'Pengajuan deleted successfully']);
+        return response()->json(['message' => 'Pengajuan dihapus dan masuk ke riwayat']);
     }
 
     public function cancel(Request $request, string $id)
@@ -200,12 +218,38 @@ class PengajuanController extends Controller
             return response()->json(['message' => 'Hanya dapat menarik pengajuan dengan status Pending atau Terverifikasi'], 400);
         }
 
+        // Change status back to draft (bisa diedit lagi)
         $pengajuan->update([
             'status' => 'draft',
-            'catatan_tolak' => 'Pengajuan ditarik kembali oleh pemohon',
+            'catatan_tolak' => null,
             'tanggal_submit_atasan' => null,
             'tanggal_approve_atasan' => null,
             'tanggal_approve_admin' => null,
+        ]);
+
+        return response()->json($pengajuan->load(['user', 'jenjang']));
+    }
+
+    public function restore(Request $request, string $id)
+    {
+        $pengajuan = Pengajuan::findOrFail($id);
+
+        $user = $request->user();
+
+        // Pemohon biasa dan Atasan: hanya bisa restore pengajuan sendiri
+        if (($user->isPemohon() || $user->isAtasan()) && $pengajuan->user_id !== $user->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // Hanya bisa restore jika status dicabut
+        if ($pengajuan->status !== 'dicabut') {
+            return response()->json(['message' => 'Hanya dapat memulihkan pengajuan dengan status Dicabut'], 400);
+        }
+
+        // Restore status ke draft
+        $pengajuan->update([
+            'status' => 'draft',
+            'catatan_tolak' => null,
         ]);
 
         return response()->json($pengajuan->load(['user', 'jenjang']));

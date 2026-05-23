@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { usePengajuanStore } from '@/stores/pengajuan'
 import api from '@/services/api'
 import MainLayout from '@/components/layout/MainLayout.vue'
@@ -11,6 +11,7 @@ import DocumentPreviewModal from '@/components/DocumentPreviewModal.vue'
 import PengajuanMilestone from '@/components/PengajuanMilestone.vue'
 
 const router = useRouter()
+const route = useRoute()
 const pengajuanStore = usePengajuanStore()
 
 // Page header actions
@@ -36,6 +37,7 @@ const filterStatus = ref('')
 
 const statusOptions = [
   { value: '', label: 'Semua Status' },
+  { value: 'dicabut', label: 'Dihapus' },
   { value: 'terverifikasi', label: 'Terverifikasi' },
   { value: 'selesai', label: 'Selesai' },
   { value: 'ditolak', label: 'Ditolak' },
@@ -178,25 +180,23 @@ onUnmounted(() => {
 async function loadPengajuan() {
   loading.value = true
   try {
-    const response = await pengajuanStore.fetchPengajuan({
+    const rawData = await pengajuanStore.fetchPengajuan({
       page: 1,
-      per_page: 1000 // Load all data for client-side filtering
+      per_page: 1000, // Load all data for client-side filtering
+      include_deleted: '1' // Include deleted (dicabut) pengajuan for history
     })
 
-    if (response.data) {
-      // Filter: hanya berhasil (terverifikasi, selesai) dan gagal (ditolak)
-      const rawData = response.data.data || response.data || []
-      allPengajuanList.value = rawData.filter(p =>
-        ['terverifikasi', 'selesai', 'ditolak'].includes(p.status)
-      )
-      applyFilter()
-    } else {
-      allPengajuanList.value = []
-      pengajuanList.value = []
-      total.value = 0
-      lastPage.value = 1
-      totalPages.value = 1
-    }
+    // rawData is already the array of pengajuan (response.data.data from store)
+    // Filter: hanya yang selesai (terverifikasi, selesai, ditolak, dicabut)
+    const filteredData = (rawData || []).filter(p =>
+      ['dicabut', 'terverifikasi', 'selesai', 'ditolak'].includes(p.status)
+    )
+
+    allPengajuanList.value = filteredData
+    applyFilter()
+
+    console.log('Riwayat loaded:', filteredData.length, 'items')
+    console.log('Statuses:', filteredData.map(p => p.status))
   } catch (error) {
     console.error('Failed to load pengajuan:', error)
     allPengajuanList.value = []
@@ -311,6 +311,7 @@ function getStatusLabel(status) {
   const labels = {
     draft: 'Draft',
     kirim: 'Dikirim',
+    dicabut: 'Dihapus',
     terverifikasi: 'Terverifikasi',
     ditolak: 'Ditolak',
     selesai: 'Selesai',
@@ -322,6 +323,7 @@ function getStatusBadge(status) {
   const badges = {
     draft: 'badge-default',
     kirim: 'badge-warning',
+    dicabut: 'badge-secondary',
     terverifikasi: 'badge-info',
     ditolak: 'badge-danger',
     selesai: 'badge-success',
@@ -333,6 +335,7 @@ function getStatusIcon(status) {
   const icons = {
     draft: 'ri-draft-line',
     kirim: 'ri-send-plane-line',
+    dicabut: 'ri-delete-bin-line',
     terverifikasi: 'ri-verified-badge-line',
     ditolak: 'ri-close-line',
     selesai: 'ri-checkbox-circle-line',
@@ -350,10 +353,40 @@ function canEdit(status) {
   return false
 }
 
+function canRestore(status) {
+  // Can restore if status is 'dicabut'
+  return status === 'dicabut'
+}
+
+async function handleRestore(id) {
+  if (!confirm('Apakah Anda yakin ingin memulihkan pengajuan ini? Pengajuan akan kembali ke status draft.')) {
+    return
+  }
+
+  try {
+    await pengajuanStore.restorePengajuan(id)
+
+    // Refresh the list
+    await loadPengajuan()
+
+    alert('Pengajuan berhasil dipulihkan!')
+  } catch (error) {
+    console.error('Failed to restore pengajuan:', error)
+    alert(error.response?.data?.message || 'Gagal memulihkan pengajuan')
+  }
+}
+
 // Watch for search query changes
 watch(searchQuery, () => {
   currentPage.value = 1
   applyFilter()
+})
+
+// Refresh data when entering this route (e.g., after cancel from dashboard)
+watch(() => route.path, (newPath) => {
+  if (newPath === '/pengajuan/riwayat' || newPath === '/riwayat') {
+    loadPengajuan()
+  }
 })
 </script>
 
@@ -362,7 +395,7 @@ watch(searchQuery, () => {
     <Breadcrumb />
     <PageHeader
       title="Riwayat Pengajuan"
-      subtitle="Daftar pengajuan yang telah selesai diproses (berhasil/gagal)"
+      subtitle="Daftar pengajuan yang telah selesai diproses, ditolak, atau dihapus"
       :actions="headerActions"
     />
 
@@ -446,6 +479,14 @@ watch(searchQuery, () => {
                       >
                         <i class="ri-eye-line mr-1"></i>
                         Lihat Detail
+                      </button>
+                      <button
+                        v-if="canRestore(item.status)"
+                        @click="handleRestore(item.id)"
+                        class="btn btn-secondary btn-sm"
+                      >
+                        <i class="ri-refresh-line mr-1"></i>
+                        Pulihkan
                       </button>
                     </div>
                   </div>

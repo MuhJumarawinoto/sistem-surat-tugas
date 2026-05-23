@@ -420,13 +420,14 @@ Error:
 ### Pengajuan
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/pengajuan` | List all pengajuan (filtered by role, paginated) |
+| GET | `/api/pengajuan` | List all pengajuan (filtered by role, paginated, add `?include_deleted=1` to include dicabut) |
 | POST | `/api/pengajuan` | Create new pengajuan |
 | GET | `/api/pengajuan/{id}` | Get detail pengajuan |
 | PUT | `/api/pengajuan/{id}` | Update pengajuan |
-| DELETE | `/api/pengajuan/{id}` | Delete pengajuan (draft only) |
+| DELETE | `/api/pengajuan/{id}` | Delete pengajuan (soft delete to `dicabut`, draft only) |
 | POST | `/api/pengajuan/{id}/submit` | Submit pengajuan for approval |
-| POST | `/api/pengajuan/{id}/cancel` | Cancel/withdraw pengajuan (owner, pending/verified only) |
+| POST | `/api/pengajuan/{id}/cancel` | Cancel/withdraw pengajuan (owner only, back to `draft`) |
+| POST | `/api/pengajuan/{id}/restore` | Restore deleted/cancelled pengajuan back to draft |
 
 ### Documents
 | Method | Endpoint | Description |
@@ -581,19 +582,33 @@ actions: {
 draft → pending_atasan → pending_admin → verified → disetujui → signed → selesai/completed
                                ↓                              ↓
                             ditolak                        ditolak
+                               ↑
+                    cancel (tarik kembali)
+
+draft → delete → dicabut (masuk riwayat)
 ```
 
-| Status | Penjelasan | Bisa Edit/Hapus | Bisa Dicabut |
-|--------|------------|-----------------|--------------|
-| `draft` | Pengajuan dibuat, belum dikirim | Ya | Ya |
-| `pending_atasan` | Menunggu approval atasan langsung | Tidak | Ya |
-| `pending_admin` | Menunggu verifikasi admin | Tidak | Ya |
-| `verified` | Dokumen diverifikasi admin | Tidak | Ya |
-| `disetujui` | Disetujui oleh penandatangan | Tidak | Tidak |
-| `signed` | Surat ditandatangani (TTE) | Tidak | Tidak |
-| `ditolak` | Ditolak admin/atasan | Tidak | Tidak |
-| `selesai` | Surat selesai | Tidak | Tidak |
-| `completed` | Proses lengkap | Tidak | Tidak |
+| Status | Penjelasan | Bisa Edit/Hapus | Bisa Dicabut | Bisa Dipulihkan |
+|--------|------------|-----------------|--------------|-----------------|
+| `draft` | Pengajuan dibuat, belum dikirim | Ya | - | - |
+| `pending_atasan` | Menunggu approval atasan langsung | Tidak | Ya (→draft) | - |
+| `pending_admin` | Menunggu verifikasi admin | Tidak | Ya (→draft) | - |
+| `verified` | Dokumen diverifikasi admin | Tidak | Ya (→draft) | - |
+| `disetujui` | Disetujui oleh penandatangan | Tidak | Tidak | - |
+| `signed` | Surat ditandatangani (TTE) | Tidak | Tidak | - |
+| `ditolak` | Ditolak admin/atasan | Tidak | Tidak | - |
+| `selesai` | Surat selesai | Tidak | Tidak | - |
+| `completed` | Proses lengkap | Tidak | Tidak | - |
+| `dicabut` | Pengajuan dihapus dari draft/riwayat | Tidak | - | Ya |
+
+**Alur Penarikan (Cancel):**
+1. **Pending/Verified** → Klik "Cabut Berkas" → Status kembali jadi **draft**
+2. Pengajuan dapat diedit kembali dan dikirim ulang
+
+**Alur Penghapusan (Delete):**
+1. **Draft** → Klik "Hapus" → Status jadi **dicabut** → Masuk **Riwayat**
+2. **Dicabut** → Klik "Pulihkan" → Status kembali jadi **draft**
+3. Data tetap tersimpan (tidak dihapus permanen)
 
 **Alur Singkat:**
 1. **User** → Buat & kirim pengajuan
@@ -792,6 +807,11 @@ ALTER TABLE users ADD FOREIGN KEY (atasan_id) REFERENCES users(id);
 - Migration: `2026_05_23_000001_add_indexes_to_notifications_table.php`
 - Migration: `2026_05_23_000002_add_performance_indexes.php`
 
+**Database Schema Updates:**
+- Migration: `2026_05_23_000003_add_missing_statuses_to_pengajuan_table.php`
+  - Added missing enum values: `verified`, `signed`, `completed`, `dicabut`
+  - Full status enum: `draft`, `pending_atasan`, `pending_admin`, `verified`, `disetujui`, `signed`, `ditolak`, `selesai`, `completed`, `dicabut`
+
 **API Service Layer:**
 - Multiple axios instances with different timeouts:
   - `api` - 30s timeout (default)
@@ -828,7 +848,7 @@ ALTER TABLE users ADD FOREIGN KEY (atasan_id) REFERENCES users(id);
 - Rules:
   - Only owner can cancel their own pengajuan
   - Cancellable statuses: `pending_atasan`, `pending_admin`, `verified`
-  - Status changes back to `draft`
+  - **Status changes BACK to `draft`** (can edit and resubmit)
   - Resets timestamps: `tanggal_submit_atasan`, `tanggal_approve_atasan`, `tanggal_approve_admin`
 
 **Frontend Implementation:**
@@ -836,9 +856,33 @@ ALTER TABLE users ADD FOREIGN KEY (atasan_id) REFERENCES users(id);
 - Dashboard actions:
   - Desktop: Inline button "Cabut Berkas" (red)
   - Mobile: Dropdown menu with "Cabut Berkas" option
-  - Draft: Shows "Hapus" button instead
-- Confirmation modal with warning message
-- Toast notifications for success/error
+- Confirmation modal: "Status akan kembali menjadi Draft dan Anda dapat mengeditnya kembali"
+- Toast: "Pengajuan berhasil ditarik kembali ke Draft"
+
+### Pengajuan Dihapus Masuk Riwayat (Soft Delete & Restore)
+
+**Fitur:**
+- Pengajuan yang dihapus (draft) atau dicabut (pending/verified) **tidak dihapus permanen**
+- Status berubah menjadi `dicabut` dan muncul di **Riwayat Pengajuan**
+- Pemohon dapat **memulihkan** pengajuan yang dicabut kembali menjadi draft
+
+**Backend Implementation:**
+- **Soft Delete**: `DELETE /api/pengajuan/{id}` → status changes to `dicabut`
+- **Cancel**: `POST /api/pengajuan/{id}/cancel` → status changes to `dicabut`
+- **Restore**: `POST /api/pengajuan/{id}/restore` → status back to `draft`
+- Query parameter: `?include_deleted=1` to fetch `dicabut` status
+
+**Frontend Implementation:**
+- **RiwayatPengajuanView** now displays `dicabut` status
+- Added "Dihapus" filter option
+- **Restore button** appears for `dicabut` status
+- Store method: `pengajuanStore.restorePengajuan(id)`
+- New badge style: `badge-secondary` for "Dihapus" status
+
+**Status Badge:**
+| Status | Label | Badge | Icon |
+|--------|-------|-------|------|
+| `dicabut` | Dihapus | `badge-secondary` (gray) | `ri-delete-bin-line` |
 
 ### Dashboard Status Update
 
@@ -854,6 +898,7 @@ ALTER TABLE users ADD FOREIGN KEY (atasan_id) REFERENCES users(id);
 | Database Status | Display Label | Badge Color |
 |-----------------|---------------|-------------|
 | `draft` | Draft | Gray |
+| `dicabut` | Dihapus | Gray (Secondary) |
 | `pending_atasan` | Pending Atasan | Yellow |
 | `pending_admin` | Pending Admin | Yellow |
 | `verified` | Terverifikasi | Blue |
@@ -883,7 +928,8 @@ ALTER TABLE users ADD FOREIGN KEY (atasan_id) REFERENCES users(id);
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/pengajuan/{id}/cancel` | Cancel/withdraw pengajuan (owner only) |
+| POST | `/api/pengajuan/{id}/cancel` | Cancel/withdraw pengajuan (owner only, back to `draft`) |
+| POST | `/api/pengajuan/{id}/restore` | Restore deleted/cancelled pengajuan back to draft (owner only) |
 | POST | `/api/admin/cache/clear` | Clear master data cache (admin only) |
 
 ---

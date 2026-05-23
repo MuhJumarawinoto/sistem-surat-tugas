@@ -143,6 +143,10 @@
     @apply bg-secondary-100 text-secondary-800;
   }
 
+  .badge-secondary {
+    @apply bg-gray-200 text-gray-700;
+  }
+
   .badge-primary {
     @apply bg-primary-100 text-primary-800;
   }

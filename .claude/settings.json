@@ -20,7 +20,8 @@
       "Bash(awk 'NR>=158 && NR<=240 {printf \"%4d: %s\\\\n\", NR, $0}' PersetujuanView.vue)",
       "Bash(node node_modules/vite/bin/vite.js build)",
       "Bash(grep -n \"^</template>$\" \"c:\\\\Users\\\\Bahlil\\\\Downloads\\\\Documents\\\\Sistem-Surat-Belajar-Mandiri\\\\frontend\\\\src\\\\views\\\\pemohon\\\\RiwayatPengajuanView.vue\")",
-      "Bash(curl -s -X GET \"http://localhost:8000/api/pengajuan?per_page=5\" -H \"Accept: application/json\")"
+      "Bash(curl -s -X GET \"http://localhost:8000/api/pengajuan?per_page=5\" -H \"Accept: application/json\")",
+      "Bash(node node_modules\\\\vite\\\\bin\\\\vite.js build)"
     ]
   }
 }

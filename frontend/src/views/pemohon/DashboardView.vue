@@ -16,17 +16,48 @@ const authStore = useAuthStore()
 const pengajuanStore = usePengajuanStore()
 
 // Page header actions
+const isRefreshing = ref(false)
+
 const headerActions = computed(() => {
+  const actions = []
+
+  // Refresh button for all users
+  actions.push({
+    label: 'Refresh',
+    icon: 'ri-refresh-line',
+    onClick: refreshData,
+    variant: 'btn-secondary',
+    isLoading: isRefreshing.value
+  })
+
   if (authStore.isPemohon) {
-    return [{
+    actions.push({
       label: 'Buat Pengajuan Baru',
       icon: 'ri-add-line',
       to: '/pengajuan/baru',
       variant: 'btn-primary'
-    }]
+    })
   }
-  return []
+
+  return actions
 })
+
+// Refresh all data
+async function refreshData() {
+  isRefreshing.value = true
+  try {
+    await Promise.all([
+      loadStats(),
+      loadVerificationInfo()
+    ])
+    toast.success('Data berhasil diperbarui')
+  } catch (error) {
+    const message = error.response?.data?.message || 'Gagal memperbarui data'
+    toast.error(message)
+  } finally {
+    isRefreshing.value = false
+  }
+}
 
 const stats = ref({
   draft: 0,
@@ -80,6 +111,24 @@ const canDelete = (pengajuan) => {
   return isOwn && pengajuan.status === 'draft'
 }
 
+// Check if pengajuan can be restored (dicabut only)
+const canRestore = (pengajuan) => {
+  const isOwn = authStore.user?.id === pengajuan.user_id
+  return isOwn && pengajuan.status === 'dicabut'
+}
+
+// Handle restore pengajuan
+async function handleRestore(id) {
+  try {
+    await api.post(`/pengajuan/${id}/restore`)
+    await loadStats()
+    toast.success('Pengajuan berhasil dipulihkan')
+  } catch (error) {
+    const message = error.response?.data?.message || 'Gagal memulihkan pengajuan'
+    toast.error(message)
+  }
+}
+
 const statusOptions = [
   { value: '', label: 'Semua Status' },
   { value: 'draft', label: 'Draft' },
@@ -89,6 +138,7 @@ const statusOptions = [
   { value: 'disetujui', label: 'Disetujui' },
   { value: 'signed', label: 'Signed' },
   { value: 'ditolak', label: 'Ditolak' },
+  { value: 'dicabut', label: 'Dicabut' },
   { value: 'selesai', label: 'Selesai' },
   { value: 'completed', label: 'Completed' },
 ]
@@ -189,6 +239,7 @@ function getStatusLabel(status) {
     disetujui: 'Disetujui',
     signed: 'Signed',
     ditolak: 'Ditolak',
+    dicabut: 'Dicabut',
     selesai: 'Selesai',
     completed: 'Completed',
   }
@@ -204,6 +255,7 @@ function getStatusBadge(status) {
     disetujui: 'badge-primary',
     signed: 'badge-primary',
     ditolak: 'badge-danger',
+    dicabut: 'badge-secondary',
     selesai: 'badge-success',
     completed: 'badge-success',
   }
@@ -219,6 +271,7 @@ function getStatusIcon(status) {
     disetujui: 'ri-check-line',
     signed: 'ri-edit-line',
     ditolak: 'ri-close-line',
+    dicabut: 'ri-delete-bin-line',
     selesai: 'ri-checkbox-circle-line',
     completed: 'ri-checkbox-circle-line',
   }
@@ -304,29 +357,29 @@ function closeCancelModal() {
   cancelReason.value = ''
 }
 
-// Handle cancel pengajuan
+// Handle cancel pengajuan - tarik kembali ke draft
 async function handleCancel() {
   if (!cancelingId.value) return
 
   try {
     await pengajuanStore.cancelPengajuan(cancelingId.value)
     await loadStats() // Refresh data
-    toast.success('Berkas pengajuan berhasil dicabut')
+    toast.success('Pengajuan berhasil ditarik kembali ke Draft')
     closeCancelModal()
   } catch (error) {
-    const message = error.response?.data?.message || 'Gagal mencabut berkas pengajuan'
+    const message = error.response?.data?.message || 'Gagal menarik pengajuan'
     toast.error(message)
   }
 }
 
-// Handle delete pengajuan (draft only)
+// Handle delete pengajuan - hapus permanen ke riwayat (dicabut)
 async function handleDelete(id) {
-  if (!confirm('Yakin ingin menghapus pengajuan ini?')) return
+  if (!confirm('Yakin ingin menghapus pengajuan ini? Data akan masuk ke Riwayat dan tidak dapat diedit kembali.')) return
 
   try {
     await pengajuanStore.deletePengajuan(id)
     await loadStats() // Refresh data
-    toast.success('Pengajuan berhasil dihapus')
+    toast.success('Pengajuan dihapus dan masuk ke Riwayat')
   } catch (error) {
     const message = error.response?.data?.message || 'Gagal menghapus pengajuan'
     toast.error(message)
@@ -580,6 +633,13 @@ async function handleDelete(id) {
                         <i class="ri-eye-line"></i> Lihat
                       </button>
                       <button
+                        v-if="canRestore(item)"
+                        @click="handleRestore(item.id)"
+                        class="w-full text-left px-4 py-2 hover:bg-green-50 text-green-600 flex items-center gap-2"
+                      >
+                        <i class="ri-refresh-line"></i> Pulihkan
+                      </button>
+                      <button
                         v-if="canDelete(item)"
                         @click="handleDelete(item.id)"
                         class="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 flex items-center gap-2"
@@ -601,6 +661,14 @@ async function handleDelete(id) {
                     <button @click="goToDetail(item.id)" class="btn btn-primary btn-sm">
                       <i class="ri-eye-line mr-1"></i>
                       Lihat
+                    </button>
+                    <button
+                      v-if="canRestore(item)"
+                      @click="handleRestore(item.id)"
+                      class="btn btn-success btn-sm"
+                    >
+                      <i class="ri-refresh-line mr-1"></i>
+                      Pulihkan
                     </button>
                     <button
                       v-if="canCancel(item)"

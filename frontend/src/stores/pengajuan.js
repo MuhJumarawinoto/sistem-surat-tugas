@@ -123,6 +123,27 @@ export const usePengajuanStore = defineStore('pengajuan', {
       }
     },
 
+    async restorePengajuan(id) {
+      this.loading = true
+      this.error = null
+      try {
+        const response = await api.post(`/pengajuan/${id}/restore`)
+
+        // Remove from list if restored (will be back in draft)
+        const index = this.pengajuanList.findIndex(p => p.id === id)
+        if (index !== -1) {
+          this.pengajuanList.splice(index, 1)
+        }
+
+        return response.data
+      } catch (error) {
+        this.error = error.response?.data?.message || 'Failed to restore pengajuan'
+        throw error
+      } finally {
+        this.loading = false
+      }
+    },
+
     async getNomorPengajuan() {
       try {
         const response = await api.get('/pengajuan/nomor')
