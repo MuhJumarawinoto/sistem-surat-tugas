@@ -8,6 +8,8 @@ export const useMasterStore = defineStore('master', {
     statusPengajuan: [],
     jenisDokumen: [],
     akreditasi: [],
+    perguruanTinggi: [],
+    prodi: [],
     loading: false,
   }),
 
@@ -54,6 +56,35 @@ export const useMasterStore = defineStore('master', {
         this.akreditasi = response.data
       } catch (error) {
         console.error('Failed to fetch akreditasi:', error)
+      }
+    },
+
+    async fetchPerguruanTinggi(keyword = '') {
+      try {
+        const response = await api.get('/master/perguruan-tinggi', {
+          params: { keyword }
+        })
+        this.perguruanTinggi = response.data
+        return response.data
+      } catch (error) {
+        console.error('Failed to fetch perguruan tinggi:', error)
+        return []
+      }
+    },
+
+    async fetchProdi(perguruanTinggiId = null, keyword = '') {
+      try {
+        const response = await api.get('/master/prodi', {
+          params: {
+            perguruan_tinggi_id: perguruanTinggiId,
+            keyword
+          }
+        })
+        this.prodi = response.data
+        return response.data
+      } catch (error) {
+        console.error('Failed to fetch prodi:', error)
+        return []
       }
     },
 

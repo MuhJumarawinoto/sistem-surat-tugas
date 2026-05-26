@@ -9,7 +9,7 @@ const authStore = useAuthStore()
 const menuGroups = computed(() => {
   const groups = []
 
-  // ========== MENU PEMOHON & ATASAN ==========
+  // ========== MENU PEMOHON & ATASAN ONLY ==========
   if (authStore.isPemohon || authStore.isAtasan) {
     // Menu Utama with Dashboard
     groups.push({
@@ -18,7 +18,10 @@ const menuGroups = computed(() => {
         { path: '/dashboard', label: 'Dashboard', icon: 'ri-dashboard-line' },
       ],
     })
+  }
 
+  // ========== MENU PENGAJUAN (PEMOHON & ATASAN ONLY) ==========
+  if (authStore.isPemohon || authStore.isAtasan) {
     groups.push({
       title: 'Pengajuan',
       items: [
@@ -38,9 +41,15 @@ const menuGroups = computed(() => {
       ],
     })
     groups.push({
-      title: 'Manajemen',
+      title: 'Surat',
       items: [
-        { path: '/admin/surat', label: 'Surat Izin Belajar', icon: 'ri-file-text-line' },
+        { path: '/admin/surat-izin', label: 'Surat Izin Belajar', icon: 'ri-file-text-line' },
+        { path: '/admin/surat-tugas-mandiri', label: 'Surat Tugas Mandiri', icon: 'ri-file-list-line' },
+      ],
+    })
+    groups.push({
+      title: 'Manajemen Data',
+      items: [
         { path: '/admin/pegawai', label: 'Data Pegawai', icon: 'ri-team-line' },
       ],
     })
@@ -52,14 +61,25 @@ const menuGroups = computed(() => {
     })
   }
 
-  // ========== MENU KEPALA BKPSDM ==========
+  // ========== MENU KEPALA (Kepala Unit / Kepala BKPSDM) ==========
   if (authStore.isKepala) {
     groups.push({
       title: 'Tanda Tangan',
       items: [
         { path: '/kepala/signing', label: 'Surat Perlu TTE', icon: 'ri-edit-sign-line' },
+        { path: '/kepala/riwayat', label: 'Riwayat TTE', icon: 'ri-history-line' },
       ],
     })
+
+    // Additional menu for Kepala Unit (non-BKPSDM)
+    if (authStore.user?.is_kepala_unit) {
+      groups.push({
+        title: 'Surat Tugas',
+        items: [
+          { path: '/kepala/surat-tugas', label: 'Surat Tugas Belajar', icon: 'ri-file-list-line' },
+        ],
+      })
+    }
   }
 
   return groups
@@ -71,6 +91,15 @@ function isActive(path) {
   }
   if (path.startsWith('/admin/surat')) {
     return route.path.startsWith('/admin/surat')
+  }
+  if (path.startsWith('/kepala/surat-tugas')) {
+    return route.path.startsWith('/kepala/surat-tugas')
+  }
+  if (path.startsWith('/kepala/signing')) {
+    return route.path.startsWith('/kepala/signing')
+  }
+  if (path.startsWith('/kepala/riwayat')) {
+    return route.path.startsWith('/kepala/riwayat')
   }
   return route.path.startsWith(path)
 }

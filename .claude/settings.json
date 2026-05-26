@@ -21,7 +21,26 @@
       "Bash(node node_modules/vite/bin/vite.js build)",
       "Bash(grep -n \"^</template>$\" \"c:\\\\Users\\\\Bahlil\\\\Downloads\\\\Documents\\\\Sistem-Surat-Belajar-Mandiri\\\\frontend\\\\src\\\\views\\\\pemohon\\\\RiwayatPengajuanView.vue\")",
       "Bash(curl -s -X GET \"http://localhost:8000/api/pengajuan?per_page=5\" -H \"Accept: application/json\")",
-      "Bash(node node_modules\\\\vite\\\\bin\\\\vite.js build)"
+      "Bash(node node_modules\\\\vite\\\\bin\\\\vite.js build)",
+      "Bash(curl -k \"https://pddikti.fastapicloud.dev/api/pt/detail/001005\" --max-time 30)",
+      "Bash(curl -k \"https://pddikti.fastapicloud.dev/api/pt/prodi/001005/\" --max-time 30)",
+      "Bash(curl -k \"https://pddikti.fastapicloud.dev/api/search/pt/Universitas%20Hasanuddin/\" --max-time 30)",
+      "Bash(curl -k \"https://pddikti.fastapicloud.dev/api/pt/detail/b7zDtagRDFuhYPUTqRJQkwMDVPOYF2EP_t5dp_YtxwHJWPXgrkfsPlt_sC6oBJzHimpifA==\" --max-time 30)",
+      "Bash(curl -k \"https://pddikti.fastapicloud.dev/api/pt/prodi/b7zDtagRDFuhYPUTqRJQkwMDVPOYF2EP_t5dp_YtxwHJWPXgrkfsPlt_sC6oBJzHimpifA==/\" --max-time 30)",
+      "Bash(curl -s http://localhost:8000/api/test)",
+      "Bash(curl -s http://localhost:8000/api/me -H \"Accept: application/json\")",
+      "Bash(mysql -u root -e \"DESCRIBE sipintar.perguruan_tinggi\")",
+      "Bash(mysql -h 127.0.0.1 -u root sipintar -e \"DESCRIBE prodis;\")",
+      "Bash(php -r 'require '\\\\''vendor/autoload.php'\\\\''; $app = require '\\\\''bootstrap/app.php'\\\\''; $app->make\\('\\\\''Illuminate\\\\Contracts\\\\Console\\\\Kernel'\\\\''\\)->bootstrap\\(\\); var_dump\\(DB::select\\('\\\\''SHOW COLUMNS FROM prodis'\\\\''\\)\\);')",
+      "Bash(php -r 'require '\\\\''vendor/autoload.php'\\\\''; $app = require '\\\\''bootstrap/app.php'\\\\''; $app->make\\('\\\\''Illuminate\\\\Contracts\\\\Console\\\\Kernel'\\\\''\\)->bootstrap\\(\\); echo '\\\\''Perguruan Tinggi: '\\\\'' . \\\\App\\\\Models\\\\PerguruanTinggi::count\\(\\) . PHP_EOL; echo '\\\\''Prodi: '\\\\'' . \\\\App\\\\Models\\\\Prodi::count\\(\\) . PHP_EOL;')",
+      "Bash(php -r 'require '\\\\''vendor/autoload.php'\\\\''; $app = require '\\\\''bootstrap/app.php'\\\\''; $app->make\\('\\\\''Illuminate\\\\Contracts\\\\Console\\\\Kernel'\\\\''\\)->bootstrap\\(\\); $user = \\\\App\\\\Models\\\\User::where\\('\\\\''email'\\\\'', '\\\\''kepala@bkpsdm.go.id'\\\\''\\)->first\\(\\); if \\($user\\) { echo '\\\\''User ID: '\\\\'' . $user->id . PHP_EOL; echo '\\\\''Role: '\\\\'' . $user->role->slug . PHP_EOL; echo '\\\\''is_kepala_unit: '\\\\'' . \\($user->is_kepala_unit ? '\\\\''true'\\\\'' : '\\\\''false'\\\\''\\) . PHP_EOL; echo '\\\\''Pengajuan count: '\\\\'' . $user->pengajuan\\(\\)->count\\(\\) . PHP_EOL; } else { echo '\\\\''User not found'\\\\'' . PHP_EOL; }')",
+      "Bash(curl -s \"http://localhost:8000/api/master/perguruan-tinggi?keyword=universitas\")",
+      "Bash(curl -s \"http://localhost:8000/api/admin/surat-izin?status=draft\" -H \"Authorization: Bearer YOUR_TOKEN\")",
+      "Bash(curl -s -X POST \"http://localhost:8000/api/admin/pddikti-sync/universitas\" -H \"Content-Type: application/json\" -H \"Authorization: Bearer test\" -d '{\"keyword\":\"Universitas Indonesia Depok\"}')",
+      "Bash(curl -s \"https://pddikti.fastapicloud.dev/api/pt/prodi/001002/20241\")",
+      "Bash(curl -s \"https://pddikti.fastapicloud.dev/api/pt/prodi/002001/20241\")",
+      "Bash(curl -s \"https://pddikti.fastapicloud.dev/api/search/prodi/Universitas Indonesia\")",
+      "Bash(curl -s \"https://pddikti.fastapicloud.dev/api/search/pt/Universitas Indonesia\")"
     ]
   }
 }

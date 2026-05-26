@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMasterStore } from '@/stores/master'
 import { usePengajuanStore } from '@/stores/pengajuan'
@@ -12,7 +12,6 @@ import DocumentInfoTooltip from '@/components/DocumentInfoTooltip.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
 import PageHeader from '@/components/PageHeader.vue'
-import PDDiktiDropdown from '@/components/PDDiktiDropdown.vue'
 
 const router = useRouter()
 const masterStore = useMasterStore()
@@ -27,6 +26,7 @@ const headerSubtitle = computed(() => {
 const form = ref({
   jenjang_id: '',
   nama_prodi: '',
+  perguruan_tinggi_id: '',
   perguruan_tinggi: '',
   akreditasi_prodi: '',
   lokasi_pt: '',
@@ -34,11 +34,18 @@ const form = ref({
   rencana_selesai: '',
 })
 
+// Dropdown states
+const ptSearchKeyword = ref('')
+const prodiSearchKeyword = ref('')
+const showPTDropdown = ref(false)
+const showProdiDropdown = ref(false)
+const filteredPT = ref([])
+const filteredProdi = ref([])
 const selectedPT = ref(null)
-const selectedProdi = ref(null)
-const loadingPTDetail = ref(false)
-const loadingProdiList = ref(false)
-const syncingPDDikti = ref(false)
+const loadingPT = ref(false)
+const loadingProdi = ref(false)
+const ptDropdownMessage = ref('')
+const prodiDropdownMessage = ref('')
 
 const documents = ref({
   sk_pangkat: null,
@@ -121,49 +128,19 @@ const jenisDokumenList = [
 onMounted(async () => {
   await masterStore.fetchAll()
   nomorPengajuan.value = await pengajuanStore.getNomorPengajuan()
+
+  // Close dropdowns when clicking outside
+  document.addEventListener('click', handleClickOutside)
 })
 
-watch(selectedPT, async (newValue) => {
-  if (newValue) {
-    if (typeof newValue === 'object') {
-      form.value.perguruan_tinggi = newValue.nama_pt
-      if (newValue.id) {
-        loadingPTDetail.value = true
-        try {
-          const response = await api.get(`/pddikti/universitas/${newValue.id}/detail`)
-          const detail = response.data.data
-          form.value.lokasi_pt = detail.kab_kota || detail.provinsi || ''
-        } catch (error) {
-          console.error('Failed to fetch PT detail:', error)
-          form.value.lokasi_pt = ''
-        } finally {
-          loadingPTDetail.value = false
-        }
-      }
-    } else {
-      form.value.perguruan_tinggi = newValue
-    }
-  } else {
-    form.value.perguruan_tinggi = ''
-    form.value.lokasi_pt = ''
+function handleClickOutside(event) {
+  if (!event.target.closest('.relative')) {
+    closeDropdowns()
   }
-  selectedProdi.value = null
-  form.value.nama_prodi = ''
-  form.value.akreditasi_prodi = ''
-})
+}
 
-watch(selectedProdi, (newValue) => {
-  if (newValue) {
-    if (typeof newValue === 'object') {
-      form.value.nama_prodi = newValue.nama_prodi
-      form.value.akreditasi_prodi = newValue.akreditasi || ''
-    } else {
-      form.value.nama_prodi = newValue
-    }
-  } else {
-    form.value.nama_prodi = ''
-    form.value.akreditasi_prodi = ''
-  }
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
 })
 
 function openImageModal(url) {
@@ -189,6 +166,106 @@ async function handleDropdownFocus(type) {
       loadingDropdown.value = false
     }
   }
+}
+
+// Perguruan Tinggi Dropdown
+async function searchPerguruanTinggi(keyword) {
+  ptSearchKeyword.value = keyword
+
+  if (keyword.length >= 2) {
+    loadingPT.value = true
+    ptDropdownMessage.value = ''
+    try {
+      const results = await masterStore.fetchPerguruanTinggi(keyword)
+      filteredPT.value = results
+
+      if (results.length === 0) {
+        ptDropdownMessage.value = 'Tidak ditemukan. Ketik untuk mencari perguruan tinggi lain.'
+      } else {
+        ptDropdownMessage.value = `Ditemukan ${results.length} perguruan tinggi`
+      }
+      showPTDropdown.value = true
+    } catch (error) {
+      ptDropdownMessage.value = 'Gagal memuat data. Silakan coba lagi.'
+      console.error('Error searching PT:', error)
+    } finally {
+      loadingPT.value = false
+    }
+  } else {
+    filteredPT.value = []
+    showPTDropdown.value = false
+    ptDropdownMessage.value = keyword.length > 0 ? 'Ketik minimal 2 karakter untuk mencari...' : ''
+  }
+}
+
+function selectPerguruanTinggi(pt) {
+  selectedPT.value = pt
+  form.value.perguruan_tinggi_id = pt.id
+  form.value.perguruan_tinggi = pt.nama_pt
+  form.value.lokasi_pt = pt.kab_kota && pt.provinsi ? `${pt.kab_kota}, ${pt.provinsi}` : ''
+  showPTDropdown.value = false
+  ptSearchKeyword.value = ''
+  // Reset prodi when PT changes
+  form.value.nama_prodi = ''
+  filteredProdi.value = []
+  prodiDropdownMessage.value = ''
+}
+
+function clearPerguruanTinggi() {
+  selectedPT.value = null
+  form.value.perguruan_tinggi_id = ''
+  form.value.perguruan_tinggi = ''
+  form.value.lokasi_pt = ''
+  form.value.nama_prodi = ''
+  filteredPT.value = []
+  filteredProdi.value = []
+}
+
+// Prodi Dropdown
+async function searchProdi(keyword) {
+  prodiSearchKeyword.value = keyword
+
+  if (keyword.length >= 2) {
+    loadingProdi.value = true
+    prodiDropdownMessage.value = ''
+    try {
+      const ptId = selectedPT.value ? selectedPT.value.id : null
+      const results = await masterStore.fetchProdi(ptId, keyword)
+      filteredProdi.value = results
+
+      if (results.length === 0) {
+        prodiDropdownMessage.value = ptId
+          ? 'Tidak ada program studi untuk perguruan tinggi ini. Coba kata kunci lain.'
+          : 'Tidak ditemukan. Pilih perguruan tinggi terlebih dahulu untuk hasil yang lebih spesifik.'
+      } else {
+        prodiDropdownMessage.value = `Ditemukan ${results.length} program studi`
+      }
+      showProdiDropdown.value = true
+    } catch (error) {
+      prodiDropdownMessage.value = 'Gagal memuat data. Silakan coba lagi.'
+      console.error('Error searching Prodi:', error)
+    } finally {
+      loadingProdi.value = false
+    }
+  } else {
+    filteredProdi.value = []
+    showProdiDropdown.value = false
+    prodiDropdownMessage.value = keyword.length > 0 ? 'Ketik minimal 2 karakter untuk mencari...' : ''
+  }
+}
+
+function selectProdi(prodi) {
+  form.value.nama_prodi = prodi.nama_prodi
+  if (prodi.akreditasi && !form.value.akreditasi_prodi) {
+    form.value.akreditasi_prodi = prodi.akreditasi
+  }
+  showProdiDropdown.value = false
+  prodiSearchKeyword.value = ''
+}
+
+function closeDropdowns() {
+  showPTDropdown.value = false
+  showProdiDropdown.value = false
 }
 
 function getPreviewUrl(file) {
@@ -223,44 +300,6 @@ function handleFileUpload(docKey, event) {
 
 function removeFile(docKey) {
   documents.value[docKey] = null
-}
-
-// Sync PDDikti Data
-async function syncPDDiktiData() {
-  syncingPDDikti.value = true
-  try {
-    // Sync popular universities
-    const keywords = ['Universitas', 'Institut', 'Sekolah Tinggi']
-    let totalSynced = 0
-
-    for (const keyword of keywords.slice(0, 1)) { // Limit to 1 keyword for now
-      const response = await api.post('/admin/pddikti-sync/universitas', {
-        keyword: keyword,
-        limit: 50
-      })
-      totalSynced += response.data.data.total || 0
-    }
-
-    toast.success(`Berhasil sync ${totalSynced} data perguruan tinggi`)
-  } catch (error) {
-    console.error('Sync error:', error)
-    toast.warning('Fitur sync hanya untuk admin. Data akan diambil langsung dari PDDikti.')
-  } finally {
-    syncingPDDikti.value = false
-  }
-}
-
-// Get akreditasi badge class
-function getAkreditasiBadgeClass(akreditasi) {
-  const classes = {
-    'A': 'bg-green-600 text-white',
-    'B': 'bg-blue-600 text-white',
-    'C': 'bg-yellow-500 text-white',
-    'Unggul': 'bg-green-700 text-white',
-    'Baik Sekali': 'bg-blue-700 text-white',
-    'Baik': 'bg-cyan-600 text-white',
-  }
-  return classes[akreditasi] || 'bg-gray-200 text-gray-700'
 }
 
 async function saveDraftOnly() {
@@ -443,20 +482,6 @@ const uploadedCount = computed(() => {
             </h3>
           </div>
           <div class="card-body">
-            <!-- Sync Button -->
-            <div class="flex items-center justify-end mb-4 pb-3 border-b border-secondary-200">
-              <button
-                type="button"
-                @click="syncPDDiktiData"
-                :disabled="syncingPDDikti"
-                class="flex items-center gap-2 text-xs text-primary-600 hover:text-primary-700 transition-colors"
-              >
-                <LoadingSpinner v-if="syncingPDDikti" size="xs" />
-                <i v-else class="ri-refresh-line"></i>
-                <span>Sync Data PDDikti</span>
-              </button>
-            </div>
-
             <div class="space-y-4">
               <!-- 1. Jenjang -->
               <div>
@@ -483,17 +508,199 @@ const uploadedCount = computed(() => {
               </div>
 
               <!-- 2. Perguruan Tinggi -->
-              <div>
-                <label class="input-label">Perguruan Tinggi</label>
-                <PDDiktiDropdown
-                  v-model="selectedPT"
-                  type="universitas"
-                  placeholder="Cari nama perguruan tinggi..."
-                  :required="true"
-                />
+              <div class="relative">
+                <label class="input-label">Perguruan Tinggi <span class="text-xs text-primary-600 font-normal">(Ketik untuk mencari dari database PDDikti)</span></label>
+                <div class="relative">
+                  <input
+                    :value="form.perguruan_tinggi"
+                    @input="(e) => { form.perguruan_tinggi = e.target.value; searchPerguruanTinggi(e.target.value) }"
+                    @focus="() => form.perguruan_tinggi && searchPerguruanTinggi(form.perguruan_tinggi)"
+                    type="text"
+                    required
+                    class="input-field pr-10"
+                    placeholder="Ketik nama perguruan tinggi (minimal 2 karakter)..."
+                  />
+                  <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                    <LoadingSpinner v-if="loadingPT" size="sm" />
+                    <i v-else class="ri-search-line text-secondary-400"></i>
+                  </div>
+                </div>
+                <!-- Dropdown Results -->
+                <div
+                  v-if="showPTDropdown"
+                  class="absolute z-10 w-full mt-1 bg-white border border-primary-300 rounded-lg shadow-xl max-h-72 overflow-hidden"
+                >
+                  <!-- Message Header -->
+                  <div v-if="ptDropdownMessage" class="px-3 py-2 bg-primary-50 border-b border-primary-100 text-xs text-primary-700">
+                    {{ ptDropdownMessage }}
+                  </div>
+                  <!-- Loading State -->
+                  <div v-if="loadingPT" class="p-4 text-center text-secondary-500 text-sm">
+                    <i class="ri-loader-4-line animate-spin text-lg"></i>
+                    <p class="mt-1">Mencari perguruan tinggi...</p>
+                  </div>
+                  <!-- Results -->
+                  <div v-else-if="filteredPT.length > 0" class="max-h-60 overflow-y-auto">
+                    <div
+                      v-for="pt in filteredPT"
+                      :key="pt.id"
+                      @click="selectPerguruanTinggi(pt)"
+                      class="p-3 hover:bg-primary-50 cursor-pointer border-b border-secondary-100 last:border-b-0 transition-colors"
+                    >
+                      <p class="text-sm font-semibold text-secondary-800">{{ pt.nama_pt }}</p>
+                      <p class="text-xs text-secondary-500 flex items-center gap-1 mt-0.5">
+                        <i class="ri-map-pin-line"></i>
+                        {{ pt.kab_kota }}, {{ pt.provinsi }}
+                      </p>
+                    </div>
+                  </div>
+                  <!-- No Results -->
+                  <div v-else-if="!loadingPT" class="p-4 text-center text-secondary-500 text-sm">
+                    <i class="ri-search-2-line text-2xl text-secondary-300 mb-1"></i>
+                    <p>{{ ptDropdownMessage || 'Tidak ditemukan' }}</p>
+                  </div>
+                </div>
+                <!-- Selected PT Badge -->
+                <div v-if="selectedPT" class="mt-2 flex items-center gap-2">
+                  <span class="badge badge-success text-xs">
+                    <i class="ri-check-line mr-1"></i>
+                    {{ selectedPT.nama_pt }}
+                  </span>
+                  <button @click="clearPerguruanTinggi" class="text-xs text-red-500 hover:text-red-700">
+                    <i class="ri-close-line"></i> Hapus
+                  </button>
+                </div>
               </div>
 
-              <!-- 3. Rencana Mulai & Selesai -->
+              <!-- 3. Program Studi -->
+              <div class="relative">
+                <label class="input-label">Program Studi <span class="text-xs text-primary-600 font-normal">(Ketik untuk mencari dari database PDDikti)</span></label>
+                <div class="relative">
+                  <input
+                    :value="form.nama_prodi"
+                    @input="(e) => { form.nama_prodi = e.target.value; searchProdi(e.target.value) }"
+                    @focus="() => form.nama_prodi && searchProdi(form.nama_prodi)"
+                    type="text"
+                    required
+                    class="input-field pr-10"
+                    placeholder="Ketik nama program studi (minimal 2 karakter)..."
+                  />
+                  <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                    <LoadingSpinner v-if="loadingProdi" size="sm" />
+                    <i v-else class="ri-search-line text-secondary-400"></i>
+                  </div>
+                </div>
+                <!-- Dropdown Results -->
+                <div
+                  v-if="showProdiDropdown"
+                  class="absolute z-10 w-full mt-1 bg-white border border-primary-300 rounded-lg shadow-xl max-h-72 overflow-hidden"
+                >
+                  <!-- Message Header -->
+                  <div v-if="prodiDropdownMessage" class="px-3 py-2 bg-primary-50 border-b border-primary-100 text-xs text-primary-700">
+                    {{ prodiDropdownMessage }}
+                  </div>
+                  <!-- Loading State -->
+                  <div v-if="loadingProdi" class="p-4 text-center text-secondary-500 text-sm">
+                    <i class="ri-loader-4-line animate-spin text-lg"></i>
+                    <p class="mt-1">Mencari program studi...</p>
+                  </div>
+                  <!-- Results -->
+                  <div v-else-if="filteredProdi.length > 0" class="max-h-60 overflow-y-auto">
+                    <div
+                      v-for="prodi in filteredProdi"
+                      :key="prodi.id"
+                      @click="selectProdi(prodi)"
+                      class="p-3 hover:bg-primary-50 cursor-pointer border-b border-secondary-100 last:border-b-0 transition-colors"
+                    >
+                      <div class="flex items-start justify-between gap-2">
+                        <div class="flex-1 min-w-0">
+                          <p class="text-sm font-semibold text-secondary-800">{{ prodi.nama_prodi }}</p>
+                          <p class="text-xs text-secondary-500 flex items-center gap-2 mt-0.5">
+                            <span class="badge badge-xs badge-primary">{{ prodi.jenjang }}</span>
+                            <span v-if="prodi.perguruan_tinggi" class="truncate">{{ prodi.perguruan_tinggi.nama_pt }}</span>
+                          </p>
+                        </div>
+                        <span v-if="prodi.akreditasi" class="badge badge-xs flex-shrink-0"
+                          :class="{
+                            'badge-success': ['A', 'Unggul', 'Baik Sekali'].includes(prodi.akreditasi),
+                            'badge-warning': ['B', 'Baik'].includes(prodi.akreditasi),
+                            'badge-danger': ['C', 'Cukup'].includes(prodi.akreditasi)
+                          }">
+                          {{ prodi.akreditasi }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- No Results -->
+                  <div v-else-if="!loadingProdi" class="p-4 text-center text-secondary-500 text-sm">
+                    <i class="ri-search-2-line text-2xl text-secondary-300 mb-1"></i>
+                    <p>{{ prodiDropdownMessage || 'Tidak ditemukan' }}</p>
+                  </div>
+                </div>
+                <!-- Hint -->
+                <p v-if="!selectedPT" class="text-xs text-amber-600 mt-1">
+                  <i class="ri-lightbulb-line"></i>
+                  Pilih perguruan tinggi terlebih dahulu untuk hasil yang lebih spesifik.
+                </p>
+              </div>
+
+              <!-- 4. Akreditasi Prodi -->
+              <div>
+                <label class="input-label">Akreditasi Prodi <span class="text-xs text-primary-600 font-normal">(Data dari PDDikti)</span></label>
+                <div class="relative">
+                  <select
+                    v-model="form.akreditasi_prodi"
+                    @focus="handleDropdownFocus('akreditasi')"
+                    required
+                    class="select-field appearance-none pr-10"
+                    :disabled="loadingDropdown || masterStore.loading"
+                  >
+                    <option value="">Pilih Akreditasi Prodi</option>
+                    <option v-if="loadingDropdown || masterStore.loading" disabled>Loading...</option>
+                    <option v-for="a in masterStore.akreditasi" :key="a.value" :value="a.value">
+                      {{ a.label }}
+                    </option>
+                  </select>
+                  <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                    <LoadingSpinner v-if="loadingDropdown || masterStore.loading" size="sm" />
+                    <i v-else class="ri-arrow-down-s-line text-secondary-400"></i>
+                  </div>
+                </div>
+                <p v-if="form.akreditasi_prodi" class="text-xs mt-1">
+                  <span class="badge badge-xs"
+                    :class="{
+                      'badge-success': ['A', 'Unggul', 'Baik Sekali', 'Terakreditasi Unggul'].includes(form.akreditasi_prodi),
+                      'badge-warning': ['B', 'Baik', 'Terakreditasi'].includes(form.akreditasi_prodi),
+                      'badge-danger': ['C', 'Cukup'].includes(form.akreditasi_prodi)
+                    }">
+                    {{ form.akreditasi_prodi }}
+                  </span>
+                  <span class="text-secondary-500 ml-1">- Dipilih</span>
+                </p>
+              </div>
+
+              <!-- 5. Lokasi Perguruan Tinggi -->
+              <div>
+                <label class="input-label">Lokasi Perguruan Tinggi <span class="text-xs text-primary-600 font-normal">(Auto dari database)</span></label>
+                <div class="relative">
+                  <input
+                    v-model="form.lokasi_pt"
+                    type="text"
+                    required
+                    class="input-field"
+                    placeholder="Otomatis terisi dari perguruan tinggi yang dipilih"
+                  />
+                  <div v-if="form.lokasi_pt" class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                    <i class="ri-map-pin-line text-success-500"></i>
+                  </div>
+                </div>
+                <p class="text-xs text-secondary-500 mt-1">
+                  <i class="ri-information-line text-primary-500"></i>
+                  Lokasi otomatis terisi setelah memilih perguruan tinggi. Bisa diedit manual jika perlu.
+                </p>
+              </div>
+
+              <!-- 6. Rencana Mulai & Selesai -->
               <div class="grid grid-cols-2 gap-4">
                 <div>
                   <label class="input-label">Rencana Mulai</label>
@@ -502,59 +709,6 @@ const uploadedCount = computed(() => {
                 <div>
                   <label class="input-label">Rencana Selesai</label>
                   <input v-model="form.rencana_selesai" type="date" required class="input-field" />
-                </div>
-              </div>
-
-              <!-- 4. Lokasi PT (Auto-fill) -->
-              <div>
-                <label class="input-label">Lokasi Perguruan Tinggi</label>
-                <div class="relative">
-                  <input
-                    v-model="form.lokasi_pt"
-                    type="text"
-                    class="input-field pr-10"
-                    :class="{ 'pl-10': loadingPTDetail }"
-                    placeholder="Otomatis terisi saat memilih perguruan tinggi"
-                    readonly
-                  />
-                  <div v-if="loadingPTDetail" class="absolute inset-y-0 left-0 flex items-center pl-3">
-                    <LoadingSpinner size="sm" />
-                  </div>
-                  <div v-else-if="form.lokasi_pt" class="absolute inset-y-0 right-0 flex items-center pr-3">
-                    <i class="ri-check-line text-success text-lg"></i>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 5. Program Studi -->
-              <div>
-                <label class="input-label">Program Studi</label>
-                <PDDiktiDropdown
-                  v-model="selectedProdi"
-                  type="prodi"
-                  :id-pt="selectedPT?.id || selectedPT?.id"
-                  placeholder="Cari program studi di PDDikti..."
-                  :disabled="!selectedPT || loadingPTDetail"
-                  :required="false"
-                />
-              </div>
-
-              <!-- 6. Akreditasi Prodi (Auto-fill) -->
-              <div>
-                <label class="input-label">Akreditasi Prodi</label>
-                <div class="relative">
-                  <input
-                    v-model="form.akreditasi_prodi"
-                    type="text"
-                    class="input-field pr-10"
-                    placeholder="Otomatis terisi saat memilih program studi"
-                    readonly
-                  />
-                  <div v-if="form.akreditasi_prodi" class="absolute inset-y-0 right-0 flex items-center pr-3">
-                    <span class="px-2 py-1 rounded text-xs font-bold" :class="getAkreditasiBadgeClass(form.akreditasi_prodi)">
-                      {{ form.akreditasi_prodi }}
-                    </span>
-                  </div>
                 </div>
               </div>
             </div>

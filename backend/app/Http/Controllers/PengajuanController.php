@@ -52,6 +52,23 @@ class PengajuanController extends Controller
             if ($request->has('mine') && $request->get('mine') === '1') {
                 $query->where('user_id', $user->id);
             }
+        } elseif ($user->isKepalaBkpsdm() && !$user->isKepalaUnit()) {
+            // Kepala BKPSDM (bukan kepala unit): hanya melihat pengajuan sendiri untuk riwayat
+            $query->where('user_id', $user->id);
+            // Include 'dicabut' for riwayat
+        } elseif ($user->isKepalaUnit()) {
+            // Kepala Dinas/Unit: melihat pengajuan pegawai di unit kerja + pengajuan sendiri
+            $query->where(function ($q) use ($user) {
+                $q->where('user_id', $user->id) // Pengajuan sendiri
+                  ->orWhereHas('user', function ($subQuery) use ($user) {
+                      $subQuery->where('unit_kerja_id', $user->unit_kerja_id);
+                  }); // Pengajuan pegawai di unit kerja yang sama
+            });
+
+            // Exclude 'dicabut' unless explicitly requested
+            if (!$includeDeleted) {
+                $query->where('status', '!=', 'dicabut');
+            }
         } elseif ($user->isAdminBkpsdm()) {
             // Admin melihat semua pengajuan (all statuses)
             // Default filter: show pending first, then others

@@ -21,7 +21,8 @@ const routes = [
       const authStore = useAuthStore()
       // Redirect based on role
       if (authStore.isAdmin) return '/admin/verifikasi'
-      if (authStore.isKepala) return '/kepala/signing'
+      if (authStore.isKepala) return '/kepala/signing' // Kepala BKPSDM (prioritas TTE surat izin)
+      if (authStore.isKepalaUnit) return '/kepala/surat-tugas' // Kepala Dinas per unit kerja (bukan Kepala BKPSDM)
       return '/dashboard'
     },
   },
@@ -34,7 +35,7 @@ const routes = [
     meta: { requiresAuth: true, roles: ['pemohon', 'atasan'] },
   },
 
-  // Pengajuan Management
+  // Pengajuan Management (only pemohon & atasan can create/edit)
   {
     path: '/pengajuan',
     name: 'pengajuan.index',
@@ -51,7 +52,7 @@ const routes = [
     path: '/pengajuan/:id',
     name: 'pengajuan.show',
     component: () => import('@/views/pemohon/DetailPengajuanView.vue'),
-    meta: { requiresAuth: true, roles: ['pemohon', 'atasan', 'admin_bkpsdm'] },
+    meta: { requiresAuth: true, roles: ['pemohon', 'atasan', 'admin_bkpsdm', 'kepala_bkpsdm'] },
   },
   {
     path: '/pengajuan/:id/edit',
@@ -68,6 +69,14 @@ const routes = [
     meta: { requiresAuth: true },
   },
 
+  // Notifications
+  {
+    path: '/notifications',
+    name: 'notifications',
+    component: () => import('@/views/NotificationView.vue'),
+    meta: { requiresAuth: true },
+  },
+
   // ========== ADMIN BKPSDM ROUTES ==========
   {
     path: '/admin',
@@ -79,6 +88,12 @@ const routes = [
     path: '/admin/verifikasi',
     name: 'admin.verifikasi',
     component: () => import('@/views/admin/VerifikasiView.vue'),
+    meta: { requiresAuth: true, roles: ['admin_bkpsdm'] },
+  },
+  {
+    path: '/admin/verifikasi/:id',
+    name: 'admin.verifikasi.detail',
+    component: () => import('@/views/admin/VerifikasiDetailView.vue'),
     meta: { requiresAuth: true, roles: ['admin_bkpsdm'] },
   },
 
@@ -94,6 +109,42 @@ const routes = [
     name: 'admin.surat.show',
     component: () => import('@/views/admin/SuratView.vue'),
     meta: { requiresAuth: true, roles: ['admin_bkpsdm'] },
+  },
+
+  // Surat Izin Belajar (Admin BKPSDM)
+  {
+    path: '/admin/surat-izin',
+    name: 'admin.surat-izin',
+    component: () => import('@/views/admin/SuratIzinView.vue'),
+    meta: { requiresAuth: true, roles: ['admin_bkpsdm'] },
+  },
+
+  // Surat Tugas Mandiri (Admin BKPSDM - setelah Surat Izin)
+  {
+    path: '/admin/surat-tugas-mandiri',
+    name: 'admin.surat-tugas-mandiri',
+    component: () => import('@/views/admin/SuratTugasMandiriView.vue'),
+    meta: { requiresAuth: true, roles: ['admin_bkpsdm'] },
+  },
+  {
+    path: '/admin/surat-tugas-mandiri/:id',
+    name: 'admin.surat-tugas-mandiri.detail',
+    component: () => import('@/views/admin/SuratTugasMandiriDetailView.vue'),
+    meta: { requiresAuth: true, roles: ['admin_bkpsdm'] },
+  },
+  {
+    path: '/admin/pdf-editor',
+    name: 'admin.pdf-editor',
+    component: () => import('@/views/admin/PdfEditorView.vue'),
+    meta: { requiresAuth: true, roles: ['admin_bkpsdm'] },
+  },
+
+  // Surat Tugas Dinas (Kepala Unit)
+  {
+    path: '/kepala/surat-tugas',
+    name: 'kepala.surat-tugas',
+    component: () => import('@/views/admin/SuratTugasDinasView.vue'),
+    meta: { requiresAuth: true, roles: ['kepala'] },
   },
 
   // Manajemen Pegawai
@@ -123,6 +174,18 @@ const routes = [
     component: () => import('@/views/admin/SigningView.vue'),
     meta: { requiresAuth: true, roles: ['kepala_bkpsdm'] },
   },
+  {
+    path: '/kepala/signing/:id',
+    name: 'kepala.signing.detail',
+    component: () => import('@/views/admin/SigningDetailView.vue'),
+    meta: { requiresAuth: true, roles: ['kepala_bkpsdm'] },
+  },
+  {
+    path: '/kepala/riwayat',
+    name: 'kepala.riwayat',
+    component: () => import('@/views/admin/SigningHistoryView.vue'),
+    meta: { requiresAuth: true, roles: ['kepala_bkpsdm'] },
+  },
 
   // ========== DEMO / TEST ROUTES ==========
   {
@@ -150,7 +213,9 @@ router.beforeEach((to, from, next) => {
     if (authStore.isAdmin) {
       next('/admin/verifikasi')
     } else if (authStore.isKepala) {
-      next('/kepala/signing')
+      next('/kepala/signing') // Kepala BKPSDM ke signing
+    } else if (authStore.isKepalaUnit) {
+      next('/kepala/surat-tugas') // Kepala Dinas per unit kerja
     } else {
       next('/dashboard')
     }
@@ -159,7 +224,9 @@ router.beforeEach((to, from, next) => {
     if (authStore.isAdmin) {
       next('/admin/verifikasi')
     } else if (authStore.isKepala) {
-      next('/kepala/signing')
+      next('/kepala/signing') // Kepala BKPSDM ke signing
+    } else if (authStore.isKepalaUnit) {
+      next('/kepala/surat-tugas') // Kepala Dinas per unit kerja
     } else {
       next('/dashboard')
     }

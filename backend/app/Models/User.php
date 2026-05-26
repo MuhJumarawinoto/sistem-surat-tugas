@@ -12,7 +12,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password', 'nip', 'role_id', 'unit_kerja_id', 'atasan_id', 'jabatan_kategori', 'pangkat_gol', 'jabatan', 'tanggal_lahir', 'no_hp', 'alamat', 'is_active'])]
+#[Fillable(['name', 'email', 'password', 'nip', 'role_id', 'unit_kerja_id', 'atasan_id', 'jabatan_kategori', 'pangkat_gol', 'jabatan', 'tanggal_lahir', 'no_hp', 'alamat', 'is_active', 'is_kepala_unit'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -25,6 +25,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
+            'is_kepala_unit' => 'boolean',
         ];
     }
 
@@ -63,9 +64,35 @@ class User extends Authenticatable
         return $this->hasMany(SuratTugas::class, 'signed_by');
     }
 
+    public function suratTugasDinasCreated(): HasMany
+    {
+        return $this->hasMany(SuratTugasDinas::class, 'kepala_dinas_id');
+    }
+
+    public function isKepalaUnit(): bool
+    {
+        return $this->is_kepala_unit === true && $this->unit_kerja_id !== null;
+    }
+
     public function hasRole(string $role): bool
     {
-        return $this->role?->slug === $role;
+        // If relation is loaded, use it
+        if ($this->relationLoaded('role') && $this->role) {
+            return $this->role->slug === $role;
+        }
+
+        // Otherwise check via role_id
+        if (!$this->role_id) {
+            return false;
+        }
+
+        // Get role slug from cache or database
+        static $roleCache = [];
+        if (!isset($roleCache[$this->role_id])) {
+            $roleCache[$this->role_id] = Role::find($this->role_id)?->slug;
+        }
+
+        return $roleCache[$this->role_id] === $role;
     }
 
     public function isPemohon(): bool

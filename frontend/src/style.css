@@ -16,7 +16,7 @@
 
   /* Page Loader */
   .page-loader {
-    @apply fixed inset-0 z-[9999] flex items-center justify-center bg-white;
+    @apply fixed inset-0 z-[9989] flex items-center justify-center bg-white;
     transition: opacity 0.3s ease, visibility 0.3s ease;
   }
 
@@ -169,6 +169,10 @@
 
   .badge-purple {
     @apply bg-purple-100 text-purple-800;
+  }
+
+  .badge-xs {
+    @apply inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium;
   }
 
   /* Tables */
@@ -328,7 +332,7 @@
 
   /* Tooltip */
   .tooltip {
-    @apply absolute z-50 px-2 py-1 text-xs text-white bg-secondary-800 rounded shadow-lg;
+    @apply absolute z-[9999] px-2 py-1 text-xs text-white bg-secondary-800 rounded shadow-lg;
   }
 
   /* Dropdown */

@@ -95,7 +95,7 @@ onMounted(() => {
           </div>
 
           <div v-else-if="notificationStore.notifications.length === 0" class="text-center py-8 text-gray-500">
-            <p class="text-sm">Tidak ada notifikasi</p>
+            <p class="text-sm">Tidak ada notifikasi terbaru</p>
           </div>
 
           <div v-else class="space-y-2">

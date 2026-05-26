@@ -6,7 +6,6 @@ use App\Models\Pengajuan;
 use App\Models\SuratTugas;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use PDF;
 
 class SuratTugasController extends Controller
 {
@@ -82,6 +81,49 @@ class SuratTugasController extends Controller
         return response()->json($surat->load(['pengajuan', 'signedBy']));
     }
 
+    public function signByPengajuanId(Request $request, string $pengajuanId)
+    {
+        $pengajuan = Pengajuan::findOrFail($pengajuanId);
+
+        // Generate surat first if not exists
+        $surat = $pengajuan->suratTugas()->first();
+
+        if (!$surat) {
+            $nomorSurat = $this->generateNomorSurat();
+
+            $pdf = $this->generatePdf($pengajuan, $nomorSurat);
+
+            $fileName = 'surat-tugas-' . $pengajuan->nomor_pengajuan . '.pdf';
+            $path = 'surat-tugas/' . $fileName;
+
+            Storage::disk('public')->put($path, $pdf->output());
+
+            $surat = SuratTugas::create([
+                'pengajuan_id' => $pengajuanId,
+                'nomor_surat' => $nomorSurat,
+                'tanggal_terbit' => now(),
+                'file_path' => $path,
+                'status_tte' => 'pending',
+            ]);
+        }
+
+        if ($surat->isSigned()) {
+            return response()->json(['message' => 'Surat already signed'], 400);
+        }
+
+        $surat->update([
+            'status_tte' => 'signed',
+            'signed_by' => $request->user()->id,
+            'signed_at' => now(),
+            'tte_qr_code' => 'QR-' . $surat->nomor_surat,
+        ]);
+
+        // Update pengajuan status
+        $pengajuan->update(['status' => 'signed']);
+
+        return response()->json($surat->load(['pengajuan', 'signedBy']));
+    }
+
     private function generateNomorSurat(): string
     {
         $year = date('Y');
@@ -105,6 +147,8 @@ class SuratTugasController extends Controller
             'tanggal_terbit' => now()->format('d F Y'),
         ];
 
-        return PDF::loadView('pdf.surat-tugas', $data);
+        // Use DomPDF facade
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.surat-tugas', $data);
+        return $pdf;
     }
 }

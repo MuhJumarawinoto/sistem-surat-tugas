@@ -1,26 +1,25 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { usePengajuanStore } from '@/stores/pengajuan'
+import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
 import MainLayout from '@/components/layout/MainLayout.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import SendMessageModal from '@/components/SendMessageModal.vue'
-import VerificationDetailModal from '@/components/VerificationDetailModal.vue'
-import PengajuanMilestone from '@/components/PengajuanMilestone.vue'
 
+const router = useRouter()
 const pengajuanStore = usePengajuanStore()
+const authStore = useAuthStore()
 
 const pengajuanList = ref([])
 const verificationInfoMap = ref(new Map()) // Store verification info for each pengajuan
 const loading = ref(false)
 const showModal = ref(false)
 const selectedPengajuan = ref(null)
-const showVerificationModal = ref(false)
-const selectedPengajuanId = ref(null)
-const showMilestoneModal = ref(false)
-const selectedMilestonePengajuanId = ref(null)
+const activeDropdown = ref(null)
 
 // Hitung statistik verifikasi
 const stats = computed(() => {
@@ -28,6 +27,7 @@ const stats = computed(() => {
     total: pengajuanList.value.length,
     pendingAdmin: pengajuanList.value.filter(p => p.status === 'pending_admin').length,
     verified: pengajuanList.value.filter(p => p.status === 'verified').length,
+    suratDinas: pengajuanList.value.filter(p => p.status === 'surat_dinas').length,
   }
 })
 
@@ -44,14 +44,8 @@ function handleMessageSent() {
   alert('Pesan berhasil dikirim ke pemohon')
 }
 
-function openVerificationModal(id) {
-  selectedPengajuanId.value = id
-  showVerificationModal.value = true
-}
-
-function handleVerified() {
-  // Reload the pengajuan list after verification
-  loadPengajuan()
+function openVerificationPage(id) {
+  router.push(`/admin/verifikasi/${id}`)
 }
 
 async function loadPengajuan() {
@@ -59,9 +53,11 @@ async function loadPengajuan() {
   try {
     // Ambil semua pengajuan yang perlu verifikasi admin (pending_admin dan pending_atasan)
     // Filter akan dilakukan di backend berdasarkan role admin
-    const response = await pengajuanStore.fetchPengajuan()
-    // Handle paginated response
-    pengajuanList.value = response.data?.data || response.data || []
+    const data = await pengajuanStore.fetchPengajuan()
+    // fetchPengajuan returns array directly
+    pengajuanList.value = data || []
+
+    console.log('Admin pengajuan loaded:', pengajuanList.value.length, 'items')
 
     // Load verification info for each pengajuan
     await loadVerificationInfo()
@@ -88,8 +84,10 @@ async function loadVerificationInfo() {
 function getStatusBadgeClass(status) {
   const classes = {
     'pending_admin': 'badge-primary',
-    'verified': 'badge-info',
-    'disetujui': 'badge-success',
+    'verified': 'badge-success',
+    'surat_dinas': 'badge-info',
+    'disetujui': 'badge-info',
+    'signed': 'badge-info',
     'ditolak': 'badge-danger'
   }
   return classes[status] || 'badge-secondary'
@@ -99,7 +97,9 @@ function getStatusLabel(status) {
   const labels = {
     'pending_admin': 'Menunggu Verifikasi',
     'verified': 'Terverifikasi',
+    'surat_dinas': 'Surat Tugas Dinas',
     'disetujui': 'Disetujui',
+    'signed': 'Ditandatangani',
     'ditolak': 'Ditolak'
   }
   return labels[status] || status
@@ -130,11 +130,20 @@ function getVerifierInfo(pengajuan) {
   } else if (pengajuan.status === 'verified') {
     return {
       label: 'Selanjutnya',
-      name: verificationInfo.final_signer?.nama || 'Kepala BKPSDM',
-      jabatan: verificationInfo.final_signer?.jabatan || 'Penandatangan Surat',
+      name: 'Kepala Dinas',
+      jabatan: 'Buat Surat Tugas Belajar',
       nip: '-',
-      icon: 'ri-quill-pen-line',
-      color: 'green'
+      icon: 'ri-file-list-line',
+      color: 'purple'
+    }
+  } else if (pengajuan.status === 'surat_dinas') {
+    return {
+      label: 'Selanjutnya',
+      name: verificationInfo.final_signer?.nama || 'Admin BKPSDM',
+      jabatan: 'Buat Surat Izin Belajar',
+      nip: '-',
+      icon: 'ri-file-text-line',
+      color: 'blue'
     }
   }
 
@@ -155,11 +164,20 @@ function getFallbackVerifierInfo(pengajuan) {
   } else if (pengajuan.status === 'verified') {
     return {
       label: 'Selanjutnya',
-      name: 'Kepala BKPSDM',
-      jabatan: 'Penandatanganan Surat',
+      name: 'Kepala Dinas',
+      jabatan: 'Buat Surat Tugas Belajar',
       nip: '-',
-      icon: 'ri-quill-pen-line',
-      color: 'green'
+      icon: 'ri-file-list-line',
+      color: 'purple'
+    }
+  } else if (pengajuan.status === 'surat_dinas') {
+    return {
+      label: 'Selanjutnya',
+      name: 'Admin BKPSDM',
+      jabatan: 'Buat Surat Izin Belajar',
+      nip: '-',
+      icon: 'ri-file-text-line',
+      color: 'blue'
     }
   }
 
@@ -175,6 +193,73 @@ function getFinalSigner(pengajuan) {
     level: 'kepala_bkpsdm'
   }
 }
+
+// Milestone dot-line functions
+function getMilestoneSteps(pengajuan) {
+  const status = pengajuan.status
+  const steps = []
+
+  // Step 1: Dikirim
+  steps.push({
+    label: 'Dikirim',
+    status: ['pending_atasan', 'pending_admin', 'verified', 'disetujui', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' : 'pending',
+  })
+
+  // Step 2: Verifikasi
+  steps.push({
+    label: 'Verifikasi',
+    status: ['verified', 'disetujui', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' :
+              ['pending_admin'].includes(status) ? 'current' : 'pending',
+  })
+
+  // Step 3: Surat Dinas
+  steps.push({
+    label: 'Surat Dinas',
+    status: ['signed', 'selesai', 'completed'].includes(status) ? 'completed' :
+              ['disetujui'].includes(status) ? 'current' : 'pending',
+  })
+
+  // Step 4: Surat Izin
+  steps.push({
+    label: 'Surat Izin',
+    status: ['selesai', 'completed'].includes(status) ? 'completed' :
+              ['signed'].includes(status) ? 'current' : 'pending',
+  })
+
+  // Step 5: Selesai
+  steps.push({
+    label: 'Selesai',
+    status: status === 'completed' ? 'completed' :
+              status === 'selesai' ? 'current' : 'pending',
+  })
+
+  return steps
+}
+
+function getStepClass(step) {
+  if (step.status === 'completed') return 'bg-green-500'
+  if (step.status === 'current') return 'bg-primary-500'
+  return 'bg-secondary-300'
+}
+
+// Dropdown menu functions
+function toggleDropdown(id, event) {
+  event?.stopPropagation()
+  activeDropdown.value = activeDropdown.value === id ? null : id
+}
+
+function closeAllMenus() {
+  activeDropdown.value = null
+}
+
+// Close dropdown when clicking outside
+if (typeof window !== 'undefined') {
+  window.addEventListener('click', () => {
+    if (activeDropdown.value) {
+      activeDropdown.value = null
+    }
+  })
+}
 </script>
 
 <template>
@@ -185,169 +270,331 @@ function getFinalSigner(pengajuan) {
       subtitle="Daftar pengajuan yang menunggu verifikasi"
     />
 
-    <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 animate-slide-up">
-      <div class="card">
-        <div class="card-body py-4">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-lg bg-secondary-100 flex items-center justify-center">
-              <i class="ri-file-list-3-line text-secondary-600"></i>
+    <!-- Compact Stats Row -->
+    <div class="flex flex-wrap items-center gap-4 mb-5 animate-slide-up">
+      <div class="flex items-center gap-2.5 px-4 py-2.5 bg-white rounded-lg border border-secondary-200">
+        <i class="ri-file-list-3-line text-secondary-500"></i>
+        <span class="text-sm text-secondary-500">Total:</span>
+        <span class="font-semibold text-lg text-secondary-800">{{ stats.total }}</span>
+      </div>
+      <div class="flex items-center gap-2.5 px-4 py-2.5 bg-blue-50 rounded-lg border border-blue-200">
+        <i class="ri-admin-line text-blue-500"></i>
+        <span class="text-sm text-blue-600">Verifikasi:</span>
+        <span class="font-semibold text-lg text-blue-700">{{ stats.pendingAdmin }}</span>
+      </div>
+      <div class="flex items-center gap-2.5 px-4 py-2.5 bg-green-50 rounded-lg border border-green-200">
+        <i class="ri-checkbox-circle-line text-green-500"></i>
+        <span class="text-sm text-green-600">Terverifikasi:</span>
+        <span class="font-semibold text-lg text-green-700">{{ stats.verified }}</span>
+      </div>
+      <div class="flex items-center gap-2.5 px-4 py-2.5 bg-purple-50 rounded-lg border border-purple-200">
+        <i class="ri-file-list-line text-purple-500"></i>
+        <span class="text-sm text-purple-600">Surat Dinas:</span>
+        <span class="font-semibold text-lg text-purple-700">{{ stats.suratDinas }}</span>
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div v-if="loading" class="grid grid-cols-1 gap-4 animate-slide-up">
+      <div v-for="i in 3" :key="i" class="bg-white rounded-xl border border-secondary-200 p-4 animate-pulse">
+        <div class="flex items-start gap-4">
+          <div class="flex-1">
+            <div class="flex items-center gap-2 mb-2">
+              <div class="h-5 w-32 bg-secondary-200 rounded"></div>
+              <div class="h-6 w-20 bg-secondary-200 rounded-full"></div>
             </div>
-            <div>
-              <p class="text-2xl font-bold text-secondary-800">{{ stats.total }}</p>
-              <p class="text-xs text-secondary-500">Total Pengajuan</p>
+            <div class="h-5 w-48 bg-secondary-200 rounded mb-2"></div>
+            <div class="flex items-center gap-2">
+              <div class="h-4 w-24 bg-secondary-200 rounded"></div>
+              <div class="h-4 w-32 bg-secondary-200 rounded"></div>
+              <div class="h-4 w-28 bg-secondary-200 rounded"></div>
             </div>
+          </div>
+          <div class="flex gap-2">
+            <div class="h-9 w-20 bg-secondary-200 rounded-lg"></div>
+            <div class="h-9 w-9 bg-secondary-200 rounded-lg"></div>
           </div>
         </div>
-      </div>
-      <div class="card">
-        <div class="card-body py-4">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-              <i class="ri-admin-line text-blue-600"></i>
-            </div>
-            <div>
-              <p class="text-2xl font-bold text-blue-600">{{ stats.pendingAdmin }}</p>
-              <p class="text-xs text-secondary-500">Menunggu Verifikasi</p>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-body py-4">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-              <i class="ri-checkbox-circle-line text-green-600"></i>
-            </div>
-            <div>
-              <p class="text-2xl font-bold text-green-600">{{ stats.verified }}</p>
-              <p class="text-xs text-secondary-500">Terverifikasi</p>
-            </div>
-          </div>
+        <div class="mt-3 pt-3 border-t border-secondary-100">
+          <div class="h-8 w-full bg-secondary-100 rounded"></div>
         </div>
       </div>
     </div>
 
-    <div class="card animate-slide-up">
-          <div class="card-body">
-            <div v-if="loading" class="flex items-center justify-center py-12">
-              <LoadingSpinner size="md" text="Memuat..." />
-            </div>
+    <!-- Empty State -->
+    <div v-else-if="pengajuanList.length === 0" class="text-center py-16 animate-slide-up">
+      <div class="w-20 h-20 rounded-full bg-gradient-to-br from-secondary-100 to-secondary-50 flex items-center justify-center mx-auto mb-4 border border-secondary-200">
+        <i class="ri-inbox-archive-line text-4xl text-secondary-400"></i>
+      </div>
+      <h3 class="text-base font-semibold text-secondary-800 mb-1">Tidak Ada Pengajuan</h3>
+      <p class="text-sm text-secondary-500">Belum ada pengajuan yang menunggu verifikasi</p>
+    </div>
 
-            <div v-else-if="pengajuanList.length === 0" class="text-center py-12">
-              <div class="w-16 h-16 rounded-full bg-secondary-100 flex items-center justify-center mx-auto mb-4">
-                <i class="ri-inbox-line text-3xl text-secondary-400"></i>
+    <!-- List -->
+    <div v-else class="space-y-3 animate-slide-up">
+      <div
+        v-for="item in pengajuanList"
+        :key="item.id"
+        class="bg-white rounded-xl border border-secondary-200 shadow-sm hover:shadow-md transition-all"
+      >
+        <div class="p-4">
+          <!-- Compact Header Row -->
+          <div class="flex items-start gap-4">
+            <!-- Main Info -->
+            <div class="flex-1 min-w-0">
+              <!-- First row: Number + badges -->
+              <div class="flex items-center gap-2 mb-2 flex-wrap">
+                <span class="font-semibold text-base text-secondary-800">{{ item.nomor_pengajuan }}</span>
+                <span class="badge text-sm py-1 px-2.5" :class="getStatusBadgeClass(item.status)">
+                  {{ getStatusLabel(item.status) }}
+                </span>
+                <span v-if="item.user?.atasan" class="text-xs text-secondary-500 bg-secondary-100 px-2 py-1 rounded-md">
+                  <i class="ri-user-star-line mr-0.5"></i>
+                  {{ item.user.atasan.name }}
+                </span>
+                <span v-else class="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded-md">
+                  <i class="ri-error-warning-line mr-0.5"></i>
+                  <span class="hidden sm:inline">Atasan belum ditetapkan</span>
+                  <span class="sm:hidden">Atasan -</span>
+                </span>
               </div>
-              <p class="text-secondary-500">Tidak ada pengajuan yang menunggu verifikasi</p>
+              <!-- Second row: Name -->
+              <p class="text-base font-medium text-secondary-800 mb-1.5">{{ item.user?.name }}</p>
+              <!-- Third row: Details -->
+              <div class="flex items-center gap-3 text-sm text-secondary-500 flex-wrap">
+                <span class="flex items-center gap-1">
+                  <i class="ri-briefcase-line text-secondary-400"></i>
+                  {{ item.user?.jabatan || '-' }}
+                </span>
+                <span class="text-secondary-300">•</span>
+                <span class="flex items-center gap-1">
+                  <i class="ri-graduation-cap-line text-secondary-400"></i>
+                  {{ item.nama_prodi }}
+                </span>
+                <span class="text-secondary-300">•</span>
+                <span class="flex items-center gap-1">
+                  <i class="ri-building-line text-secondary-400"></i>
+                  {{ item.perguruan_tinggi }}
+                </span>
+              </div>
             </div>
 
-            <div v-else class="space-y-4">
-              <div
-                v-for="item in pengajuanList"
-                :key="item.id"
-                class="card border-l-4"
-                :class="{
-                  'border-l-primary': item.status === 'pending_admin',
-                  'border-l-success': item.status === 'verified',
-                  'border-l-info': item.status === 'disetujui',
-                  'border-l-danger': item.status === 'ditolak'
-                }"
+            <!-- Actions - Desktop -->
+            <div class="hidden sm:flex items-center gap-2 shrink-0">
+              <button
+                @click="openVerificationPage(item.id)"
+                class="btn btn-sm"
+                :class="item.status === 'pending_admin' ? 'btn-primary' : 'btn-secondary'"
               >
-                <div class="card-body">
-                  <!-- Card Header -->
-                  <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 pb-3 border-b border-secondary-100">
-                    <div class="flex-1">
-                      <div class="flex items-center gap-2 mb-1 flex-wrap">
-                        <p class="text-base font-semibold text-secondary-800">{{ item.nomor_pengajuan }}</p>
-                        <span class="badge" :class="getStatusBadgeClass(item.status)">
-                          {{ getStatusLabel(item.status) }}
-                        </span>
-                        <span v-if="item.user?.atasan" class="text-xs text-secondary-500 bg-secondary-100 px-2 py-0.5 rounded">
-                          <i class="ri-user-star-line mr-1"></i>
-                          Atasan: {{ item.user.atasan.name }}
-                        </span>
-                        <span v-else class="text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded">
-                          <i class="ri-error-warning-line mr-1"></i>
-                          Atasan belum ditetapkan
-                        </span>
-                      </div>
-                      <p class="text-sm font-medium text-secondary-800">{{ item.user?.name }}</p>
-                      <div class="flex items-center gap-3 text-xs text-secondary-500 mt-1">
-                        <span><i class="ri-briefcase-line mr-1"></i>{{ item.user?.jabatan || '-' }}</span>
-                        <span><i class="ri-medal-line mr-1"></i>{{ item.user?.pangkat_gol || '-' }}</span>
-                        <span><i class="ri-building-line mr-1"></i>{{ item.user?.unit_kerja?.nama || item.user?.unit_kerja }}</span>
-                      </div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <button
-                        @click="openSendMessageModal(item)"
-                        class="btn btn-ghost btn-sm"
-                        title="Kirim Pesan"
-                      >
-                        <i class="ri-message-3-line text-lg"></i>
-                      </button>
-                      <button
-                        v-if="!['disetujui', 'ditolak'].includes(item.status)"
-                        @click="openVerificationModal(item.id)"
-                        class="btn"
-                        :class="item.status === 'pending_admin' ? 'btn-primary' : 'btn-secondary'"
-                      >
-                        <i :class="item.status === 'pending_admin' ? 'ri-checkbox-circle-line' : 'ri-eye-line'" class="mr-1"></i>
-                        {{ item.status === 'pending_admin' ? 'Verifikasi' : 'Detail' }}
-                      </button>
-                      <span v-else class="text-xs text-secondary-500 italic">{{ getStatusLabel(item.status) }}</span>
-                    </div>
-                  </div>
+                <i :class="item.status === 'pending_admin' ? 'ri-checkbox-circle-line' : 'ri-eye-line'"></i>
+                <span class="ml-1">{{ item.status === 'pending_admin' ? 'Verifikasi' : 'Detail' }}</span>
+              </button>
+              <button
+                v-if="item.status !== 'disetujui' && item.status !== 'ditolak'"
+                @click="openSendMessageModal(item)"
+                class="btn btn-ghost btn-sm"
+                title="Kirim Pesan"
+              >
+                <i class="ri-message-3-line"></i>
+              </button>
+            </div>
 
-                  <!-- Education Info -->
-                  <div class="mt-3 p-3 bg-secondary-50 rounded-lg">
-                    <div class="flex items-center gap-4 text-sm">
-                      <span class="flex items-center gap-1 text-secondary-700">
-                        <i class="ri-graduation-cap-line"></i>
-                        {{ item.nama_prodi }}
-                      </span>
-                      <span class="text-secondary-400">•</span>
-                      <span class="flex items-center gap-1 text-secondary-700">
-                        <i class="ri-building-line"></i>
-                        {{ item.perguruan_tinggi }}
-                      </span>
-                    </div>
-                  </div>
+            <!-- Actions - Mobile Dropdown -->
+            <div class="sm:hidden relative">
+              <button
+                @click="toggleDropdown(item.id, $event)"
+                class="btn btn-ghost btn-sm p-2"
+              >
+                <i class="ri-more-2-fill text-lg"></i>
+              </button>
+              <div
+                v-if="activeDropdown === item.id"
+                class="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-secondary-200 py-1 z-20"
+                @click.stop
+              >
+                <button
+                  @click="openVerificationPage(item.id); closeAllMenus()"
+                  class="w-full px-4 py-2 text-left text-sm hover:bg-secondary-50 flex items-center gap-2"
+                >
+                  <i :class="item.status === 'pending_admin' ? 'ri-checkbox-circle-line text-primary-600' : 'ri-eye-line text-secondary-600'"></i>
+                  <span>{{ item.status === 'pending_admin' ? 'Verifikasi' : 'Detail' }}</span>
+                </button>
+                <button
+                  v-if="item.status !== 'disetujui' && item.status !== 'ditolak'"
+                  @click="openSendMessageModal(item); closeAllMenus()"
+                  class="w-full px-4 py-2 text-left text-sm hover:bg-secondary-50 flex items-center gap-2"
+                >
+                  <i class="ri-message-3-line text-secondary-600"></i>
+                  <span>Kirim Pesan</span>
+                </button>
+                <button
+                  @click="openSendMessageModal(item); closeAllMenus()"
+                  class="w-full px-4 py-2 text-left text-sm hover:bg-secondary-50 flex items-center gap-2"
+                >
+                  <i class="ri-message-3-line text-secondary-600"></i>
+                  <span>Kirim Pesan</span>
+                </button>
+              </div>
+            </div>
+          </div>
 
-                  <!-- Verifier Info -->
-                  <div v-if="getVerifierInfo(item)" class="mt-3 p-3 rounded-lg border" :class="`bg-${getVerifierInfo(item).color}-50 border-${getVerifierInfo(item).color}-200`">
-                    <div class="flex items-center gap-3">
-                      <div class="w-10 h-10 rounded-full flex items-center justify-center" :class="`bg-${getVerifierInfo(item).color}-100`">
-                        <i :class="[getVerifierInfo(item).icon, `text-${getVerifierInfo(item).color}-600 text-lg`]"></i>
-                      </div>
-                      <div class="flex-1">
-                        <p class="text-xs font-medium" :class="`text-${getVerifierInfo(item).color}-700`">{{ getVerifierInfo(item).label }}</p>
-                        <p class="text-sm font-semibold" :class="`text-${getVerifierInfo(item).color}-900`">{{ getVerifierInfo(item).name }}</p>
-                      </div>
-                      <div class="text-right">
-                        <p class="text-xs" :class="`text-${getVerifierInfo(item).color}-600`">{{ getVerifierInfo(item).jabatan }}</p>
-                        <p class="text-xs text-secondary-500">{{ getVerifierInfo(item).nip !== '-' ? 'NIP: ' + getVerifierInfo(item).nip : '' }}</p>
-                      </div>
-                    </div>
-                  </div>
+          <!-- Divider -->
+          <div class="border-t border-secondary-100 my-3"></div>
 
-                  <!-- Inline Milestone -->
-                  <div class="mt-4">
-                    <div class="flex items-center justify-between mb-2">
-                      <span class="text-sm font-medium text-secondary-700 flex items-center gap-1">
-                        <i class="ri-route-line text-primary-600"></i>
-                        Progress Pengajuan
-                      </span>
+          <!-- Verifier Info -->
+          <div v-if="getVerifierInfo(item)" class="flex items-center gap-2 text-sm px-3 py-2 rounded-md" :class="`bg-${getVerifierInfo(item).color}-50`">
+            <i :class="[getVerifierInfo(item).icon, `text-${getVerifierInfo(item).color}-600`]"></i>
+            <span :class="`text-${getVerifierInfo(item).color}-700`">{{ getVerifierInfo(item).label }}:</span>
+            <span class="font-medium" :class="`text-${getVerifierInfo(item).color}-900`">{{ getVerifierInfo(item).name }}</span>
+            <span class="text-secondary-300">•</span>
+            <span :class="`text-${getVerifierInfo(item).color}-600`">{{ getVerifierInfo(item).jabatan }}</span>
+          </div>
+
+          <!-- Milestone Dot-Line -->
+          <div class="px-4 pb-2">
+            <div class="flex items-center justify-between relative py-2">
+              <!-- Progress Line Background -->
+              <div class="absolute top-1/2 left-0 right-0 h-0.5 -translate-y-1/2 bg-secondary-200 z-0"></div>
+              <!-- Progress Line Active -->
+              <div
+                class="absolute top-1/2 left-0 h-0.5 -translate-y-1/2 z-0 transition-all duration-300"
+                :class="{
+                  'w-0': item.status === 'draft',
+                  'w-1/5': item.status === 'pending_atasan' || item.status === 'pending_admin',
+                  'w-2/5': item.status === 'verified',
+                  'w-3/5': item.status === 'disetujui' || item.status === 'signed',
+                  'w-4/5': item.status === 'selesai',
+                  'w-full': item.status === 'completed'
+                }"
+                :style="{ backgroundColor: item.status === 'draft' ? '' : (item.status === 'completed' || item.status === 'selesai' ? '#22c55e' : '#3b82f6') }"
+              ></div>
+
+              <!-- Dots -->
+              <div
+                v-for="(step, idx) in getMilestoneSteps(item)"
+                :key="idx"
+                class="relative z-10 flex flex-col items-center"
+              >
+                <!-- Pulse Ring for Current Step -->
+                <div
+                  v-if="step.status === 'current'"
+                  class="absolute inset-0 rounded-full bg-primary-400 animate-ping opacity-75"
+                  style="animation-duration: 1.5s;"
+                ></div>
+                <div
+                  class="w-3 h-3 rounded-full transition-all duration-300 relative cursor-pointer hover:scale-125"
+                  :class="getStepClass(step)"
+                ></div>
+                <span
+                  class="text-xs mt-1 whitespace-nowrap"
+                  :class="step.status === 'current' ? 'text-primary-600 font-medium' : 'text-secondary-600'"
+                >{{ step.label }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Collapsible Documents Section - HIDDEN -->
+          <!--
+          <div class="mt-3">
+            <button
+              class="flex items-center justify-between w-full text-left hover:bg-secondary-50 px-2 py-2 -mx-2 rounded-lg transition-colors group"
+              @click="toggleDocuments(item.id)"
+            >
+              <span class="text-sm font-medium text-secondary-600 flex items-center gap-1.5">
+                <i class="ri-file-list-3-line text-primary-500"></i>
+                Dokumen Lampiran
+                <span class="text-xs text-secondary-400 font-normal">
+                  ({{ getDocumentStatusCount(item.id).total }} file)
+                </span>
+              </span>
+              <div class="flex items-center gap-2">
+                <span class="flex items-center gap-1 text-xs">
+                  <span class="badge badge-success py-0.5 px-1.5">{{ getDocumentStatusCount(item.id).lengkap }}</span>
+                  <span class="badge badge-secondary py-0.5 px-1.5">{{ getDocumentStatusCount(item.id).belum }}</span>
+                  <span v-if="getDocumentStatusCount(item.id).tidak_lengkap > 0" class="badge badge-danger py-0.5 px-1.5">{{ getDocumentStatusCount(item.id).tidak_lengkap }}</span>
+                </span>
+                <i
+                  class="text-secondary-400 group-hover:text-secondary-500 transition-transform duration-200"
+                  :class="isDocumentsCollapsed(item.id) ? 'ri-arrow-down-s-line' : 'ri-arrow-up-s-line'"
+                ></i>
+              </div>
+            </button>
+            <Transition
+              enter-active-class="transition-all duration-200 ease-out"
+              enter-from-class="opacity-0 -translate-y-1"
+              enter-to-class="opacity-100 translate-y-0"
+              leave-active-class="transition-all duration-150 ease-in"
+              leave-from-class="opacity-100 translate-y-0"
+              leave-to-class="opacity-0 -translate-y-1"
+            >
+              <div v-show="!isDocumentsCollapsed(item.id)" class="mt-2 overflow-hidden">
+                <div v-if="getDocuments(item.id).length === 0" class="text-center py-4 text-secondary-500 text-sm">
+                  <i class="ri-inbox-line text-xl"></i>
+                  <p class="mt-1">Tidak ada dokumen</p>
+                </div>
+                <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div
+                    v-for="doc in getDocuments(item.id)"
+                    :key="doc.id"
+                    class="flex items-center gap-2 p-2 bg-secondary-50 rounded-lg hover:bg-secondary-100 transition-colors"
+                  >
+                    <div class="w-8 h-8 rounded bg-white flex items-center justify-center shrink-0">
+                      <i :class="[getDocumentIcon(doc.file_type), 'text-lg text-secondary-500']"></i>
                     </div>
-                    <div class="bg-secondary-50 rounded-lg p-3">
-                      <PengajuanMilestone :pengajuan-id="item.id" />
+                    <div class="flex-1 min-w-0">
+                      <p class="text-xs font-medium text-secondary-700 truncate">{{ documentTypes[doc.jenis_dokumen]?.label || doc.jenis_dokumen }}</p>
+                      <p class="text-xs text-secondary-400 truncate">{{ doc.file_name }}</p>
                     </div>
+                    <span class="badge text-xs py-0.5" :class="getDocumentStatusClass(doc.status_verifikasi)">
+                      {{ getDocumentStatusLabel(doc.status_verifikasi) }}
+                    </span>
+                    <button
+                      @click="previewDocument(doc)"
+                      class="btn btn-ghost btn-sm p-1 h-7 w-7 text-primary-600 hover:text-primary-700 hover:bg-primary-50"
+                      title="Preview Dokumen"
+                    >
+                      <i class="ri-eye-line"></i>
+                    </button>
                   </div>
                 </div>
               </div>
-            </div>
+            </Transition>
+          </div>
+          -->
+
+          <!-- Collapsible Milestone - HIDDEN -->
+          <!--
+          <div class="mt-3">
+            <button
+              class="flex items-center justify-between w-full text-left hover:bg-secondary-50 px-2 py-2 -mx-2 rounded-lg transition-colors group"
+              @click="toggleMilestone(item.id)"
+            >
+              <span class="text-sm font-medium text-secondary-600 flex items-center gap-1.5">
+                <i class="ri-route-line text-primary-500"></i>
+                Progress Pengajuan
+              </span>
+              <i
+                class="text-secondary-400 group-hover:text-secondary-500 transition-transform duration-200"
+                :class="isMilestoneCollapsed(item.id) ? 'ri-arrow-down-s-line' : 'ri-arrow-up-s-line'"
+              ></i>
+            </button>
+            <Transition
+              enter-active-class="transition-all duration-200 ease-out"
+              enter-from-class="opacity-0 -translate-y-1"
+              enter-to-class="opacity-100 translate-y-0"
+              leave-active-class="transition-all duration-150 ease-in"
+              leave-from-class="opacity-100 translate-y-0"
+              leave-to-class="opacity-0 -translate-y-1"
+            >
+              <div v-show="!isMilestoneCollapsed(item.id)" class="bg-secondary-50 rounded-lg p-3 mt-2 overflow-hidden">
+                <PengajuanMilestone :pengajuan-id="item.id" />
+              </div>
+            </Transition>
+          </div>
+          -->
         </div>
       </div>
+    </div>
 
     <SendMessageModal
       :show="showModal"
@@ -355,13 +602,6 @@ function getFinalSigner(pengajuan) {
       :pemohon-name="selectedPengajuan?.user?.name"
       @close="showModal = false"
       @sent="handleMessageSent"
-    />
-
-    <VerificationDetailModal
-      :show="showVerificationModal"
-      :pengajuan-id="selectedPengajuanId"
-      @close="showVerificationModal = false"
-      @verified="handleVerified"
     />
   </MainLayout>
 </template>

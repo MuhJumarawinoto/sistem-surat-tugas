@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\JenjangPendidikan;
 use App\Models\UnitKerja;
+use App\Models\PerguruanTinggi;
+use App\Models\Prodi;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
@@ -16,7 +18,7 @@ class MasterController extends Controller
         $jenjang = Cache::remember('master:jenjang', self::CACHE_TTL, function () {
             return JenjangPendidikan::where('is_active', true)
                 ->orderBy('urutan')
-                ->get(['id', 'nama', 'jenjang', 'urutan']);
+                ->get(['id', 'nama', 'kode', 'urutan']);
         });
 
         return response()->json($jenjang);
@@ -41,6 +43,7 @@ class MasterController extends Controller
     {
         Cache::forget('master:jenjang');
         Cache::forget('master:unit_kerja');
+        Cache::forget('master:akreditasi');
 
         return response()->json(['message' => 'Master data cache cleared']);
     }
@@ -78,13 +81,57 @@ class MasterController extends Controller
 
     public function akreditasi()
     {
-        $akreditasi = [
-            ['value' => 'A', 'label' => 'A (Sangat Baik)'],
-            ['value' => 'B', 'label' => 'B (Baik)'],
-            ['value' => 'C', 'label' => 'C (Cukup)'],
-            ['value' => 'Unggul', 'label' => 'Unggul'],
-        ];
+        // Fetch from database dynamically
+        $akreditasiList = Cache::remember('master:akreditasi', self::CACHE_TTL, function () {
+            $values = Prodi::selectRaw('DISTINCT akreditasi')
+                ->whereNotNull('akreditasi')
+                ->where('akreditasi', '!=', '')
+                ->orderBy('akreditasi')
+                ->pluck('akreditasi');
 
-        return response()->json($akreditasi);
+            return $values->map(function ($item) {
+                return [
+                    'value' => $item,
+                    'label' => $item,
+                ];
+            })->toArray();
+        });
+
+        return response()->json($akreditasiList);
+    }
+
+    public function perguruanTinggi(Request $request)
+    {
+        $keyword = $request->get('keyword');
+
+        $query = PerguruanTinggi::orderBy('nama_pt');
+
+        if ($keyword) {
+            $query->where('nama_pt', 'like', '%' . $keyword . '%');
+        }
+
+        $pt = $query->limit(100)->get(['id', 'kode_pt', 'nama_pt', 'provinsi', 'kab_kota', 'akreditasi']);
+
+        return response()->json($pt);
+    }
+
+    public function prodi(Request $request)
+    {
+        $ptId = $request->get('perguruan_tinggi_id');
+        $keyword = $request->get('keyword');
+
+        $query = Prodi::with('perguruanTinggi:id,nama_pt');
+
+        if ($ptId) {
+            $query->where('perguruan_tinggi_id', $ptId);
+        }
+
+        if ($keyword) {
+            $query->where('nama_prodi', 'like', '%' . $keyword . '%');
+        }
+
+        $prodi = $query->orderBy('nama_prodi')->limit(100)->get();
+
+        return response()->json($prodi);
     }
 }

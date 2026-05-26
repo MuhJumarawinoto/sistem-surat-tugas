@@ -24,7 +24,8 @@ async function loadSurat() {
   loading.value = true
   try {
     const response = await api.get('/pengajuan', { params: { status: 'disetujui' } })
-    suratList.value = response.data?.data || []
+    // Laravel pagination response: { data: [...], current_page, ... }
+    suratList.value = response.data.data || []
   } catch (error) {
     console.error('Failed to load surat:', error)
   } finally {

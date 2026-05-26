@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePengajuanStore } from '@/stores/pengajuan'
+import { useNotificationStore } from '@/stores/notification'
 import api from '@/services/api'
 import MainLayout from '@/components/layout/MainLayout.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
@@ -10,6 +11,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import { useToastStore } from '@/stores/toast'
 
 const toast = useToastStore()
+const notificationStore = useNotificationStore()
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -30,7 +32,7 @@ const headerActions = computed(() => {
     isLoading: isRefreshing.value
   })
 
-  if (authStore.isPemohon) {
+  if (authStore.isPemohon || authStore.isAtasan) {
     actions.push({
       label: 'Buat Pengajuan Baru',
       icon: 'ri-add-line',
@@ -48,7 +50,8 @@ async function refreshData() {
   try {
     await Promise.all([
       loadStats(),
-      loadVerificationInfo()
+      loadVerificationInfo(),
+      loadPengajuanNotifications()
     ])
     toast.success('Data berhasil diperbarui')
   } catch (error) {
@@ -75,11 +78,16 @@ const loadingVerification = ref(false)
 const loadingStats = ref(true)
 const statsError = ref(null)
 
+// Notification tracking per pengajuan
+const pengajuanNotificationMap = ref(new Map()) // pengajuan_id -> unread count
+
 // Cancel modal state
 const showCancelModal = ref(false)
 const cancelingId = ref(null)
 const cancelReason = ref('')
 const activeActionMenu = ref(null)
+const hoveredMilestone = ref(null) // Track hovered milestone for tooltip
+const tooltipPosition = ref({ left: '0px', top: '0px' }) // Fixed tooltip position
 
 // Toggle action menu
 function toggleActionMenu(id) {
@@ -170,6 +178,7 @@ const recentPengajuan = computed(() => {
 onMounted(async () => {
   await loadStats()
   await loadVerificationInfo()
+  await loadPengajuanNotifications()
   // Add click outside listener
   document.addEventListener('click', handleClickOutside)
 })
@@ -178,9 +187,7 @@ onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
 })
 
-watch(() => pengajuanStore.pengajuanList, (newList) => {
-  updateStats(newList)
-}, { deep: true })
+// Watch removed - updateStats already called in loadStats
 
 async function loadVerificationInfo() {
   loadingVerification.value = true
@@ -197,6 +204,28 @@ async function loadVerificationInfo() {
   } finally {
     loadingVerification.value = false
   }
+}
+
+// Load notifications for each pengajuan
+async function loadPengajuanNotifications() {
+  try {
+    const unreadNotifications = await notificationStore.fetchUnreadNotifications()
+    // Create a map of pengajuan_id -> notification count
+    pengajuanNotificationMap.value.clear()
+    unreadNotifications.forEach(notif => {
+      if (notif.pengajuan_id) {
+        const currentCount = pengajuanNotificationMap.value.get(notif.pengajuan_id) || 0
+        pengajuanNotificationMap.value.set(notif.pengajuan_id, currentCount + 1)
+      }
+    })
+  } catch (error) {
+    console.error('Failed to load pengajuan notifications:', error)
+  }
+}
+
+// Get unread notification count for a pengajuan
+function getPengajuanNotificationCount(pengajuanId) {
+  return pengajuanNotificationMap.value.get(pengajuanId) || 0
 }
 
 function updateStats(pengajuan) {
@@ -324,7 +353,7 @@ function getMilestoneSteps(pengajuan) {
 
 function getStepClass(step) {
   if (step.status === 'completed') return 'bg-green-500'
-  if (step.status === 'current') return 'bg-primary-500 animate-pulse'
+  if (step.status === 'current') return 'bg-primary-500'
   return 'bg-secondary-300'
 }
 
@@ -333,6 +362,83 @@ function getLineClass(index, steps) {
   if (index < currentStepIndex) return 'bg-green-500'
   if (index === currentStepIndex) return 'bg-primary-500'
   return 'bg-secondary-200'
+}
+
+// Get tooltip info for milestone step
+function getMilestoneTooltip(step, pengajuan) {
+  if (step.status === 'completed') {
+    const completedInfo = {
+      'Dikirim': 'Pengajuan telah dikirim',
+      'Verifikasi': 'Dokumen lengkap & telah diverifikasi admin',
+      'Disetujui': 'Pengajuan disetujui oleh penandatangan (Kepala BKPSDM/Sekda/Bupati)',
+      'TTE': 'Surat telah ditandatangani secara elektronik',
+      'Selesai': 'Proses pengajuan telah selesai'
+    }
+    return {
+      title: 'Selesai',
+      description: completedInfo[step.label] || 'Tahap ini telah selesai',
+      icon: 'ri-checkbox-circle-line',
+      color: 'text-green-600'
+    }
+  }
+
+  if (step.status === 'current') {
+    const currentInfo = {
+      'Dikirim': 'Menunggu verifikasi dari atasan langsung',
+      'Verifikasi': 'Sedang diverifikasi dokumen oleh admin BKPSDM',
+      'Disetujui': 'Menunggu persetujuan dari penandatangan berwenang',
+      'TTE': 'Sedang proses penandatanganan elektronik (TTE)',
+      'Selesai': 'Proses hampir selesai'
+    }
+    return {
+      title: 'Sedang Diproses',
+      description: currentInfo[step.label] || 'Tahap ini sedang diproses',
+      icon: 'ri-loader-4-line',
+      color: 'text-primary-600'
+    }
+  }
+
+  // Pending steps
+  const pendingInfo = {
+    'Dikirim': 'Pengajuan sudah dikirim',
+    'Verifikasi': 'Menunggu verifikasi dokumen oleh admin BKPSDM',
+    'Disetujui': 'Menunggu persetujuan dari penandatangan (Kepala BKPSDM/Sekda/Bupati)',
+    'TTE': 'Menunggu proses Tanda Tangan Elektronik',
+    'Selesai': 'Menunggu proses penyelesaian'
+  }
+  return {
+    title: 'Menunggu',
+    description: pendingInfo[step.label] || 'Tahap ini belum dimulai',
+    icon: 'ri-time-line',
+    color: 'text-secondary-500'
+  }
+}
+
+// Update tooltip position when hovering milestone
+function updateTooltipPosition(event, itemId, stepIndex) {
+  const rect = event.target.getBoundingClientRect()
+  tooltipPosition.value = {
+    left: `${rect.left + rect.width / 2}px`,
+    top: `${rect.top - 8}px`
+  }
+  hoveredMilestone.value = `${itemId}-${stepIndex}`
+}
+
+// Get tooltip data for currently hovered milestone
+function getMilestoneTooltipForHover() {
+  if (!hoveredMilestone.value) {
+    return { title: '', description: '', icon: '', color: '' }
+  }
+
+  const [itemId, stepIndex] = hoveredMilestone.value.split('-').map(Number)
+  const item = pengajuanStore.pengajuanList.find(p => p.id === itemId)
+  if (!item) return { title: '', description: '', icon: '', color: '' }
+
+  const steps = getMilestoneSteps(item)
+  const step = steps[stepIndex]
+  if (!step) return { title: '', description: '', icon: '', color: '' }
+
+  return getMilestoneTooltip(step, item)
 }
 
 // Navigate to detail with state to remember we came from dashboard
@@ -608,6 +714,14 @@ async function handleDelete(id) {
                       <i :class="getStatusIcon(item.status)"></i>
                       {{ getStatusLabel(item.status) }}
                     </span>
+                    <!-- Notification Badge -->
+                    <span
+                      v-if="getPengajuanNotificationCount(item.id) > 0"
+                      class="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-xs font-medium"
+                    >
+                      <i class="ri-notification-3-line"></i>
+                      <span>{{ getPengajuanNotificationCount(item.id) }}</span>
+                    </span>
                   </div>
                   <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-secondary-600">
                     <span><i class="ri-graduation-cap-line mr-1"></i>{{ item.nama_prodi }}</span>
@@ -710,17 +824,28 @@ async function handleDelete(id) {
                   :style="{ backgroundColor: item.status === 'draft' ? '' : (item.status === 'completed' || item.status === 'selesai' ? '#22c55e' : '#3b82f6') }"
                 ></div>
 
-                <!-- Dots -->
+                <!-- Dots with Tooltip -->
                 <div
                   v-for="(step, idx) in getMilestoneSteps(item)"
                   :key="idx"
-                  class="relative z-10 flex flex-col items-center"
+                  class="relative z-10 flex flex-col items-center group"
+                  @mouseenter="updateTooltipPosition($event, item.id, idx)"
+                  @mouseleave="hoveredMilestone = null"
                 >
+                  <!-- Pulse Ring for Current Step -->
                   <div
-                    class="w-3 h-3 rounded-full transition-all duration-300"
+                    v-if="step.status === 'current'"
+                    class="absolute inset-0 rounded-full bg-primary-400 animate-ping opacity-75"
+                    style="animation-duration: 1.5s;"
+                  ></div>
+                  <div
+                    class="w-3 h-3 rounded-full transition-all duration-300 relative cursor-pointer hover:scale-125"
                     :class="getStepClass(step)"
                   ></div>
-                  <span class="text-xs mt-1 text-secondary-600 whitespace-nowrap">{{ step.label }}</span>
+                  <span
+                    class="text-xs mt-1 whitespace-nowrap"
+                    :class="step.status === 'current' ? 'text-primary-600 font-medium' : 'text-secondary-600'"
+                  >{{ step.label }}</span>
                 </div>
               </div>
             </div>
@@ -781,6 +906,29 @@ async function handleDelete(id) {
         </div>
       </Transition>
     </Teleport>
+
+    <!-- Fixed Milestone Tooltip (Teleport to body for z-index fix) -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div
+          v-if="hoveredMilestone"
+          class="fixed z-[10000] pointer-events-none"
+          :style="{ left: tooltipPosition.left, top: tooltipPosition.top, transform: 'translate(-50%, -100%)' }"
+        >
+          <div class="bg-white rounded-lg shadow-xl border border-secondary-200 p-3 text-sm w-48 sm:w-56">
+            <div class="flex items-start gap-2">
+              <i :class="[getMilestoneTooltipForHover().icon, getMilestoneTooltipForHover().color, 'mt-0.5 flex-shrink-0']"></i>
+              <div>
+                <p class="font-medium text-secondary-800">{{ getMilestoneTooltipForHover().title }}</p>
+                <p class="text-xs text-secondary-500 mt-0.5">{{ getMilestoneTooltipForHover().description }}</p>
+              </div>
+            </div>
+            <!-- Arrow pointing down -->
+            <div class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-r border-b transform rotate-45"></div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </MainLayout>
 </template>
 
@@ -790,5 +938,13 @@ async function handleDelete(id) {
 }
 .modal-enter-from, .modal-leave-to {
   opacity: 0;
+}
+
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(4px);
 }
 </style>

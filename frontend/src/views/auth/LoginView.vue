@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
@@ -14,6 +14,17 @@ const form = ref({
 
 const loading = ref(false)
 const error = ref('')
+const infoMessage = ref('')
+
+// Cek pesan session expired saat mount
+onMounted(() => {
+  const sessionMessage = sessionStorage.getItem('sessionMessage')
+  if (sessionMessage) {
+    infoMessage.value = sessionMessage
+    sessionStorage.removeItem('sessionMessage')
+    sessionStorage.removeItem('sessionExpiredShown')
+  }
+})
 
 async function handleLogin() {
   error.value = ''
@@ -21,7 +32,16 @@ async function handleLogin() {
 
   try {
     await authStore.login(form.value.identity, form.value.password)
-    router.push('/dashboard')
+
+    // Redirect ke halaman yang sebelumnya diakses (jika ada)
+    const redirectPath = sessionStorage.getItem('redirectAfterLogin')
+    sessionStorage.removeItem('redirectAfterLogin')
+
+    if (redirectPath && redirectPath !== '/login' && redirectPath !== '/register') {
+      router.push(redirectPath)
+    } else {
+      router.push('/dashboard')
+    }
   } catch (err) {
     error.value = err.response?.data?.message || 'Login gagal. Silakan coba lagi.'
   } finally {
@@ -128,6 +148,12 @@ async function handleLogin() {
             <div v-if="error" class="alert alert-danger mb-4">
               <i class="ri-error-warning-line text-lg"></i>
               <span>{{ error }}</span>
+            </div>
+
+            <!-- Info Alert (Session Expired) -->
+            <div v-if="infoMessage" class="alert alert-info mb-4">
+              <i class="ri-information-line text-lg"></i>
+              <span>{{ infoMessage }}</span>
             </div>
 
             <!-- Login Form -->

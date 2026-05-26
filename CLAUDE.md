@@ -28,13 +28,18 @@ sipintar/
 │   │   ├── components/         # Reusable components
 │   │   │   ├── layout/         # Layout components (TopNavbar, Sidebar)
 │   │   │   ├── Breadcrumb.vue
+│   │   │   ├── DocumentPreviewModal.vue  # Document preview (PDF/image)
 │   │   │   ├── DocumentInfoTooltip.vue
 │   │   │   ├── FileUpload.vue
 │   │   │   ├── LoadingSpinner.vue
 │   │   │   ├── NotificationBell.vue
+│   │   │   ├── PageHeader.vue
 │   │   │   ├── PDDiktiDropdown.vue
+│   │   │   ├── PengajuanMilestone.vue    # Progress milestone (route style)
 │   │   │   ├── SendMessageModal.vue
-│   │   │   ├── DetailModal.vue  # Reusable detail modal pattern
+│   │   │   ├── Toast.vue                  # Toast notification
+│   │   │   ├── ToastAutoNotifier.vue      # Auto toast notifier
+│   │   │   ├── VerificationDetailModal.vue # Admin verification modal
 │   │   │   └── ...
 │   │   ├── views/              # Page components organized by role
 │   │   │   ├── auth/           # Login page
@@ -92,10 +97,23 @@ sipintar/
 
 | Role | Code | Permissions |
 |------|------|-------------|
-| Pemohon (PNS) | `pemohon` | Create, view, edit own pengajuan; upload documents |
+| Pemohon (PNS) | `pemohon` | Create, view, edit own pengajuan; upload documents; download surat |
 | Atasan Langsung | `atasan` | Create own pengajuan; view, approve/reject pengajuan from unit kerja |
-| Admin BKPSDM | `admin` | Verify documents, approve/reject, generate surat; manage pegawai |
-| Kepala BKPSDM | `kepala` | Sign surat with TTE |
+| Admin BKPSDM | `admin` | Verify documents; manage pegawai; generate Surat Izin Belajar; view all surat |
+| Kepala BKPSDM | `kepala` | Sign Surat Izin Belajar with TTE |
+| **Kepala Dinas** | `kepala` | Create Surat Tugas Belajar for unit kerja; view pengajuan verified |
+
+### Kepala Dinas per Unit Kerja
+
+Role `kepala` memiliki fungsi ganda:
+1. **Kepala BKPSDM** - Menandatangani Surat Izin Belajar dengan TTE
+2. **Kepala Dinas (OPD)** - Membuat Surat Tugas Belajar untuk pegawai di unit kerja nya
+
+**Implementation:**
+- `users.is_kepala_unit`: Boolean flag untuk menandai user adalah kepala unit kerja
+- `users.unit_kerja_id`: Relasi ke unit kerja tempat user menjadi kepala
+- Kepala Dinas hanya bisa melihat dan membuat surat untuk pegawai di unit kerja nya
+- Admin BKPSDM bisa melihat semua surat tugas dinas
 
 ### Note: Atasan Can Submit Pengajuan
 Based on research of current regulations, **atasan (pejabat eselon) ARE ALLOWED** to submit study permit applications (izin belajar) with proper approval from higher authorities (PPK/Bupati). The system supports this use case.
@@ -432,9 +450,10 @@ Error:
 ### Documents
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/dokumen` | Upload document |
+| GET | `/api/pengajuan/{pengajuanId}/dokumen` | Get all documents for a pengajuan |
+| POST | `/api/pengajuan/{pengajuanId}/dokumen` | Upload document for pengajuan |
 | DELETE | `/api/dokumen/{id}` | Delete document |
-| GET | `/api/dokumen/{id}` | Get document URL |
+| PUT | `/api/dokumen/{id}/verify` | Verify document (admin: lengkap/tidak_lengkap) |
 
 ### Approval
 | Method | Endpoint | Description |
@@ -443,11 +462,36 @@ Error:
 | POST | `/api/approval/{id}/reject` | Reject pengajuan |
 | POST | `/api/approval/{id}/verify` | Verify documents (admin) |
 
-### Surat
+### Surat Tugas Dinas (Kepala Dinas)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/surat/{id}` | Generate surat izin belajar |
-| POST | `/api/surat/{id}/sign` | Sign surat with TTE |
+| GET | `/api/kepala/surat-tugas` | List surat tugas (kepala dinas only, filtered by unit kerja) |
+| GET | `/api/kepala/surat-tugas/pending` | List pengajuan verified but no surat yet |
+| POST | `/api/kepala/surat-tugas` | Create new surat tugas dinas |
+| GET | `/api/kepala/surat-tugas/{id}` | Get detail surat tugas |
+| PUT | `/api/kepala/surat-tugas/{id}` | Update surat tugas (draft only) |
+| DELETE | `/api/kepala/surat-tugas/{id}` | Delete surat tugas (draft only) |
+| GET | `/api/kepala/surat-tugas/{id}/pdf` | Generate and download PDF |
+| GET | `/api/surat-tugas/{pengajuanId}` | Get surat tugas by pengajuan (admin/bkpsdm) |
+
+### Surat Izin Belajar (Admin BKPSDM)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/admin/surat-izin` | List all surat izin (admin only) |
+| GET | `/api/admin/surat-izin/pending` | List pengajuan with surat dinas, need izin |
+| POST | `/api/admin/surat-izin` | Generate surat izin PDF draft |
+| GET | `/api/admin/surat-izin/{id}` | Get detail surat izin |
+| GET | `/api/admin/surat-izin/{id}/preview` | Preview surat before signing |
+| POST | `/api/admin/surat-izin/{id}/sign` | Sign surat with TTE |
+| GET | `/api/admin/surat-izin/{id}/download` | Download signed surat |
+| GET | `/api/surat-izin/verify/{qr}` | Verify surat authenticity |
+| GET | `/api/pengajuan/{id}/surat-izin` | Get surat izin by pengajuan (pemohon) |
+
+### Surat (Legacy - Deprecated)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/surat/{id}` | Generate surat izin belajar (use `/api/admin/surat-izin` instead) |
+| POST | `/api/surat/{id}/sign` | Sign surat with TTE (use `/api/admin/surat-izin/{id}/sign` instead) |
 
 ### Notifications
 | Method | Endpoint | Description |
@@ -579,11 +623,11 @@ actions: {
 ## Pengajuan Status Flow
 
 ```
-draft → pending_atasan → pending_admin → verified → disetujui → signed → selesai/completed
-                               ↓                              ↓
-                            ditolak                        ditolak
-                               ↑
-                    cancel (tarik kembali)
+draft → pending_atasan → pending_admin → verified → surat_dinas → surat_izin → signed → selesai/completed
+                                             ↓                              ↓
+                                          ditolak                         ditolak
+                                             ↑
+                                 cancel (tarik kembali)
 
 draft → delete → dicabut (masuk riwayat)
 ```
@@ -593,13 +637,69 @@ draft → delete → dicabut (masuk riwayat)
 | `draft` | Pengajuan dibuat, belum dikirim | Ya | - | - |
 | `pending_atasan` | Menunggu approval atasan langsung | Tidak | Ya (→draft) | - |
 | `pending_admin` | Menunggu verifikasi admin | Tidak | Ya (→draft) | - |
-| `verified` | Dokumen diverifikasi admin | Tidak | Ya (→draft) | - |
+| `verified` | Dokumen diverifikasi admin, menunggu Surat Tugas Dinas | Tidak | Ya (→draft) | - |
+| `surat_dinas` | Surat Tugas Dinas sudah dibuat, menunggu Surat Izin | Tidak | Tidak | - |
+| `surat_izin` | Surat Izin sudah dibuat, menunggu TTE | Tidak | Tidak | - |
 | `disetujui` | Disetujui oleh penandatangan | Tidak | Tidak | - |
 | `signed` | Surat ditandatangani (TTE) | Tidak | Tidak | - |
 | `ditolak` | Ditolak admin/atasan | Tidak | Tidak | - |
 | `selesai` | Surat selesai | Tidak | Tidak | - |
 | `completed` | Proses lengkap | Tidak | Tidak | - |
 | `dicabut` | Pengajuan dihapus dari draft/riwayat | Tidak | - | Ya |
+
+### Alur Lengkap dengan 2 Tahap Surat
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              ALUR PENGAJUAN DENGAN 2 TAHAP SURAT                │
+└─────────────────────────────────────────────────────────────────┘
+
+  [PEMOHON]                    [ATASAN]                  [ADMIN]
+       │                           │                          │
+   Buat Pengajuan            Review & Approve         Verify Dokumen
+       │                           │                          │
+       ▼                           ▼                          ▼
+    draft ──────────────→ pending_atasan ─────────→ pending_admin
+                                                           │
+                                                           ▼
+                                                        verified
+                                                           │
+                                    ┌──────────────────────┘
+                                    │
+                                    ▼
+                         ┌───────────────────────┐
+                         │   [KEPALA DINAS]       │
+                         │   (Unit Kerja)         │
+                         └───────────────────────┘
+                                    │
+                         Create Surat Tugas Belajar
+                                    │
+                                    ▼
+                                   surat_dinas
+                                    │
+                                    ▼
+                         ┌───────────────────────┐
+                         │   [ADMIN BKPSDM]      │
+                         └───────────────────────┘
+                                    │
+                      Generate Surat Izin Belajar
+                                    │
+                                    ▼
+                                  surat_izin
+                                    │
+                                    ▼
+                         ┌───────────────────────┐
+                         │   [KEPALA BKPSDM]      │
+                         └───────────────────────┘
+                                    │
+                              Sign with TTE
+                                    │
+                                    ▼
+                                   signed
+                                    │
+                                    ▼
+                                 selesai
+```
 
 **Alur Penarikan (Cancel):**
 1. **Pending/Verified** → Klik "Cabut Berkas" → Status kembali jadi **draft**
@@ -612,8 +712,11 @@ draft → delete → dicabut (masuk riwayat)
 
 **Alur Singkat:**
 1. **User** → Buat & kirim pengajuan
-2. **Admin** → Verifikasi → TTD elektronik
-3. **Selesai** → User unduh surat
+2. **Admin** → Verifikasi dokumen
+3. **Kepala Dinas** → Buat Surat Tugas Belajar
+4. **Admin BKPSDM** → Generate Surat Izin Belajar
+5. **Kepala BKPSDM** → TTE elektronik
+6. **Selesai** → User unduh surat
 
 ## Custom Tailwind Classes
 
@@ -902,18 +1005,21 @@ ALTER TABLE users ADD FOREIGN KEY (atasan_id) REFERENCES users(id);
 | `pending_atasan` | Pending Atasan | Yellow |
 | `pending_admin` | Pending Admin | Yellow |
 | `verified` | Terverifikasi | Blue |
+| `surat_dinas` | Surat Tugas Dinas | Purple |
+| `surat_izin` | Surat Izin | Purple |
 | `disetujui` | Disetujui | Primary |
 | `signed` | Signed | Primary |
 | `ditolak` | Ditolak | Red |
 | `selesai` | Selesai | Green |
 | `completed` | Completed | Green |
 
-**Milestone Steps (5 steps):**
+**Milestone Steps (6 steps):**
 1. Dikirim
 2. Verifikasi
-3. Disetujui
-4. TTE (Tanda Tangan Elektronik)
-5. Selesai
+3. Surat Dinas (Kepala Dinas)
+4. Surat Izin (Admin BKPSDM)
+5. TTE (Tanda Tangan Elektronik)
+6. Selesai
 
 ### Bug Fixes
 
@@ -931,6 +1037,156 @@ ALTER TABLE users ADD FOREIGN KEY (atasan_id) REFERENCES users(id);
 | POST | `/api/pengajuan/{id}/cancel` | Cancel/withdraw pengajuan (owner only, back to `draft`) |
 | POST | `/api/pengajuan/{id}/restore` | Restore deleted/cancelled pengajuan back to draft (owner only) |
 | POST | `/api/admin/cache/clear` | Clear master data cache (admin only) |
+
+---
+
+## Recent Changes (2026-05-24)
+
+### Admin Verification Page Redesign
+
+**Compact Layout:**
+- Inline stats row instead of large cards (horizontal badges)
+- Reduced card spacing (`space-y-3` instead of `space-y-4`)
+- Tighter padding throughout (`p-4` instead of default card-body)
+- Verifier info displayed as compact inline badge instead of full box
+- All information visible without excessive scrolling
+
+**Collapsible Sections:**
+- Progress Pengajuan: Collapsed by default, click to expand
+- Dokumen Lampiran: **Expanded by default** for quick document access
+- Smooth animations for expand/collapse
+
+**Document Preview on Verification Page:**
+- Documents now loaded and displayed directly in the verification list
+- Each pengajuan shows document count with status badges (lengkap/belum/tidak_lengkap)
+- Grid layout (2 columns) for document cards
+- Preview button always visible (not just on hover)
+- Click preview button to open `DocumentPreviewModal`
+- Document types configured with icons and labels
+
+**Bug Fixes:**
+- **Route ordering issue**: Moved `/{pengajuanId}/dokumen` route before `/{id}` route to prevent conflicts
+- **DocumentPreviewModal**: Fixed to accept `document` prop (object with url, name, type) OR individual props (src, alt, fileType)
+- **getDocumentUrl**: Added null check and fallback for undefined VITE_API_URL
+
+### Milestone Component Redesign
+
+**Route/Path Style Design:**
+- Changed from "box cards" to "map route" style
+- Horizontal connecting line between steps
+- Circular nodes with icons instead of boxes
+- Animated progress line that fills as steps complete
+- 4 steps: Dikirim → Verifikasi → TTD → Selesai
+- Clean, modern look with proper spacing
+
+**Status Colors:**
+- Completed: Green (success)
+- Current: Blue (primary) with pulse animation
+- Pending: Gray (secondary)
+- Rejected: Red (danger)
+
+### Components Updated
+
+**PengajuanMilestone.vue:**
+- Complete redesign with route-style layout
+- Progress percentage calculation
+- Responsive design for mobile
+
+**VerifikasiView.vue:**
+- Added document loading with `dokumenMap` state
+- Added `collapsedDocuments` state for collapsible document section
+- Added document-related helper functions
+- Integrated `DocumentPreviewModal`
+
+**DocumentPreviewModal.vue:**
+- Added `document` prop support for backward compatibility
+- Computed values for src, alt, and fileType
+- Supports both object prop and individual props
+
+### API Endpoint Fixes
+
+**Route Order (backend/routes/api.php):**
+```php
+// Documents routes - must come before /{id} to avoid conflicts
+Route::prefix('/{pengajuanId}/dokumen')->group(function () {
+    Route::get('/', [DokumenController::class, 'index']);
+    Route::post('/', [DokumenController::class, 'store']);
+});
+
+Route::get('/{id}', [PengajuanController::class, 'show']);
+```
+
+### Performance Improvements
+
+**Notification Polling:**
+- Reduced frequency: 90s → 120s (2 minutes)
+- Increased initial delay: 3s → 5s
+- apiQuick timeout: 5s → 3s for faster fail
+- Silent error handling to reduce console spam
+
+---
+
+## Recent Changes (2026-05-25)
+
+### Sistem Surat 2 Tahap (Surat Tugas Dinas + Surat Izin Belajar)
+
+**Overview:**
+Sistem sekarang menggunakan **2 tahap surat** dalam proses Izin Belajar Mandiri:
+1. **Surat Tugas Belajar** - Dikeluarkan oleh Kepala Dinas (tempat pegawai bekerja)
+2. **Surat Izin Belajar Mandiri** - Dikeluarkan oleh Kepala BKPSDM
+
+**Alur Baru:**
+```
+verified → Surat Tugas Dinas (Kepala Dinas) → Surat Izin (Admin BKPSDM) → TTE → Selesai
+```
+
+**Database Changes:**
+- `users.is_kepala_unit`: Boolean flag untuk menandai user adalah kepala unit kerja
+- `surat_tugas_dinas` table: Store surat tugas dinas data
+  - Fields: nomor_surat, bulan, tahun, tanggal_mulai, tanggal_selesai, file_path, status
+  - Unique: (unit_kerja_id, nomor_surat, tahun)
+- `surat_izin_belajar` table: Store surat izin belajar mandiri data
+  - Fields: nomor_surat, tahun, file_path, tte_path, qr_code, status
+  - Foreign key ke `surat_tugas_dinas`
+
+**Status Pengajuan Baru:**
+| Status | Penjelasan |
+|--------|------------|
+| `verified` | Dokumen diverifikasi admin, menunggu Surat Tugas Dinas |
+| `surat_dinas` | Surat Tugas Dinas sudah dibuat, menunggu Surat Izin |
+| `surat_izin` | Surat Izin sudah dibuat, menunggu TTE |
+
+**Role "kepala" (Kepala Dinas):**
+- Bisa melihat pengajuan `verified` untuk unit kerja nya
+- Bisa membuat Surat Tugas Belajar
+- Nomor surat auto-increment per unit kerja per tahun
+- Format: `[Nomor]/DK/[Bulan]/[Tahun]`
+
+**Frontend Features:**
+- **SuratTugasDinasView** - List pengajuan untuk buat surat (role: kepala)
+- **CreateSuratTugasModal** - Form buat surat tugas
+- **Preview & Download PDF** - HTML preview dengan download PDF option
+- **Integration** - Otomatis muncul di Admin BKPSDM setelah dibuat
+
+**API Endpoints (Surat Tugas Dinas):**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/kepala/surat-tugas` | List surat tugas (kepala dinas only) |
+| GET | `/api/kepala/surat-tugas/pending` | List pengajuan verified but no surat yet |
+| POST | `/api/kepala/surat-tugas` | Create new surat tugas dinas |
+| GET | `/api/kepala/surat-tugas/{id}/pdf` | Generate and download PDF |
+
+**API Endpoints (Surat Izin Belajar):**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/admin/surat-izin` | List all surat izin (admin only) |
+| GET | `/api/admin/surat-izin/pending` | List pengajuan with surat dinas, need izin |
+| POST | `/api/admin/surat-izin` | Generate surat izin PDF draft |
+| POST | `/api/admin/surat-izin/{id}/sign` | Sign surat with TTE |
+
+**Template Surat:**
+- **Surat Tugas Dinas**: HTML template dengan kop surat dinamis sesuai unit kerja
+- **Surat Izin Belajar**: Menggunakan template BKPSDM dengan referensi ke Surat Tugas Dinas
 
 ---
 
@@ -1186,11 +1442,242 @@ getRoleLabel()     // Get user role display label
 
 ---
 
-## Surat Tugas - Implementation Requirements
+# SISTEM SURAT - 2 TAHAP
+
+## Overview
+
+Sistem menggunakan **2 tahap surat** dalam proses Izin Belajar Mandiri:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 ALUR LENGKAP 2 TAHAP SURAT                      │
+└─────────────────────────────────────────────────────────────────┘
+
+  [Pengajuan Terverifikasi]
+       │
+       ▼
+  ┌──────────────────────────────────────────────────────────────┐
+  │  TAHAP 1: SURAT TUGAS BELAJAR                                │
+  │  ──────────────────────────────────                         │
+  │  Dikeluarkan oleh: Kepala Dinas (tempat pegawai bekerja)    │
+  │  Role: kepala                                               │
+  │  Format: [Nomor]/DK/[Bulan]/[Tahun]                         │
+  │  Isi: Menugaskan pegawai untuk belajar                      │
+  └──────────────────────────────────────────────────────────────┘
+       │
+       ▼
+  ┌──────────────────────────────────────────────────────────────┐
+  │  TAHAP 2: SURAT IZIN BELAJAR MANDIRI                        │
+  │  ──────────────────────────────────                         │
+  │  Dikeluarkan oleh: Kepala BKPSDM                            │
+  │  Role: kepala (BKPSDM)                                      │
+  │  Format: 800.1.3.1/[Nomor]/BKPSDM/[Tahun]                  │
+  │  Isi: Izin belajar mandiri tidak diberhentikan             │
+  │  Dasar hukum point 6: Surat Tugas Dinas                    │
+  └──────────────────────────────────────────────────────────────┘
+       │
+       ▼
+  3. TTE Kepala BKPSDM → Selesai
+```
+
+---
+
+## TAHAP 1: Surat Tugas Belajar (Kepala Dinas)
 
 ### Template Analysis Summary
 
-**Document Type:** Surat Tugas Belajar Mandiri (Tidak Diberhentikan dari Jabatan)
+**Document Type:** Surat Tugas Belajar
+
+| Aspect | Detail |
+|--------|--------|
+| Penerbit | Kepala Dinas (tempat pegawai bekerja) |
+| Role | `kepala` (per unit kerja) |
+| Number Format | `[Nomor]/DK/[Bulan]/[Tahun]` |
+| Viewable By | Kepala Dinas terkait, Admin BKPSDM, Pemohon |
+
+### Required Data Fields
+
+```javascript
+// Surat Tugas Dinas Data Structure
+{
+  // Header Dinas (auto dari unit_kerja pegawai)
+  dinas: {
+    nama: "Dinas Pendidikan",
+    alamat: "Jl. Raya Sukabumi...",
+    telepon: "(0266) xxxxxx",
+    email: "disdik@sukabumikab.go.id"
+  },
+
+  // Nomor Surat
+  nomor_surat: "001",
+  bulan: "Mei",
+  tahun: "2026",
+  tanggal_ttd: "2026-05-20",
+
+  // Data Kepala Dinas (auto dari user role kepala di unit kerja)
+  kepala_dinas: {
+    nama: "Drs. H. Nama Kepala",
+    nip: "19700101 199503 1 001",
+    pangkat: "Pembina Utama",
+    golongan: "IV/e"
+  },
+
+  // Data Pegawai (auto dari pengajuan)
+  pegawai: {
+    nama: "Drajat Sukmana, S.IP",
+    nip: "197506152005011002",
+    pangkat: "Pembina",
+    golongan: "IV/a",
+    jabatan: "Kepala Seksi",
+    unit_kerja: "Dinas Pendidikan"
+  },
+
+  // Data Program Belajar (auto dari pengajuan)
+  program: {
+    nama_prodi: "Magister Hukum",
+    jenjang: "S2",
+    perguruan_tinggi: "Universitas Padjadjaran",
+    lokasi: "Bandung, Jawa Barat"
+  },
+
+  // Waktu Penugasan
+  waktu: {
+    mulai: "2026-09-01",
+    selesai: "2028-09-01"
+  }
+}
+```
+
+### HTML Template Structure
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  PEMERINTAH KABUPATEN SUKABUMI                             │
+│  [NAMA DINAS]                                              │
+│  Alamat, Telepon, Email                                    │
+├─────────────────────────────────────────────────────────────┤
+│              SURAT TUGAS BELAJAR                            │
+│  Nomor: [Nomor]/DK/[Bulan]/[Tahun]                        │
+├─────────────────────────────────────────────────────────────┤
+│  Yang bertanda tangan di bawah ini:                        │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ Nama     : [Nama Kepala Dinas]                      │   │
+│  │ NIP      : [NIP Kepala Dinas]                       │   │
+│  │ Pangkat  : [Pangkat/Golongan]                       │   │
+│  │ Jabatan  : Kepala Dinas [Nama Dinas]                │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  Dengan ini menugaskan kepada pegawai:                     │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ Nama     : [Nama Pegawai]                          │   │
+│  │ NIP      : [NIP Pegawai]                           │   │
+│  │ Pangkat  : [Pangkat/Golongan]                      │   │
+│  │ Jabatan  : [Jabatan]                               │   │
+│  │ Unit Kerja: [Unit Kerja]                           │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  Untuk melaksanakan Penugasan Belajar:                     │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ Program Studi/Bidang: [Nama Prodi]                 │   │
+│  │ Jenjang          : [S1/S2/S3]                      │   │
+│  │ Lembaga          : [Nama Universitas]              │   │
+│  │ Lokasi           : [Kota, Provinsi]                │   │
+│  │ Waktu            : [Tgl Mulai] s.d. [Tgl Selesai]  │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  Kewajiban:                                                 │
+│  a. Mengikuti perkuliahan dengan sungguh-sungguh           │
+│  b. Menyelesaikan studi tepat waktu                        │
+│  c. Lapor perkembangan setiap semester                     │
+│  d. Wajib kembali bertugas 2x masa studi                   │
+│                                                             │
+│  Sanksi:                                                    │
+│  Apabila tidak memenuhi, mengembalikan biaya negara         │
+│                                                             │
+│                                    KEPALA DINAS [NAMA]     │
+│                                    [Nama Kepala]           │
+│                                    NIP. [NIP]               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Checklist
+
+#### Backend Requirements
+- [ ] **SuratTugasDinas Model & Migration** - Store surat tugas dinas data
+- [ ] **Nomor Surat Generator** - Auto-increment per dinas per tahun
+- [ ] **Kepala Dinas per Unit Kerja** - Relasi user kepala dengan unit_kerja
+- [ ] **PDF Generator** - Using DOMPDF/barryvdh/laravel-dompdf
+- [ ] **API Endpoints** - CRUD surat tugas dinas
+
+#### Frontend Requirements
+- [ ] **SuratTugasDinasView** - List pengajuan untuk buat surat (role: kepala)
+- [ ] **CreateSuratTugasModal** - Form buat surat tugas
+- [ ] **Preview Surat** - HTML preview with download PDF option
+- [ ] **Integration** - Otomatis muncul di Admin BKPSDM setelah dibuat
+
+#### Database Schema Addition
+```sql
+-- Kepala Dinas per Unit Kerja (add to users table)
+ALTER TABLE users ADD COLUMN is_kepala_unit BOOLEAN DEFAULT FALSE;
+ALTER TABLE users ADD INDEX idx_unit_kerja_kepala (unit_kerja_id, is_kepala_unit);
+
+-- Surat Tugas Dinas Table
+CREATE TABLE surat_tugas_dinas (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  pengajuan_id BIGINT NOT NULL,
+  unit_kerja_id BIGINT NOT NULL,
+  kepala_dinas_id BIGINT NOT NULL,
+
+  -- Nomor Surat
+  nomor_surat VARCHAR(50) NOT NULL,
+  bulan VARCHAR(20) NOT NULL,
+  tahun VARCHAR(4) NOT NULL,
+
+  -- Data Surat
+  tanggal_mulai DATE NOT NULL,
+  tanggal_selesai DATE NOT NULL,
+  tanggal_ttd DATE NOT NULL,
+  tempat_ttd VARCHAR(100) DEFAULT 'Sukabumi',
+
+  -- File
+  file_path VARCHAR(255),
+
+  -- Status
+  status ENUM('draft', 'signed', 'completed') DEFAULT 'signed',
+
+  -- Timestamps
+  signed_at TIMESTAMP NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  FOREIGN KEY (pengajuan_id) REFERENCES pengajuan(id),
+  FOREIGN KEY (unit_kerja_id) REFERENCES unit_kerjas(id),
+  FOREIGN KEY (kepala_dinas_id) REFERENCES users(id),
+
+  UNIQUE KEY unique_nomor (unit_kerja_id, nomor_surat, tahun)
+);
+```
+
+### API Endpoints (Surat Tugas Dinas)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/kepala/surat-tugas` | List surat tugas (kepala dinas only) |
+| GET | `/api/kepala/surat-tugas/pending` | List pengajuan verified but no surat yet |
+| POST | `/api/kepala/surat-tugas` | Create new surat tugas dinas |
+| GET | `/api/kepala/surat-tugas/{id}` | Get detail surat tugas |
+| PUT | `/api/kepala/surat-tugas/{id}` | Update surat tugas (draft only) |
+| DELETE | `/api/kepala/surat-tugas/{id}` | Delete surat tugas (draft only) |
+| GET | `/api/kepala/surat-tugas/{id}/pdf` | Generate and download PDF |
+| GET | `/api/surat-tugas/{pengajuanId}` | Get surat tugas by pengajuan (admin/bkpsdm) |
+
+---
+
+## TAHAP 2: Surat Izin Belajar Mandiri (Kepala BKPSDM)
+
+### Template Analysis Summary
+
+**Document Type:** Surat Izin Belajar Mandiri (Tidak Diberhentikan dari Jabatan)
 
 | Aspect | Detail |
 |--------|--------|
@@ -1198,16 +1685,17 @@ getRoleLabel()     // Get user role display label
 | Signing Method | Tanda Tangan Elektronik (TTE) BSrE BSSN |
 | Key Regulation | Perbup Sukabumi No. 2 Tahun 2022 |
 | Number Format | `800.1.3.1/[Nomor Urut]/BKPSDM/[Tahun]` |
+| Prerequisite | Surat Tugas Dinas must exist |
 
-### Required Data Fields for PDF Generation
+### Required Data Fields
 
 ```javascript
-// Surat Tugas Data Structure
+// Surat Izin Belajar Mandiri Data Structure
 {
   nomor_surat: "800.1.3.1/001/BKPSDM/2026",
   tanggal_surat: "2026-05-20",
 
-  // Pegawai Data
+  // Pegawai Data (auto from pengajuan)
   pegawai: {
     nama: "Drajat Sukmana, S.IP",
     nip: "197506152005011002",
@@ -1217,104 +1705,23 @@ getRoleLabel()     // Get user role display label
     unit_kerja: "Dinas Pendidikan"
   },
 
-  // Pendidikan Data
+  // Pendidikan Data (auto from pengajuan)
   pendidikan: {
     jenjang: "S2",
     program_studi: "Magister Hukum",
     perguruan_tinggi: "Universitas Padjadjaran"
   },
 
-  // Rekomendasi Atasan
-  rekomendasi: {
-    nama_dinas: "Dinas Pendidikan",
-    nomor_surat: "005/123/DISDIK/2026",
-    tanggal_surat: "2026-05-15"
+  // Surat Tugas Dinas (auto from surat_tugas_dinas)
+  surat_dinas: {
+    nomor: "001/DK/Mei/2026",
+    tanggal: "2026-05-15",
+    nama_dinas: "Dinas Pendidikan"
   }
 }
 ```
 
-### Implementation Checklist
-
-#### Backend Requirements
-- [ ] **Nomor Surat Generator** - Auto-increment format `800.1.3.1/XXX/BKPSDM/YYYY`
-- [ ] **PDF Template** - Using DOMPDF/snappy with official letterhead
-- [ ] **TTE Integration** - BSrE BSSN API for electronic signature
-- [ ] **QR Code Generator** - For document verification
-- [ ] **Surat Model & Migration** - Store generated surat data
-
-#### Frontend Requirements
-- [ ] **Preview Surat** - Show PDF preview before signing
-- [ ] **Download Surat** - Allow pemohon to download signed surat
-- [ ] **Status Tracking** - Show surat status (draft, signed, completed)
-
-#### Database Schema Addition
-```sql
--- Surat Tugas Table
-CREATE TABLE surat_tugas (
-  id BIGINT PRIMARY KEY,
-  pengajuan_id BIGINT,
-  nomor_surat VARCHAR(100),
-  tanggal_surat DATE,
-  file_path VARCHAR(255),
-  tte_path VARCHAR(255),
-  qr_code VARCHAR(255),
-  status ENUM('draft', 'signed', 'completed'),
-  signed_at TIMESTAMP NULL,
-  signed_by VARCHAR(100),
-  created_at TIMESTAMP,
-  FOREIGN KEY (pengajuan_id) REFERENCES pengajuan(id)
-);
-```
-
-### Surat Generation Flow
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    ALUR GENERATE SURAT TUGAS                    │
-└─────────────────────────────────────────────────────────────────┘
-
-  [Admin BKPSDM]
-       │
-       ├─ Verify Pengajuan
-       ├─ Input Rekomendasi Atasan (Nomor & Tanggal Surat)
-       ├─ Generate Nomor Surat (Otomatis)
-       │
-       ▼
-  [Generate PDF Draft]
-       │
-       ├─ Load Template
-       ├─ Fill Data (Pegawai, Pendidikan, Rekomendasi)
-       ├─ Generate QR Code
-       │
-       ▼
-  [Kepala BKPSDM]
-       │
-       ├─ Preview Surat
-       ├─ Sign with TTE (BSrE BSSN)
-       │
-       ▼
-  [Surat Terbit]
-       │
-       ├─ Status: Signed
-       ├─ Send Notification to Pemohon
-       │
-       ▼
-  [Pemohon]
-       │
-       └─ Download / Print Surat
-```
-
-### API Endpoints (Additional)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/surat/generate` | Generate surat PDF draft |
-| GET | `/api/surat/{id}/preview` | Preview surat before signing |
-| POST | `/api/surat/{id}/sign` | Sign surat with TTE |
-| GET | `/api/surat/{id}/download` | Download signed surat |
-| GET | `/api/surat/verify/{qr}` | Verify surat authenticity |
-
-### 5 Ketentuan Surat (Hardcoded in Template)
+### 5 Ketentuan Surat (Hardcoded)
 
 1. Tugas mengikuti pendidikan diberikan di luar jam kerja
 2. Tidak mengganggu tugas-tugas kedinasan
@@ -1322,10 +1729,226 @@ CREATE TABLE surat_tugas (
 4. Biaya pendidikan sepenuhnya ditanggung oleh yang bersangkutan
 5. Tidak menuntut penyesuaian kenaikan pangkat dan pengakuan gelar akademik kecuali formasi memungkinkan
 
-### Notes for Development
+### Database Schema Addition
+```sql
+-- Surat Izin Belajar Mandiri Table
+CREATE TABLE surat_izin_belajar (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  pengajuan_id BIGINT NOT NULL,
+  surat_tugas_dinas_id BIGINT NOT NULL,
 
-- **Letterhead positioning**: Ensure proper margins for official BKPSDM letterhead
-- **TTE placement**: Reserve space in bottom-right for Kepala BKPSDM signature
-- **QR Code**: Include verification URL or unique identifier
-- **Font**: Use Times New Roman or similar for official document feel
+  -- Nomor Surat
+  nomor_surat VARCHAR(100) NOT NULL,
+  tahun VARCHAR(4) NOT NULL,
+
+  -- File
+  file_path VARCHAR(255),
+  tte_path VARCHAR(255),
+  qr_code VARCHAR(255),
+
+  -- Status
+  status ENUM('draft', 'signed', 'completed') DEFAULT 'draft',
+
+  -- Timestamps
+  signed_at TIMESTAMP NULL,
+  signed_by VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  FOREIGN KEY (pengajuan_id) REFERENCES pengajuan(id),
+  FOREIGN KEY (surat_tugas_dinas_id) REFERENCES surat_tugas_dinas(id),
+
+  UNIQUE KEY unique_nomor (nomor_surat)
+);
+```
+
+### API Endpoints (Surat Izin Belajar)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/admin/surat-izin` | List all surat izin (admin only) |
+| GET | `/api/admin/surat-izin/pending` | List pengajuan with surat dinas, need izin |
+| POST | `/api/admin/surat-izin` | Generate surat izin PDF draft |
+| GET | `/api/admin/surat-izin/{id}` | Get detail surat izin |
+| GET | `/api/admin/surat-izin/{id}/preview` | Preview surat before signing |
+| POST | `/api/admin/surat-izin/{id}/sign` | Sign surat with TTE |
+| GET | `/api/admin/surat-izin/{id}/download` | Download signed surat |
+| GET | `/api/surat-izin/verify/{qr}` | Verify surat authenticity |
+| GET | `/api/pengajuan/{id}/surat-izin` | Get surat izin by pengajuan (pemohon) |
+
+---
+
+## Update Pengajuan Status Flow
+
+Status flow diperbarui untuk mencakup 2 tahap surat:
+
+```
+draft → pending_atasan → pending_admin → verified
+                                      │
+                                      ▼
+                               surat_tugas_dinas
+                               (Kepala Dinas create)
+                                      │
+                                      ▼
+                               surat_izin_belajar
+                               (Admin BKPSDM create)
+                                      │
+                                      ▼
+                               signed → selesai/completed
+```
+
+| Status | Penjelasan |
+|--------|------------|
+| `verified` | Dokumen diverifikasi admin, menunggu Surat Tugas Dinas |
+| `surat_dinas` | Surat Tugas Dinas sudah dibuat, menunggu Surat Izin |
+| `surat_izin` | Surat Izin sudah dibuat, menunggu TTE |
+| `signed` | Sudah ditandatangani TTE |
+| `selesai` / `completed` | Proses lengkap |
+
+---
+
+## Role & Permission Updates
+
+### Role "kepala" (Kepala Dinas per Unit Kerja)
+
+| Permission | Description |
+|------------|-------------|
+| `view_surat_tugas` | View list pengajuan verified untuk unit kerja nya |
+| `create_surat_tugas` | Create surat tugas dinas |
+| `update_surat_tugas` | Update surat tugas (draft only) |
+| `delete_surat_tugas` | Delete surat tugas (draft only) |
+| `download_surat_tugas` | Download PDF surat tugas |
+
+### Role "admin" (Admin BKPSDM)
+
+| Permission | Description |
+|------------|-------------|
+| `view_all_surat_tugas` | View all surat tugas dinas |
+| `create_surat_izin` | Generate surat izin belajar mandiri |
+| `sign_surat_izin` | Sign surat izin with TTE (kepala) |
+
+### Role "kepala" (Kepala BKPSDM)
+
+| Permission | Description |
+|------------|-------------|
+| `sign_surat_izin` | Sign surat izin with TTE |
+
+---
+
+## Notes for Development
+
+### Surat Tugas Dinas
+- **Letterhead**: Dynamic sesuai unit kerja masing-masing
+- **Kepala Dinas**: Auto-detect dari user role kepala di unit kerja
+- **Nomor Surat**: Auto-increment per unit kerja per tahun
+- **Wajib**: Harus dibuat sebelum Admin BKPSDM bisa buat Surat Izin
+
+### Surat Izin Belajar
+- **Letterhead**: BKPSDM (fixed)
+- **Dasar Hukum Point 6**: Refer ke Surat Tugas Dinas (nomor, tanggal, nama dinas)
+- **TTE**: BSrE BSSN integration
+- **Font**: Times New Roman for official document feel
 - **Paper size**: A4 with standard margins
+
+---
+
+## Recent Changes (2026-05-26)
+
+### PDDikti Local Database Import
+
+**Overview:**
+- Import PDDikti data (universities and study programs) from `scrape_progress.json` to local database
+- Enables fast auto-fill in pengajuan form without external API calls
+- **Database Status:** 4755 Perguruan Tinggi, ~30,000+ Prodi
+
+**Import Command:**
+```bash
+# Import with limit (testing)
+php artisan pddikti:import --file=scrape_progress.json --limit=100
+
+# Force update existing records
+php artisan pddikti:import --file=scrape_progress.json --force
+
+# Full import (all 4755 universities)
+php artisan pddikti:import --file=scrape_progress.json
+```
+
+**Database Tables:**
+- `perguruan_tinggi`: Stores university data (kode_pt, nama_pt, alamat, provinsi, akreditasi, etc.)
+- `prodis`: Stores study program data linked to universities (nama_prodi, jenjang, akreditasi, etc.)
+
+**API Endpoints (Local):**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/master/perguruan-tinggi?keyword=...` | Search local universities |
+| GET | `/api/master/prodi?perguruan_tinggi_id=...&keyword=...` | Search local study programs |
+
+**Frontend Integration:**
+- `masterStore.fetchPerguruanTinggi()` - Search universities from local DB
+- `masterStore.fetchProdi()` - Search study programs from local DB
+- Auto-fill features: University name, location (kab_kota + provinsi), accreditation
+
+**Artisan Command:**
+- `ImportPDDiktiData` - Console command for importing data from JSON file
+- Options: `--file`, `--limit`, `--skip`, `--force`
+- Handles both universities and their associated study programs
+
+### PDF Templates Updated (Quick Reference Style)
+
+**Both templates updated to match official government document standards:**
+
+**Font & Typography:**
+- Primary: Arial (15pt headers, 11pt body)
+- Fallback: Times New Roman
+- Line height: 1.3x for better readability
+- Text alignment: Headers centered, body justified
+
+**Page Layout:**
+- Paper size: A4 Portrait (210mm x 297mm)
+- Margins: 20mm all sides
+- Separator lines: 3pt top border, 1pt bottom border
+
+**QR Code Integration:**
+- Size: 80px (Surat Izin), 70px (Surat Tugas)
+- Position: Bottom-center
+- Generated using QrCodeService (local storage)
+- Verification data: type, id, nomor_surat, signed_at
+
+**Template Files:**
+- `backend/resources/views/pdf/surat-izin-belajar.blade.php`
+- `backend/resources/views/pdf/surat-tugas-dinas.blade.php`
+
+### QR Code Service
+
+**New Service: QrCodeService**
+- Location: `backend/app/Services/QrCodeService.php`
+- Methods:
+  - `generateAndSave()` - Generate QR code and save to storage
+  - `generateForSurat()` - Generate QR code for surat verification
+  - `getVerificationUrl()` - Get verification URL
+  - `generateAsBase64()` - Generate QR code as base64 string
+- Storage: `storage/app/public/qr-codes/`
+- Uses: External API (api.qrserver.com) for generation
+
+### Bug Fixes
+
+**Prodi Model:**
+- Fixed table name: `prodi` → `prodis`
+- Allows correct Eloquent relationship with PerguruanTinggi
+
+**Import Command:**
+- Fixed logic to import prodis even when universities already exist
+- Previously: Prodis only imported when university was new
+- Now: Prodis imported for all universities (with `--force` flag)
+
+**Database Migrations:**
+- Removed duplicate migrations for perguruan_tinggi and prodis tables
+- Fixed foreign key references (pegawai → users)
+- Fixed index table names (pengajuans → pengajuan, unit_kerjas → unit_kerja)
+
+### API Endpoints Added
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/master/perguruan-tinggi` | Search local universities (with keyword filter) |
+| GET | `/api/master/prodi` | Search local study programs (with PT and keyword filter) |

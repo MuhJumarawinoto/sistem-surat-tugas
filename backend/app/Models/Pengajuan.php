@@ -72,6 +72,36 @@ class Pengajuan extends Model
         return $this->hasMany(SuratTugas::class);
     }
 
+    public function suratTugasDinas(): HasMany
+    {
+        return $this->hasMany(SuratTugasDinas::class);
+    }
+
+    public function suratIzinBelajar(): HasMany
+    {
+        return $this->hasMany(SuratIzinBelajar::class);
+    }
+
+    public function latestSuratTugasDinas(): BelongsTo
+    {
+        return $this->belongsTo(SuratTugasDinas::class);
+    }
+
+    public function latestSuratIzinBelajar(): BelongsTo
+    {
+        return $this->belongsTo(SuratIzinBelajar::class);
+    }
+
+    public function suratTugasMandiri(): HasMany
+    {
+        return $this->hasMany(SuratTugasMandiri::class);
+    }
+
+    public function latestSuratTugasMandiri(): BelongsTo
+    {
+        return $this->belongsTo(SuratTugasMandiri::class);
+    }
+
     public function isDraft(): bool
     {
         return $this->status === 'draft';
@@ -100,6 +130,41 @@ class Pengajuan extends Model
     public function isSelesai(): bool
     {
         return $this->status === 'selesai';
+    }
+
+    public function isVerified(): bool
+    {
+        return $this->status === 'verified';
+    }
+
+    public function isSuratDinas(): bool
+    {
+        return $this->status === 'surat_dinas';
+    }
+
+    public function isSuratIzin(): bool
+    {
+        return $this->status === 'surat_izin';
+    }
+
+    public function hasSuratTugasDinas(): bool
+    {
+        return $this->suratTugasDinas()->exists();
+    }
+
+    public function hasSuratIzinBelajar(): bool
+    {
+        return $this->suratIzinBelajar()->exists();
+    }
+
+    public function needsSuratTugasDinas(): bool
+    {
+        return $this->isVerified() && !$this->hasSuratTugasDinas();
+    }
+
+    public function needsSuratIzinBelajar(): bool
+    {
+        return $this->hasSuratTugasDinas() && !$this->hasSuratIzinBelajar();
     }
 
     public function isAtasanApplicant(): bool

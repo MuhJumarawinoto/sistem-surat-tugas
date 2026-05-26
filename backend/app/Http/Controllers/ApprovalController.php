@@ -58,8 +58,9 @@ class ApprovalController extends Controller
             'catatan' => 'nullable|string',
         ]);
 
+        // Change status to 'verified' (menunggu Surat Tugas Dinas dari Kepala Dinas)
         $pengajuan->update([
-            'status' => 'disetujui',
+            'status' => 'verified',
             'tanggal_approve_admin' => now(),
         ]);
 
@@ -72,17 +73,32 @@ class ApprovalController extends Controller
         ]);
 
         // Send notification to pemohon
-        $message = 'Pengajuan Anda telah disetujui oleh Admin BKPSDM';
+        $message = 'Dokumen pengajuan Anda telah diverifikasi oleh Admin BKPSDM. Menunggu Surat Tugas Belajar dari Kepala Dinas.';
         if ($request->catatan) {
-            $message .= '. Catatan: ' . $request->catatan;
+            $message .= ' Catatan: ' . $request->catatan;
         }
         Notification::createForUser(
             $pengajuan->user_id,
             'success',
-            'Pengajuan Disetujui Admin',
+            'Dokumen Terverifikasi',
             $message,
             $pengajuan->id
         );
+
+        // Notify kepala dinas (unit kerja) that there's a verified pengajuan waiting for surat tugas
+        $kepalaDinas = \App\Models\User::where('unit_kerja_id', $pengajuan->user->unit_kerja_id)
+            ->where('is_kepala_unit', true)
+            ->first();
+
+        if ($kepalaDinas) {
+            Notification::createForUser(
+                $kepalaDinas->id,
+                'info',
+                'Pengajuan Terverifikasi',
+                "Pengajuan dari {$pengajuan->user->name} telah diverifikasi. Silakan buat Surat Tugas Belajar.",
+                $pengajuan->id
+            );
+        }
 
         return response()->json($pengajuan->load(['user', 'jenjang', 'approvalHistory']));
     }
@@ -194,13 +210,28 @@ class ApprovalController extends Controller
             'verified_at' => now(),
         ]);
 
-        // Send notification if document is marked as incomplete with notes
-        if ($request->status === 'tidak_lengkap' && $request->catatan && $oldStatus !== 'tidak_lengkap') {
+        // Send notification whenever there's a note (regardless of status)
+        // Or if marked as incomplete
+        if ($request->catatan) {
+            $type = $request->status === 'tidak_lengkap' ? 'warning' : 'info';
+            $title = $request->status === 'lengkap' ? 'Catatan Verifikasi Dokumen' : 'Dokumen Perlu Diperbaiki';
+            $message = $request->status === 'lengkap'
+                ? "Dokumen {$dokumen->file_name} telah diverifikasi. Catatan: {$request->catatan}"
+                : "Dokumen {$dokumen->file_name} ditandai sebagai tidak lengkap. Catatan: {$request->catatan}";
+
+            Notification::createForUser(
+                $pengajuan->user_id,
+                $type,
+                $title,
+                $message,
+                $pengajuan->id
+            );
+        } elseif ($request->status === 'tidak_lengkap' && $oldStatus !== 'tidak_lengkap') {
             Notification::createForUser(
                 $pengajuan->user_id,
                 'warning',
                 'Dokumen Perlu Diperbaiki',
-                "Dokumen {$dokumen->file_name} ditandai sebagai tidak lengkap. Catatan: {$request->catatan}",
+                "Dokumen {$dokumen->file_name} ditandai sebagai tidak lengkap. Silakan perbaiki dan upload ulang.",
                 $pengajuan->id
             );
         }

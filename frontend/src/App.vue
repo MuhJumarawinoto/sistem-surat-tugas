@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 
@@ -10,11 +10,18 @@ onMounted(async () => {
   if (authStore.isAuthenticated) {
     try {
       await authStore.fetchUser()
+      // Start token validity check
+      authStore.startTokenCheck()
     } catch (error) {
       await authStore.logout()
       router.push('/login')
     }
   }
+})
+
+onUnmounted(() => {
+  // Stop token check when app unmounts
+  authStore.stopTokenCheck()
 })
 </script>
 

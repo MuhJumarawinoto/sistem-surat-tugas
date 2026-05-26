@@ -13,8 +13,10 @@ use App\Http\Controllers\PegawaiController;
 use App\Http\Controllers\PDDiktiController;
 use App\Http\Controllers\PDDiktiSyncController;
 use App\Http\Controllers\VerificationController;
+use App\Http\Controllers\SuratTugasDinasController;
+use App\Http\Controllers\SuratIzinBelajarController;
 
-Route::post('/login', [AuthController::class, 'login']);
+Route::post('/login', [AuthController::class, 'login'])->name('login');
 
 // PDDikti API (Public - no auth required)
 Route::prefix('pddikti')->group(function () {
@@ -75,6 +77,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // Document verification route
     Route::put('/dokumen/{id}/verify', [ApprovalController::class, 'verifyDocument'])->middleware('admin');
 
+    // Signing routes (by pengajuan_id)
+    Route::prefix('pengajuan')->group(function () {
+        Route::post('/{id}/sign-tte', [SuratTugasController::class, 'signByPengajuanId']);
+    });
+
     Route::prefix('surat')->group(function () {
         Route::get('/{id}', [SuratTugasController::class, 'show']);
         Route::get('/{id}/download', [SuratTugasController::class, 'download']);
@@ -87,10 +94,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/status-pengajuan', [MasterController::class, 'statusPengajuan']);
         Route::get('/jenis-dokumen', [MasterController::class, 'jenisDokumen']);
         Route::get('/akreditasi', [MasterController::class, 'akreditasi']);
+        Route::get('/perguruan-tinggi', [MasterController::class, 'perguruanTinggi']);
+        Route::get('/prodi', [MasterController::class, 'prodi']);
     });
 
     Route::prefix('notifications')->group(function () {
         Route::get('/', [NotificationController::class, 'index']);
+        Route::get('/all-messages', [NotificationController::class, 'allMessages']);
         Route::get('/unread', [NotificationController::class, 'unread']);
         Route::get('/unread-count', [NotificationController::class, 'getUnreadCount']);
         Route::post('/mark-all-read', [NotificationController::class, 'markAllAsRead']);
@@ -113,4 +123,74 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('admin/cache')->middleware('admin')->group(function () {
         Route::post('/clear', [MasterController::class, 'clearCache']);
     });
+
+    // Surat Tugas Dinas (Kepala Unit)
+    Route::prefix('kepala/surat-tugas')->group(function () {
+        Route::get('/', [SuratTugasDinasController::class, 'index']);
+        Route::get('/pending', [SuratTugasDinasController::class, 'pending']);
+        Route::post('/', [SuratTugasDinasController::class, 'store']);
+        Route::get('/{id}', [SuratTugasDinasController::class, 'show']);
+        Route::put('/{id}', [SuratTugasDinasController::class, 'update']);
+        Route::delete('/{id}', [SuratTugasDinasController::class, 'destroy']);
+        Route::get('/{id}/pdf', [SuratTugasDinasController::class, 'generatePdf']);
+    });
+
+    // Surat Tugas Dinas by Pengajuan (Admin/BKPSDM)
+    Route::get('/surat-tugas/{pengajuanId}', [SuratTugasDinasController::class, 'getByPengajuan']);
+
+    // Verify Surat Tugas Dinas (Public)
+    Route::get('/surat-tugas/verify/{qrCode}', [SuratTugasDinasController::class, 'verify']);
+
+    // Surat Izin Belajar (Admin BKPSDM & Kepala BKPSDM)
+    // Controller handles permission check internally
+    Route::prefix('admin/surat-izin')->group(function () {
+        Route::get('/', [SuratIzinBelajarController::class, 'index']);
+        Route::get('/pending', [SuratIzinBelajarController::class, 'pending']);
+        Route::post('/', [SuratIzinBelajarController::class, 'store']);
+        Route::get('/{id}', [SuratIzinBelajarController::class, 'show']);
+        Route::get('/{id}/preview', [SuratIzinBelajarController::class, 'preview']);
+        Route::get('/{id}/pdf', [SuratIzinBelajarController::class, 'generatePdf']);
+        Route::post('/{id}/sign', [SuratIzinBelajarController::class, 'sign']);
+    });
+
+    // Surat Izin Belajar by Pengajuan (Pemohon)
+    Route::get('/pengajuan/{id}/surat-izin', [SuratIzinBelajarController::class, 'getByPengajuan']);
+
+    // Verify Surat (Public)
+    Route::get('/surat-izin/verify/{qrCode}', [SuratIzinBelajarController::class, 'verify']);
+
+    // Surat Tugas Mandiri (Admin BKPSDM & Kepala BKPSDM)
+    // Controller handles permission check internally
+    Route::prefix('admin/surat-tugas-mandiri')->group(function () {
+        Route::get('/', [SuratTugasMandiriController::class, 'index']);
+        Route::get('/pending', [SuratTugasMandiriController::class, 'pending']);
+        Route::post('/', [SuratTugasMandiriController::class, 'store']);
+        Route::get('/{id}', [SuratTugasMandiriController::class, 'show']);
+        Route::get('/{id}/preview', [SuratTugasMandiriController::class, 'preview']);
+        Route::get('/{id}/pdf', [SuratTugasMandiriController::class, 'generatePdf']);
+        Route::post('/{id}/sign', [SuratTugasMandiriController::class, 'sign']);
+        Route::put('/{id}', [SuratTugasMandiriController::class, 'update']);
+        Route::delete('/{id}', [SuratTugasMandiriController::class, 'destroy']);
+    });
+
+    // Surat Tugas Mandiri by Pengajuan (Pemohon)
+    Route::get('/pengajuan/{id}/surat-tugas-mandiri', [SuratTugasMandiriController::class, 'getByPengajuan']);
+
+    // Verify Surat Tugas Mandiri (Public)
+    Route::get('/surat-tugas-mandiri/verify/{qrCode}', [SuratTugasMandiriController::class, 'verify']);
 });
+
+// ============================================================================
+// PUBLIC ROUTES (No auth middleware - controller checks token from query)
+// ============================================================================
+
+// PDF Editor Routes (Public - controller checks token from query parameter)
+Route::prefix('admin/surat-izin/editor')->group(function () {
+    Route::get('/preview', [SuratIzinBelajarController::class, 'editorPreview']);
+    Route::get('/pdf', [SuratIzinBelajarController::class, 'editorPdf']);
+});
+
+// Download Routes (Public - controller checks token from query parameter)
+Route::get('/admin/surat-izin/{id}/download', [SuratIzinBelajarController::class, 'download']);
+Route::get('/admin/surat-tugas-mandiri/{id}/download', [SuratTugasMandiriController::class, 'download']);
+Route::get('/kepala/surat-tugas/{id}/pdf', [SuratTugasDinasController::class, 'generatePdf']);

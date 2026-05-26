@@ -22,4 +22,12 @@ class JenjangPendidikan extends Model
     {
         return $this->hasMany(Pengajuan::class);
     }
+
+    /**
+     * Get the nama_jenjang attribute (alias for nama).
+     */
+    public function getNamaJenjangAttribute(): string
+    {
+        return $this->nama;
+    }
 }

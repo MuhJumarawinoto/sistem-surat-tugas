@@ -1,21 +1,28 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { usePengajuanStore } from '@/stores/pengajuan'
 import api from '@/services/api'
 import MainLayout from '@/components/layout/MainLayout.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
 import PageHeader from '@/components/PageHeader.vue'
-import SendMessageModal from '@/components/SendMessageModal.vue'
-import PengajuanMilestone from '@/components/PengajuanMilestone.vue'
 
-const route = useRoute()
+const router = useRouter()
 const pengajuanStore = usePengajuanStore()
 
-const pengajuan = ref(null)
+const pengajuanList = ref([])
 const loading = ref(false)
-const showModal = ref(false)
+const searchQuery = ref('')
+
+const headerActions = computed(() => [
+  {
+    label: 'Refresh',
+    icon: 'ri-refresh-line',
+    onClick: loadPengajuan,
+    variant: 'btn-secondary'
+  }
+])
 
 onMounted(async () => {
   await loadPengajuan()
@@ -24,176 +31,160 @@ onMounted(async () => {
 async function loadPengajuan() {
   loading.value = true
   try {
-    pengajuan.value = await pengajuanStore.fetchPengajuanDetail(route.params.id)
+    // Ambil surat izin yang statusnya draft (perlu TTE)
+    const response = await api.get('/admin/surat-izin', {
+      params: {
+        status: 'draft',
+        per_page: 50
+      }
+    })
+    // Handle different response formats
+    let suratList = []
+    if (response.data?.data && Array.isArray(response.data.data)) {
+      suratList = response.data.data
+    } else if (response.data && Array.isArray(response.data)) {
+      suratList = response.data
+    } else if (Array.isArray(response.data)) {
+      suratList = response.data
+    }
+
+    console.log('Surat list:', suratList)
+
+    // Map surat izin ke format yang dibutuhkan view
+    pengajuanList.value = suratList.map(surat => ({
+      id: surat.id, // Use surat_izin ID as primary ID
+      pengajuan_id: surat.pengajuan?.id,
+      nomor_pengajuan: surat.pengajuan?.nomor_pengajuan,
+      nama_prodi: surat.pengajuan?.nama_prodi,
+      perguruan_tinggi: surat.pengajuan?.perguruan_tinggi,
+      status: 'draft', // draft berarti perlu TTE
+      user: surat.pengajuan?.user,
+      jenjang: surat.pengajuan?.jenjang,
+      surat_izin: surat
+    }))
+
+    console.log('Mapped list:', pengajuanList.value)
   } catch (error) {
-    alert('Gagal memuat pengajuan')
+    console.error('Failed to load pengajuan:', error)
   } finally {
     loading.value = false
   }
 }
 
-async function approvePengajuan() {
-  if (!confirm('Setujui pengajuan ini?')) return
+function goToSigning(id) {
+  // Navigate ke signing detail dengan surat_izin_id
+  router.push(`/kepala/signing/${id}`)
+}
 
-  try {
-    await api.post(`/pengajuan/${route.params.id}/approve-admin`)
-    alert('Pengajuan disetujui')
-    await loadPengajuan()
-  } catch (error) {
-    alert('Gagal menyetujui pengajuan')
+function getStatusLabel(status) {
+  const labels = {
+    draft: 'Perlu TTE',
+    signed: 'Sudah Ditandatangani',
+    selesai: 'Selesai',
+    completed: 'Selesai'
   }
+  return labels[status] || status
 }
 
-async function rejectPengajuan() {
-  const catatan = prompt('Alasan penolakan:')
-  if (!catatan) return
-
-  try {
-    await api.post(`/pengajuan/${route.params.id}/reject`, { catatan })
-    alert('Pengajuan ditolak')
-    window.location.href = '/admin/verifikasi'
-  } catch (error) {
-    alert('Gagal menolak pengajuan')
+function getStatusBadge(status) {
+  const badges = {
+    draft: 'badge-warning',
+    signed: 'badge-success',
+    selesai: 'badge-success',
+    completed: 'badge-success'
   }
+  return badges[status] || 'badge-default'
 }
 
-function openSendMessageModal() {
-  showModal.value = true
-}
+const filteredList = computed(() => {
+  if (!searchQuery.value.trim()) return pengajuanList.value
 
-function handleMessageSent() {
-  alert('Pesan berhasil dikirim ke pemohon')
-}
+  const query = searchQuery.value.toLowerCase()
+  return pengajuanList.value.filter(p => {
+    return (
+      (p.nomor_pengajuan && p.nomor_pengajuan.toLowerCase().includes(query)) ||
+      (p.nama_prodi && p.nama_prodi.toLowerCase().includes(query)) ||
+      (p.perguruan_tinggi && p.perguruan_tinggi.toLowerCase().includes(query)) ||
+      (p.user?.name && p.user.name.toLowerCase().includes(query))
+    )
+  })
+})
 </script>
 
 <template>
   <MainLayout>
+    <PageHeader
+      title="Tanda Tangan Surat"
+      subtitle="Daftar pengajuan yang siap ditandatangani"
+      :actions="headerActions"
+    />
+
+    <!-- Search -->
+    <div class="card mb-4">
+      <div class="card-body py-3">
+        <div class="relative">
+          <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-secondary-400"></i>
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Cari nomor, nama, prodi..."
+            class="w-full pl-10 pr-4 py-2.5 border border-secondary-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading State -->
     <div v-if="loading" class="flex items-center justify-center py-12">
       <LoadingSpinner size="md" text="Memuat..." />
     </div>
 
-    <div v-else-if="pengajuan" class="space-y-6 animate-fade-in">
-      <Breadcrumb />
+    <!-- Empty State -->
+    <div v-else-if="filteredList.length === 0" class="card">
+      <div class="card-body text-center py-12">
+        <div class="w-16 h-16 rounded-full bg-secondary-100 flex items-center justify-center mx-auto mb-4">
+          <i class="ri-file-text-line text-3xl text-secondary-400"></i>
+        </div>
+        <p class="text-secondary-500">Tidak ada pengajuan yang siap ditandatangani</p>
+      </div>
+    </div>
 
-      <PageHeader
-        title="Tanda Tangan Surat"
-        :subtitle="`Nomor Pengajuan: ${pengajuan.nomor_pengajuan}`"
-      />
-
-          <div class="card">
-            <div class="card-header">
-              <h3 class="card-title flex items-center gap-2">
-                <i class="ri-user-line text-primary-600"></i>
-                Data Pemohon
-              </h3>
-            </div>
-            <div class="card-body">
-              <dl class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-                <div>
-                  <dt class="text-secondary-500">Nama</dt>
-                  <dd class="text-secondary-800 font-medium">{{ pengajuan.user?.name }}</dd>
-                </div>
-                <div>
-                  <dt class="text-secondary-500">NIP</dt>
-                  <dd class="text-secondary-800 font-medium">{{ pengajuan.user?.nip }}</dd>
-                </div>
-                <div>
-                  <dt class="text-secondary-500">Unit Kerja</dt>
-                  <dd class="text-secondary-800 font-medium">{{ pengajuan.user?.unit_kerja }}</dd>
-                </div>
-                <div>
-                  <dt class="text-secondary-500">Jabatan</dt>
-                  <dd class="text-secondary-800 font-medium">{{ pengajuan.user?.jabatan }}</dd>
-                </div>
-              </dl>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-header">
-              <h3 class="card-title flex items-center gap-2">
-                <i class="ri-graduation-cap-line text-primary-600"></i>
-                Data Pendidikan
-              </h3>
-            </div>
-            <div class="card-body">
-              <dl class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-                <div>
-                  <dt class="text-secondary-500">Jenjang</dt>
-                  <dd class="text-secondary-800 font-medium">{{ pengajuan.jenjang?.nama }}</dd>
-                </div>
-                <div>
-                  <dt class="text-secondary-500">Program Studi</dt>
-                  <dd class="text-secondary-800 font-medium">{{ pengajuan.nama_prodi }}</dd>
-                </div>
-                <div>
-                  <dt class="text-secondary-500">Perguruan Tinggi</dt>
-                  <dd class="text-secondary-800 font-medium">{{ pengajuan.perguruan_tinggi }}</dd>
-                </div>
-                <div>
-                  <dt class="text-secondary-500">Akreditasi</dt>
-                  <dd class="text-secondary-800 font-medium">{{ pengajuan.akreditasi_prodi }}</dd>
-                </div>
-              </dl>
-            </div>
-          </div>
-
-          <!-- Progress Milestone -->
-          <div class="card">
-            <div class="card-header">
-              <h3 class="card-title flex items-center gap-2">
-                <i class="ri-route-line text-primary-600"></i>
-                Progress Pengajuan
-              </h3>
-            </div>
-            <div class="card-body">
-              <PengajuanMilestone :pengajuan-id="route.params.id" />
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-header">
-              <h3 class="card-title flex items-center gap-2">
-                <i class="ri-file-text-line text-primary-600"></i>
-                Dokumen
-              </h3>
-            </div>
-            <div class="card-body">
-              <div v-if="pengajuan.dokumen && pengajuan.dokumen.length > 0" class="space-y-2">
-                <div v-for="doc in pengajuan.dokumen" :key="doc.id" class="flex justify-between items-center p-3 border border-secondary-200 rounded-lg">
-                  <span class="text-sm text-secondary-700">{{ doc.file_name }}</span>
-                  <span class="text-sm text-secondary-500">{{ (doc.file_size / 1024 / 1024).toFixed(2) }} MB</span>
-                </div>
+    <!-- List -->
+    <div v-else class="space-y-4">
+      <div
+        v-for="item in filteredList"
+        :key="item.id"
+        class="card hover:shadow-md transition-shadow"
+      >
+        <div class="card-body">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <!-- Info -->
+            <div class="flex-1">
+              <div class="flex items-center gap-2 mb-2 flex-wrap">
+                <span class="font-semibold text-secondary-800">{{ item.nomor_pengajuan || '-' }}</span>
+                <span :class="['badge', getStatusBadge(item.status)]">
+                  {{ getStatusLabel(item.status) }}
+                </span>
               </div>
-              <div v-else class="text-center py-8 text-secondary-500">
-                <i class="ri-file-line text-3xl text-secondary-300"></i>
-                <p class="mt-2">Tidak ada dokumen</p>
+              <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-secondary-600">
+                <span><i class="ri-user-line mr-1"></i>{{ item.user?.name }}</span>
+                <span><i class="ri-graduation-cap-line mr-1"></i>{{ item.nama_prodi }}</span>
+                <span><i class="ri-building-line mr-1"></i>{{ item.perguruan_tinggi }}</span>
               </div>
             </div>
+            <!-- Action -->
+            <div class="flex items-center gap-2">
+              <button
+                @click="goToSigning(item.id)"
+                class="btn btn-primary btn-sm"
+              >
+                <i class="ri-edit-line mr-1"></i>
+                Tandatangani
+              </button>
+            </div>
           </div>
-
-          <div class="flex flex-col sm:flex-row gap-3">
-            <button @click="openSendMessageModal" class="btn btn-secondary flex-1 justify-center">
-              <i class="ri-message-3-line mr-2"></i>
-              Kirim Pesan
-            </button>
-            <button @click="approvePengajuan" class="btn btn-primary flex-1 justify-center">
-              <i class="ri-check-line mr-2"></i>
-              Setujui & Buat Surat
-            </button>
-            <button @click="rejectPengajuan" class="btn btn-danger flex-1 justify-center">
-              <i class="ri-close-line mr-2"></i>
-              Tolak
-            </button>
         </div>
       </div>
-
-    <SendMessageModal
-      :show="showModal"
-      :pengajuan-id="route.params.id"
-      :pemohon-name="pengajuan?.user?.name"
-      @close="showModal = false"
-      @sent="handleMessageSent"
-    />
+    </div>
   </MainLayout>
 </template>

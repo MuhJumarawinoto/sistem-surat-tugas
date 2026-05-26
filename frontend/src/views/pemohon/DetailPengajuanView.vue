@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePengajuanStore } from '@/stores/pengajuan'
 import api from '@/services/api'
@@ -7,6 +7,7 @@ import MainLayout from '@/components/layout/MainLayout.vue'
 import ImageModal from '@/components/ImageModal.vue'
 import FileUpload from '@/components/FileUpload.vue'
 import DocumentInfoTooltip from '@/components/DocumentInfoTooltip.vue'
+import DocumentPreviewModal from '@/components/DocumentPreviewModal.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import Breadcrumb from '@/components/Breadcrumb.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -35,15 +36,136 @@ const fileUpload = ref(null)
 const additionalDocType = ref('')
 const additionalFile = ref(null)
 
+// Highlight state from navigation
+const highlightType = ref(route.query.highlight || history.state?.highlight || null)
+const highlightId = ref(route.query.highlightId || history.state?.highlightId || null)
+const showHighlight = ref(true)
+
+// Clear highlight after animation
+onMounted(async () => {
+  await loadPengajuan()
+
+  if (highlightType.value) {
+    // Scroll to highlighted element after DOM is updated
+    await nextTick()
+    setTimeout(() => {
+      scrollToHighlighted()
+    }, 300)
+
+    // Stop highlight after animation
+    setTimeout(() => {
+      showHighlight.value = false
+    }, 6000)
+  }
+})
+
+// Scroll to highlighted element
+function scrollToHighlighted() {
+  if (highlightType.value === 'document' && highlightId.value) {
+    const element = document.querySelector(`[data-doc-id="${highlightId.value}"]`)
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }
+}
+
+// Check if document should be highlighted
+const isDocHighlighted = (docId) => {
+  return showHighlight.value && highlightType.value === 'document' && highlightId.value === String(docId)
+}
+
+// Get highlight class
+const getHighlightClass = (docId) => {
+  if (isDocHighlighted(docId)) {
+    return 'highlight-pulse'
+  }
+  return ''
+}
+
+// Get container highlight class (for parent card)
+const getContainerHighlightClass = () => {
+  if (showHighlight.value && highlightType.value === 'document') {
+    return 'container-highlight-pulse'
+  }
+  return ''
+}
+
 const showImageModal = ref(false)
 const currentImageSrc = ref('')
 const currentImageAlt = ref('')
+
+// Document Preview Modal
+const showDocPreviewModal = ref(false)
+const previewDocSrc = ref('')
+const previewDocAlt = ref('')
+const previewDocType = ref('')
 
 const isDraft = computed(() => pengajuan.value?.status === 'draft')
 const isDitolak = computed(() => pengajuan.value?.status === 'ditolak')
 const canSubmit = computed(() => isDraft.value || isDitolak.value)
 const canEdit = computed(() => isDraft.value || isDitolak.value)
 const isDisetujui = computed(() => pengajuan.value?.status === 'disetujui' || pengajuan.value?.status === 'selesai')
+
+// Surat Izin Belajar
+const suratIzin = ref(null)
+const loadingSurat = ref(false)
+const downloadingSurat = ref(false)
+
+// Computed untuk cek apakah bisa download surat
+const canDownloadSurat = computed(() => {
+  return pengajuan.value?.status === 'selesai' || pengajuan.value?.status === 'completed'
+})
+
+// Load surat izin belajar
+async function loadSuratIzin() {
+  if (!canDownloadSurat.value) return
+
+  loadingSurat.value = true
+  try {
+    const response = await api.get(`/pengajuan/${pengajuan.value.id}/surat-izin`)
+    suratIzin.value = response.data.data
+  } catch (error) {
+    console.error('Failed to load surat izin:', error)
+  } finally {
+    loadingSurat.value = false
+  }
+}
+
+// Download surat izin belajar
+async function downloadSuratIzin() {
+  if (!suratIzin.value) return
+
+  downloadingSurat.value = true
+  try {
+    // Use direct download with token to avoid CORS issues
+    const token = localStorage.getItem('token')
+    const baseUrl = import.meta.env.VITE_API_URL
+      ? import.meta.env.VITE_API_URL.replace('/api', '')
+      : 'http://localhost:8000'
+
+    const url = `${baseUrl}/api/admin/surat-izin/${suratIzin.value.id}/download?token=${token}`
+
+    // Open in new tab to trigger download
+    window.open(url, '_blank')
+  } catch (error) {
+    console.error('Failed to download surat:', error)
+    alert('Gagal mendownload surat. Silakan coba lagi.')
+  } finally {
+    downloadingSurat.value = false
+    // Reset loading state after a delay
+    setTimeout(() => {
+      downloadingSurat.value = false
+    }, 1000)
+  }
+}
+
+// Watch pengajuan status changes untuk load surat
+import { watch } from 'vue'
+watch(() => pengajuan.value?.status, (newStatus) => {
+  if (newStatus === 'selesai' || newStatus === 'completed') {
+    loadSuratIzin()
+  }
+}, { immediate: true })
 
 const jenisDokumenList = [
   {
@@ -104,10 +226,6 @@ const jenisDokumenList = [
 
 const selectedDocInfo = computed(() => {
   return jenisDokumenList.find(d => d.key === additionalDocType.value)
-})
-
-onMounted(async () => {
-  await loadPengajuan()
 })
 
 async function loadPengajuan() {
@@ -256,6 +374,16 @@ const headerActions = computed(() => {
       isBadge: true, // Render as badge instead of button
     })
 
+    // Add download surat button if can download
+    if (canDownloadSurat.value) {
+      actions.push({
+        label: downloadingSurat.value ? 'Mendownload...' : 'Download Surat',
+        icon: downloadingSurat.value ? 'ri-loader-4-line animate-spin' : 'ri-download-line',
+        variant: 'btn-success',
+        onClick: downloadSuratIzin,
+      })
+    }
+
     // Add edit button if can edit
     if (canEdit.value) {
       actions.push({
@@ -306,9 +434,36 @@ function isDocImage(doc) {
     return true
   }
   const fileName = doc.file_name || ''
-  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
   const lowerFileName = fileName.toLowerCase()
   return imageExtensions.some(ext => lowerFileName.endsWith(ext))
+}
+
+function isDocPdf(doc) {
+  if (!doc) return false
+  if (doc.file_type && doc.file_type.includes('pdf')) {
+    return true
+  }
+  const fileName = doc.file_name || ''
+  return fileName.toLowerCase().endsWith('.pdf')
+}
+
+function getDocFileType(doc) {
+  if (isDocImage(doc)) return 'image'
+  if (isDocPdf(doc)) return 'pdf'
+  return 'unknown'
+}
+
+function getDocIcon(doc) {
+  if (isDocImage(doc)) return 'ri-image-line'
+  if (isDocPdf(doc)) return 'ri-file-pdf-line'
+  return 'ri-file-text-line'
+}
+
+function getDocIconClass(doc) {
+  if (isDocImage(doc)) return 'text-blue-500'
+  if (isDocPdf(doc)) return 'text-red-500'
+  return 'text-secondary-400'
 }
 
 function openFile(path) {
@@ -321,6 +476,20 @@ function openImageModal(url) {
   currentImageSrc.value = url
   currentImageAlt.value = 'Dokumen'
   showImageModal.value = true
+}
+
+function openDocumentPreview(doc) {
+  previewDocSrc.value = getStorageUrl(doc.file_path)
+  previewDocAlt.value = doc.file_name || 'Dokumen'
+  previewDocType.value = getDocFileType(doc)
+  showDocPreviewModal.value = true
+}
+
+function closeDocumentPreview() {
+  showDocPreviewModal.value = false
+  previewDocSrc.value = ''
+  previewDocAlt.value = ''
+  previewDocType.value = ''
 }
 
 function getStatusBadge(status) {
@@ -465,7 +634,7 @@ function getStatusIcon(status) {
             </div>
 
             <!-- Documents Card -->
-            <div class="card">
+            <div class="card" :class="getContainerHighlightClass()">
               <div class="card-header">
                 <div class="flex items-center justify-between">
                   <h3 class="card-title flex items-center gap-2">
@@ -476,15 +645,22 @@ function getStatusIcon(status) {
                 </div>
               </div>
               <div class="card-body">
-                <div v-if="pengajuan.dokumen && pengajuan.dokumen.length > 0" class="space-y-2 max-h-64 overflow-y-auto scrollbar-thin">
-                  <div v-for="doc in pengajuan.dokumen" :key="doc.id" class="p-3 border rounded-xl hover:bg-secondary-50 transition-colors">
-                    <div class="flex items-start justify-between">
+                <div v-if="pengajuan.dokumen && pengajuan.dokumen.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto scrollbar-thin">
+                  <div v-for="doc in pengajuan.dokumen" :key="doc.id" :data-doc-id="doc.id" class="p-3 border rounded-xl hover:bg-secondary-50 transition-colors" :class="[
+                    doc.catatan ? 'border-amber-300 bg-amber-50/30' : '',
+                    getHighlightClass(doc.id)
+                  ]">
+                    <div class="flex items-start justify-between mb-2">
                       <div class="flex-1 min-w-0">
-                        <p class="text-sm font-medium text-secondary-800 truncate">{{ doc.file_name }}</p>
+                        <div class="flex items-center gap-2">
+                          <i :class="[getDocIcon(doc), getDocIconClass(doc)]" class="text-lg flex-shrink-0"></i>
+                          <p class="text-sm font-medium text-secondary-800 truncate">{{ doc.file_name }}</p>
+                          <i v-if="doc.catatan" class="ri-message-3-fill text-amber-500 text-sm flex-shrink-0" title="Ada catatan verifikasi"></i>
+                        </div>
                         <p class="text-xs text-secondary-500">{{ (doc.file_size / 1024 / 1024).toFixed(2) }} MB</p>
                       </div>
                       <span :class="[
-                        'badge',
+                        'badge text-xs',
                         doc.status_verifikasi === 'lengkap' ? 'badge-success' :
                         doc.status_verifikasi === 'tidak_lengkap' ? 'badge-danger' :
                         'badge-default'
@@ -492,8 +668,59 @@ function getStatusIcon(status) {
                         {{ getDocStatusLabel(doc.status_verifikasi) }}
                       </span>
                     </div>
+
+                    <!-- Document Preview Thumbnail (for images) -->
                     <div v-if="isDocImage(doc)" class="mt-2">
-                      <img :src="getStorageUrl(doc.file_path)" :alt="doc.file_name" class="max-w-xs max-h-32 rounded-lg cursor-pointer hover:opacity-80 transition-opacity" @click="openFile(doc.file_path)" />
+                      <img :src="getStorageUrl(doc.file_path)" :alt="doc.file_name" class="w-full h-32 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity" @click="openDocumentPreview(doc)" />
+                    </div>
+
+                    <!-- PDF Thumbnail Placeholder -->
+                    <div v-else-if="isDocPdf(doc)" class="mt-2">
+                      <div @click="openDocumentPreview(doc)" class="w-full h-32 bg-red-50 border border-red-200 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-red-100 transition-colors">
+                        <i class="ri-file-pdf-line text-4xl text-red-500 mb-1"></i>
+                        <p class="text-xs text-red-600">Klik untuk preview PDF</p>
+                      </div>
+                    </div>
+
+                    <!-- Other File Type Placeholder -->
+                    <div v-else class="mt-2">
+                      <div @click="openDocumentPreview(doc)" class="w-full h-32 bg-secondary-50 border border-secondary-200 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-secondary-100 transition-colors">
+                        <i :class="[getDocIcon(doc), getDocIconClass(doc), 'text-4xl mb-1']"></i>
+                        <p class="text-xs text-secondary-600">Klik untuk preview</p>
+                      </div>
+                    </div>
+
+                    <!-- Preview & Download Buttons -->
+                    <div class="mt-2 flex gap-2">
+                      <button
+                        @click="openDocumentPreview(doc)"
+                        class="flex-1 btn btn-sm btn-primary justify-center"
+                        title="Preview Dokumen"
+                      >
+                        <i class="ri-eye-line mr-1"></i>
+                        Preview
+                      </button>
+                      <a
+                        :href="getStorageUrl(doc.file_path)"
+                        :download="doc.file_name"
+                        target="_blank"
+                        class="flex-1 btn btn-sm btn-secondary justify-center"
+                        title="Download Dokumen"
+                      >
+                        <i class="ri-download-line mr-1"></i>
+                        Download
+                      </a>
+                    </div>
+
+                    <!-- Catatan Verifikasi -->
+                    <div v-if="doc.catatan" class="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                      <div class="flex items-start gap-2">
+                        <i class="ri-chat-3-line text-amber-600 mt-0.5"></i>
+                        <div class="flex-1">
+                          <p class="text-xs font-medium text-amber-800">Catatan Verifikasi:</p>
+                          <p class="text-sm text-amber-900">{{ doc.catatan }}</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -583,5 +810,116 @@ function getStatusIcon(status) {
       :alt="currentImageAlt"
       @close="showImageModal = false"
     />
+
+    <!-- Document Preview Modal -->
+    <DocumentPreviewModal
+      :show="showDocPreviewModal"
+      :src="previewDocSrc"
+      :alt="previewDocAlt"
+      :file-type="previewDocType"
+      @close="closeDocumentPreview"
+    />
   </MainLayout>
 </template>
+
+<style scoped>
+/* Pulse animation for individual document card */
+.highlight-pulse {
+  animation: pulse-glow 2s ease-in-out 3;
+  border-color: #f97316 !important;
+  background-color: rgba(249, 115, 22, 0.05) !important;
+  box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7), 0 0 20px rgba(249, 115, 22, 0.3);
+  position: relative;
+}
+
+/* Pulse animation for container card (parent) */
+.container-highlight-pulse {
+  animation: container-pulse 2s ease-in-out 3;
+  border-color: #f97316 !important;
+  box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.5), 0 0 40px rgba(249, 115, 22, 0.2);
+  position: relative;
+}
+
+/* Add glow ring around container */
+.container-highlight-pulse::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: inherit;
+  border: 3px solid #f97316;
+  opacity: 0.5;
+  animation: container-ring 2s ease-in-out 3;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Add additional glow ring around individual card */
+.highlight-pulse::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  border: 2px solid #f97316;
+  opacity: 0.6;
+  animation: pulse-ring 2s ease-in-out 3;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes pulse-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7), 0 0 20px rgba(249, 115, 22, 0.4);
+    background-color: rgba(249, 115, 22, 0.08);
+  }
+  50% {
+    box-shadow: 0 0 0 15px rgba(249, 115, 22, 0), 0 0 30px rgba(249, 115, 22, 0.6);
+    background-color: rgba(249, 115, 22, 0.12);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0), 0 0 20px rgba(249, 115, 22, 0.3);
+    background-color: rgba(249, 115, 22, 0.05);
+  }
+}
+
+@keyframes container-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.5), 0 0 40px rgba(249, 115, 22, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 0 20px rgba(249, 115, 22, 0), 0 0 60px rgba(249, 115, 22, 0.4);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0), 0 0 40px rgba(249, 115, 22, 0.2);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.3;
+    transform: scale(1.02);
+  }
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+}
+
+@keyframes container-ring {
+  0% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.2;
+    transform: scale(1.01);
+  }
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+}
+</style>

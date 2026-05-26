@@ -12,35 +12,83 @@ const pollingInterval = ref(null)
 const unreadCount = computed(() => notificationStore.unreadCount)
 const hasUnread = computed(() => unreadCount.value > 0)
 
+// Get all messages for panel display (unread first, then read)
+const unreadMessages = computed(() => {
+  if (!notificationStore.allMessages.length) return []
+
+  // Prioritize unread messages, but show all up to 10
+  const unread = notificationStore.allMessages.filter(m => !m.is_read)
+  const read = notificationStore.allMessages.filter(m => m.is_read)
+
+  // Show all unread first, then fill with read messages if less than 10
+  return [...unread, ...read.slice(0, Math.max(0, 10 - unread.length))].slice(0, 10)
+})
+
 async function togglePanel() {
   isOpen.value = !isOpen.value
   if (isOpen.value) {
-    await notificationStore.fetchNotifications()
+    await notificationStore.fetchAllMessages()
   }
 }
 
-async function handleNotificationClick(notification) {
-  if (!notification.is_read) {
-    await notificationStore.markAsRead(notification.id)
+async function handleNotificationClick(message) {
+  // Only mark as read for actual notifications (not document/approval notes)
+  if (!message.is_read && message.type === 'notification') {
+    await notificationStore.markAsRead(message.id)
   }
-  if (notification.pengajuan_id) {
-    router.push(`/pengajuan/${notification.pengajuan_id}`)
-  }
+
   isOpen.value = false
+
+  if (message.pengajuan_id) {
+    // Determine highlight information based on message type
+    let highlightType = null
+    let highlightId = null
+
+    if (message.type === 'document') {
+      // Document verification note - highlight the document
+      highlightType = 'document'
+      // Extract document ID from message.data (which contains the DokumenPengajuan object)
+      highlightId = message.data?.id || message.id?.replace('document_', '')
+    } else if (message.type === 'approval') {
+      // Approval history - could highlight the approval section
+      highlightType = 'approval'
+    }
+
+    // Navigate with state for highlighting
+    router.push({
+      path: `/pengajuan/${message.pengajuan_id}`,
+      query: highlightType ? { highlight: highlightType, highlightId: String(highlightId) } : {}
+    }, {
+      state: { highlight: highlightType, highlightId: highlightId ? String(highlightId) : null }
+    })
+  }
 }
 
 async function markAllRead() {
   await notificationStore.markAllAsRead()
 }
 
-function getNotificationIcon(type) {
+function getNotificationIcon(type, notifType) {
+  // Use notif_type if available, otherwise fall back to type
+  const typeToUse = notifType || type
+
   const icons = {
     info: { icon: 'ri-information-line', color: 'text-info', bg: 'bg-blue-100' },
     warning: { icon: 'ri-alert-line', color: 'text-warning', bg: 'bg-amber-100' },
     success: { icon: 'ri-checkbox-circle-line', color: 'text-success', bg: 'bg-green-100' },
     error: { icon: 'ri-error-warning-line', color: 'text-danger', bg: 'bg-red-100' }
   }
-  return icons[type] || { icon: 'ri-notification-line', color: 'text-secondary-500', bg: 'bg-secondary-100' }
+  return icons[typeToUse] || { icon: 'ri-notification-line', color: 'text-secondary-500', bg: 'bg-secondary-100' }
+}
+
+function getMessageIcon(message) {
+  // Custom icons based on message type
+  if (message.type === 'document') {
+    return { icon: 'ri-file-text-line', color: 'text-primary-600', bg: 'bg-primary-100' }
+  } else if (message.type === 'approval') {
+    return { icon: 'ri-user-follow-line', color: 'text-purple-600', bg: 'bg-purple-100' }
+  }
+  return getNotificationIcon('info', message.notif_type)
 }
 
 function getTimeAgo(dateString) {
@@ -84,7 +132,7 @@ onUnmounted(() => {
     <!-- Notification Bell -->
     <button
       @click="togglePanel"
-      class="relative btn btn-ghost btn-icon"
+      class="relative btn btn-ghost btn-icon border border-secondary-300 hover:border-primary-400"
       :class="{ 'text-primary-600': hasUnread, 'text-secondary-500': !hasUnread }"
     >
       <i class="ri-notification-3-line text-xl"></i>
@@ -125,34 +173,34 @@ onUnmounted(() => {
             <p class="text-xs">Memuat notifikasi...</p>
           </div>
 
-          <div v-else-if="notificationStore.notifications.length === 0" class="p-8 text-center text-secondary-500">
+          <div v-else-if="unreadMessages.length === 0" class="p-8 text-center text-secondary-500">
             <div class="w-12 h-12 rounded-full bg-secondary-100 flex items-center justify-center mx-auto mb-3">
               <i class="ri-notification-off-line text-2xl text-secondary-400"></i>
             </div>
-            <p class="text-sm">Tidak ada notifikasi</p>
+            <p class="text-sm">Tidak ada notifikasi terbaru</p>
           </div>
 
           <div v-else class="divide-y divide-secondary-100">
             <div
-              v-for="notification in notificationStore.notifications"
-              :key="notification.id"
-              @click="handleNotificationClick(notification)"
+              v-for="message in unreadMessages"
+              :key="message.id"
+              @click="handleNotificationClick(message)"
               class="p-3 hover:bg-secondary-50 cursor-pointer transition-colors"
-              :class="{ 'bg-primary-50/50': !notification.is_read }"
+              :class="{ 'bg-primary-50/50': !message.is_read }"
             >
               <div class="flex items-start gap-3">
-                <div :class="['w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0', getNotificationIcon(notification.type).bg]">
-                  <i :class="[getNotificationIcon(notification.type).icon, 'text-sm', getNotificationIcon(notification.type).color]"></i>
+                <div :class="['w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0', getMessageIcon(message).bg]">
+                  <i :class="[getMessageIcon(message).icon, 'text-sm', getMessageIcon(message).color]"></i>
                 </div>
                 <div class="flex-1 min-w-0">
-                  <p class="text-xs font-medium text-secondary-800 truncate">{{ notification.title }}</p>
-                  <p class="text-xs text-secondary-500 mt-0.5 truncate-2">{{ notification.message }}</p>
+                  <p class="text-xs font-medium text-secondary-800 truncate">{{ message.title }}</p>
+                  <p class="text-xs text-secondary-500 mt-0.5 truncate-2">{{ message.message }}</p>
                   <p class="text-xs text-secondary-400 mt-1 flex items-center gap-1">
                     <i class="ri-time-line"></i>
-                    {{ getTimeAgo(notification.created_at) }}
+                    {{ getTimeAgo(message.created_at) }}
                   </p>
                 </div>
-                <div v-if="!notification.is_read" class="flex-shrink-0">
+                <div v-if="!message.is_read" class="flex-shrink-0">
                   <span class="w-2 h-2 bg-primary-500 rounded-full"></span>
                 </div>
               </div>

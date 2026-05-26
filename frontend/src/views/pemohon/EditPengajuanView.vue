@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useMasterStore } from '@/stores/master'
 import { usePengajuanStore } from '@/stores/pengajuan'
@@ -18,6 +18,65 @@ const route = useRoute()
 const masterStore = useMasterStore()
 const pengajuanStore = usePengajuanStore()
 
+// Highlight state from navigation
+const highlightType = ref(route.query.highlight || history.state?.highlight || null)
+const highlightId = ref(route.query.highlightId || route.query.highlightId || history.state?.highlightId || null)
+const showHighlight = ref(true)
+
+// Clear highlight after animation
+// Scroll to highlighted element
+function scrollToHighlighted() {
+  if (highlightType.value === 'document' && highlightId.value) {
+    // Find the target document
+    const targetDoc = existingDocs.value.find(d => String(d.id) === highlightId.value)
+    if (targetDoc) {
+      // Find element by jenis_dokumen
+      const element = document.querySelector(`[data-doc-type="${targetDoc.jenis_dokumen}"]`)
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }
+  }
+}
+
+// Check if document should be highlighted by doc id
+const isDocHighlighted = (docId) => {
+  return showHighlight.value && highlightType.value === 'document' && highlightId.value === String(docId)
+}
+
+// Check if document type should be highlighted by jenis_dokumen
+const isDocTypeHighlighted = (jenisDokumen) => {
+  if (!showHighlight.value || highlightType.value !== 'document' || !highlightId.value) return false
+
+  // Check if any existing doc matches the highlight id
+  const targetDoc = existingDocs.value.find(d => String(d.id) === highlightId.value)
+  return targetDoc && targetDoc.jenis_dokumen === jenisDokumen
+}
+
+// Get highlight class for document card
+const getHighlightClass = (doc) => {
+  if (doc && isDocHighlighted(doc.id)) {
+    return 'highlight-pulse'
+  }
+  return ''
+}
+
+// Get highlight class for document type (new upload area)
+const getDocTypeHighlightClass = (jenisDokumen) => {
+  if (isDocTypeHighlighted(jenisDokumen)) {
+    return 'highlight-pulse'
+  }
+  return ''
+}
+
+// Get container highlight class
+const getContainerHighlightClass = () => {
+  if (showHighlight.value && highlightType.value === 'document') {
+    return 'container-highlight-pulse'
+  }
+  return ''
+}
+
 const backendUrl = import.meta.env.VITE_API_URL
   ? import.meta.env.VITE_API_URL.replace('/api', '')
   : 'http://localhost:8000'
@@ -31,12 +90,22 @@ const getStorageUrl = (path) => {
 const form = ref({
   jenjang_id: '',
   nama_prodi: '',
+  perguruan_tinggi_id: '',
   perguruan_tinggi: '',
   akreditasi_prodi: '',
   lokasi_pt: '',
   rencana_mulai: '',
   rencana_selesai: '',
 })
+
+// Dropdown states
+const ptSearchKeyword = ref('')
+const prodiSearchKeyword = ref('')
+const showPTDropdown = ref(false)
+const showProdiDropdown = ref(false)
+const filteredPT = ref([])
+const filteredProdi = ref([])
+const selectedPT = ref(null)
 
 const existingDocs = ref([])
 const newDocuments = ref({
@@ -124,11 +193,6 @@ const docMap = computed(() => {
 })
 
 const hasDoc = (key) => !!docMap.value[key]
-
-onMounted(async () => {
-  await loadPengajuan()
-  await masterStore.fetchAll()
-})
 
 async function loadPengajuan() {
   loading.value = true
@@ -264,6 +328,70 @@ function getPreviewUrl(newDoc, existingDoc) {
 const totalDocs = computed(() => {
   return Object.keys(docMap.value).length + Object.values(newDocuments.value).filter(d => d).length
 })
+
+// Perguruan Tinggi Dropdown
+async function searchPerguruanTinggi(keyword) {
+  ptSearchKeyword.value = keyword
+  if (keyword.length >= 2) {
+    filteredPT.value = await masterStore.fetchPerguruanTinggi(keyword)
+    showPTDropdown.value = true
+  } else {
+    filteredPT.value = []
+    showPTDropdown.value = false
+  }
+}
+
+function selectPerguruanTinggi(pt) {
+  selectedPT.value = pt
+  form.value.perguruan_tinggi_id = pt.id
+  form.value.perguruan_tinggi = pt.nama_pt
+  form.value.lokasi_pt = pt.kab_kota && pt.provinsi ? `${pt.kab_kota}, ${pt.provinsi}` : form.value.lokasi_pt
+  showPTDropdown.value = false
+  ptSearchKeyword.value = ''
+  // Reset prodi when PT changes
+  form.value.nama_prodi = ''
+  filteredProdi.value = []
+}
+
+// Prodi Dropdown
+async function searchProdi(keyword) {
+  prodiSearchKeyword.value = keyword
+  if (keyword.length >= 2 && selectedPT.value) {
+    filteredProdi.value = await masterStore.fetchProdi(selectedPT.value.id, keyword)
+    showProdiDropdown.value = true
+  } else if (keyword.length >= 2) {
+    // Search all prodis if no PT selected
+    filteredProdi.value = await masterStore.fetchProdi(null, keyword)
+    showProdiDropdown.value = true
+  } else {
+    filteredProdi.value = []
+    showProdiDropdown.value = false
+  }
+}
+
+function selectProdi(prodi) {
+  form.value.nama_prodi = prodi.nama_prodi
+  if (prodi.akreditasi && !form.value.akreditasi_prodi) {
+    form.value.akreditasi_prodi = prodi.akreditasi
+  }
+  showProdiDropdown.value = false
+  prodiSearchKeyword.value = ''
+}
+
+function closeDropdowns() {
+  showPTDropdown.value = false
+  showProdiDropdown.value = false
+}
+
+function handleClickOutside(event) {
+  if (!event.target.closest('.relative')) {
+    closeDropdowns()
+  }
+}
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 </script>
 
 <template>
@@ -316,22 +444,84 @@ const totalDocs = computed(() => {
 
                   <div>
                     <label class="input-label">Program Studi</label>
-                    <input v-model="form.nama_prodi" type="text" required class="input-field" placeholder="Nama program studi" />
+                    <div class="relative">
+                      <input
+                        :value="form.nama_prodi"
+                        @input="(e) => { form.nama_prodi = e.target.value; searchProdi(e.target.value) }"
+                        @focus="() => form.nama_prodi && searchProdi(form.nama_prodi)"
+                        type="text"
+                        required
+                        class="input-field"
+                        placeholder="Ketik untuk cari program studi..."
+                      />
+                      <!-- Dropdown Results -->
+                      <div
+                        v-if="showProdiDropdown && filteredProdi.length > 0"
+                        class="absolute z-10 w-full mt-1 bg-white border border-secondary-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                      >
+                        <div
+                          v-for="prodi in filteredProdi"
+                          :key="prodi.id"
+                          @click="selectProdi(prodi)"
+                          class="p-3 hover:bg-secondary-50 cursor-pointer border-b border-secondary-100 last:border-b-0"
+                        >
+                          <p class="text-sm font-medium text-secondary-800">{{ prodi.nama_prodi }}</p>
+                          <p class="text-xs text-secondary-500">
+                            {{ prodi.jenjang }} • {{ prodi.perguruan_tinggi?.nama_pt }}
+                            <span v-if="prodi.akreditasi" class="badge badge-xs badge-success ml-1">{{ prodi.akreditasi }}</span>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <div>
                     <label class="input-label">Perguruan Tinggi</label>
-                    <input v-model="form.perguruan_tinggi" type="text" required class="input-field" placeholder="Nama universitas" />
+                    <div class="relative">
+                      <input
+                        :value="form.perguruan_tinggi"
+                        @input="(e) => { form.perguruan_tinggi = e.target.value; searchPerguruanTinggi(e.target.value) }"
+                        @focus="() => form.perguruan_tinggi && searchPerguruanTinggi(form.perguruan_tinggi)"
+                        type="text"
+                        required
+                        class="input-field"
+                        placeholder="Ketik untuk cari perguruan tinggi..."
+                      />
+                      <!-- Dropdown Results -->
+                      <div
+                        v-if="showPTDropdown && filteredPT.length > 0"
+                        class="absolute z-10 w-full mt-1 bg-white border border-secondary-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                      >
+                        <div
+                          v-for="pt in filteredPT"
+                          :key="pt.id"
+                          @click="selectPerguruanTinggi(pt)"
+                          class="p-3 hover:bg-secondary-50 cursor-pointer border-b border-secondary-100 last:border-b-0"
+                        >
+                          <p class="text-sm font-medium text-secondary-800">{{ pt.nama_pt }}</p>
+                          <p class="text-xs text-secondary-500">{{ pt.kab_kota }}, {{ pt.provinsi }}</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <div>
                     <label class="input-label">Akreditasi Prodi</label>
-                    <input v-model="form.akreditasi_prodi" type="text" required class="input-field" placeholder="Contoh: A, B, C, Unggul" />
+                    <select v-model="form.akreditasi_prodi" required class="select-field">
+                      <option value="">Pilih Akreditasi</option>
+                      <option v-for="a in masterStore.akreditasi" :key="a.value" :value="a.value">
+                        {{ a.label }}
+                      </option>
+                    </select>
                   </div>
 
                   <div>
                     <label class="input-label">Lokasi PT</label>
-                    <input v-model="form.lokasi_pt" type="text" required class="input-field" placeholder="Kab/Kota" />
+                    <input v-model="form.lokasi_pt" type="text" required class="input-field bg-secondary-50" placeholder="Kab/Kota" readonly />
+                    <p class="text-xs text-secondary-500 mt-1">
+                      <i class="ri-information-line"></i>
+                      Lokasi otomatis terisi setelah memilih perguruan tinggi. Bisa diedit manual jika perlu.
+                    </p>
                   </div>
 
                   <div>
@@ -348,7 +538,7 @@ const totalDocs = computed(() => {
             </div>
 
             <!-- Upload Dokumen -->
-            <div class="card">
+            <div class="card" :class="getContainerHighlightClass()">
               <div class="card-header">
                 <div class="flex items-center justify-between">
                   <h3 class="card-title flex items-center gap-2">
@@ -368,12 +558,17 @@ const totalDocs = computed(() => {
                       Upload/Ubah Dokumen
                     </h4>
                     <div class="space-y-2 max-h-96 overflow-y-auto scrollbar-thin pr-2">
-                      <div v-for="doc in jenisDokumenList" :key="doc.key" class="p-3 border rounded-xl" :class="newDocuments[doc.key] || docMap[doc.key] ? 'border-success bg-green-50' : 'border-secondary-200'">
+                      <div v-for="doc in jenisDokumenList" :key="doc.key" :data-doc-type="doc.key" class="p-3 border rounded-xl transition-all" :class="[
+                        newDocuments[doc.key] || docMap[doc.key] ? 'border-success bg-green-50' : 'border-secondary-200',
+                        getDocTypeHighlightClass(doc.key)
+                      ]">
                         <label class="block">
                           <div class="flex items-center justify-between mb-2">
                             <span class="flex items-center gap-2 text-sm font-medium text-secondary-700">
                               <i :class="newDocuments[doc.key] || docMap[doc.key] ? 'ri-checkbox-circle-fill text-success' : 'ri-checkbox-blank-circle-line text-secondary-400'"></i>
                               <span class="truncate">{{ doc.label }}</span>
+                              <!-- Icon catatan admin -->
+                              <i v-if="docMap[doc.key]?.catatan" class="ri-message-3-fill text-amber-500 text-sm" title="Ada catatan dari admin"></i>
                             </span>
                             <DocumentInfoTooltip
                               :title="doc.label"
@@ -389,6 +584,21 @@ const totalDocs = computed(() => {
                           :preview="false"
                           @preview="openImageModal"
                         />
+                        <!-- Catatan Admin -->
+                        <div v-if="docMap[doc.key]?.catatan" class="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                          <div class="flex items-start gap-2">
+                            <i class="ri-chat-3-line text-amber-600 mt-0.5 flex-shrink-0"></i>
+                            <div class="flex-1 min-w-0">
+                              <p class="text-xs font-medium text-amber-800 flex items-center gap-1">
+                                Catatan Admin
+                                <span class="badge badge-xs" :class="docMap[doc.key].status_verifikasi === 'lengkap' ? 'badge-success' : 'badge-danger'">
+                                  {{ docMap[doc.key].status_verifikasi === 'lengkap' ? 'Lengkap' : 'Perlu Diperbaiki' }}
+                                </span>
+                              </p>
+                              <p class="text-sm text-amber-900">{{ docMap[doc.key].catatan }}</p>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -475,3 +685,105 @@ const totalDocs = computed(() => {
     />
   </MainLayout>
 </template>
+
+<style scoped>
+/* Pulse animation for individual document card */
+.highlight-pulse {
+  animation: pulse-glow 2s ease-in-out 3;
+  border-color: #f97316 !important;
+  background-color: rgba(249, 115, 22, 0.05) !important;
+  box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7), 0 0 20px rgba(249, 115, 22, 0.3);
+  position: relative;
+}
+
+/* Pulse animation for container card (parent) */
+.container-highlight-pulse {
+  animation: container-pulse 2s ease-in-out 3;
+  border-color: #f97316 !important;
+  box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.5), 0 0 40px rgba(249, 115, 22, 0.2);
+  position: relative;
+}
+
+/* Add glow ring around container */
+.container-highlight-pulse::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: inherit;
+  border: 3px solid #f97316;
+  opacity: 0.5;
+  animation: container-ring 2s ease-in-out 3;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Add additional glow ring around individual card */
+.highlight-pulse::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  border: 2px solid #f97316;
+  opacity: 0.6;
+  animation: pulse-ring 2s ease-in-out 3;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes pulse-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7), 0 0 20px rgba(249, 115, 22, 0.4);
+    background-color: rgba(249, 115, 22, 0.08);
+  }
+  50% {
+    box-shadow: 0 0 0 15px rgba(249, 115, 22, 0), 0 0 30px rgba(249, 115, 22, 0.6);
+    background-color: rgba(249, 115, 22, 0.12);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0), 0 0 20px rgba(249, 115, 22, 0.3);
+    background-color: rgba(249, 115, 22, 0.05);
+  }
+}
+
+@keyframes container-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.5), 0 0 40px rgba(249, 115, 22, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 0 20px rgba(249, 115, 22, 0), 0 0 60px rgba(249, 115, 22, 0.4);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0), 0 0 40px rgba(249, 115, 22, 0.2);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.3;
+    transform: scale(1.02);
+  }
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+}
+
+@keyframes container-ring {
+  0% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.2;
+    transform: scale(1.01);
+  }
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+}
+</style>
