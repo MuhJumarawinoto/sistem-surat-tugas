@@ -202,31 +202,38 @@ function getMilestoneSteps(pengajuan) {
   // Step 1: Dikirim
   steps.push({
     label: 'Dikirim',
-    status: ['pending_atasan', 'pending_admin', 'verified', 'disetujui', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' : 'pending',
+    status: ['pending_atasan', 'pending_admin', 'verified', 'surat_dinas', 'surat_izin', 'disetujui', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' : 'pending',
   })
 
   // Step 2: Verifikasi
   steps.push({
     label: 'Verifikasi',
-    status: ['verified', 'disetujui', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' :
+    status: ['verified', 'surat_dinas', 'surat_izin', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' :
               ['pending_admin'].includes(status) ? 'current' : 'pending',
   })
 
   // Step 3: Surat Dinas
   steps.push({
     label: 'Surat Dinas',
-    status: ['signed', 'selesai', 'completed'].includes(status) ? 'completed' :
-              ['disetujui'].includes(status) ? 'current' : 'pending',
+    status: ['surat_izin', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' :
+              status === 'verified' ? 'current' : 'pending',
   })
 
   // Step 4: Surat Izin
   steps.push({
     label: 'Surat Izin',
-    status: ['selesai', 'completed'].includes(status) ? 'completed' :
-              ['signed'].includes(status) ? 'current' : 'pending',
+    status: ['signed', 'selesai', 'completed'].includes(status) ? 'completed' :
+              status === 'surat_dinas' ? 'current' : 'pending',
   })
 
-  // Step 5: Selesai
+  // Step 5: TTE
+  steps.push({
+    label: 'TTE',
+    status: ['selesai', 'completed'].includes(status) ? 'completed' :
+              status === 'surat_izin' ? 'current' : 'pending',
+  })
+
+  // Step 6: Selesai
   steps.push({
     label: 'Selesai',
     status: status === 'completed' ? 'completed' :
@@ -236,10 +243,47 @@ function getMilestoneSteps(pengajuan) {
   return steps
 }
 
+function getProgressLineClass(status) {
+  // Draft - no progress
+  if (status === 'draft' || status === 'dicabut' || status === 'ditolak') {
+    return 'w-0 bg-gray-200'
+  }
+  // Pending atasan/admin - 1/6 progress (16.7%)
+  if (status === 'pending_atasan' || status === 'pending_admin') {
+    return 'w-1/6 bg-blue-500'
+  }
+  // Verified - 2/6 progress (33.3%)
+  if (status === 'verified') {
+    return 'w-1/3 bg-blue-500'
+  }
+  // Surat Dinas - 2.5/6 progress (41.7%)
+  if (status === 'surat_dinas') {
+    return 'w-5/12 bg-blue-500'
+  }
+  // Surat Izin - 3/6 progress (50%)
+  if (status === 'surat_izin') {
+    return 'w-1/2 bg-blue-500'
+  }
+  // Signed/Disetujui - 4/6 progress (66.7%)
+  if (status === 'signed' || status === 'disetujui') {
+    return 'w-2/3 bg-green-500'
+  }
+  // Selesai - 5/6 progress (83.3%)
+  if (status === 'selesai') {
+    return 'w-5/6 bg-green-500'
+  }
+  // Completed - full progress (100%)
+  if (status === 'completed') {
+    return 'w-full bg-green-500'
+  }
+  // Default
+  return 'w-0 bg-gray-200'
+}
+
 function getStepClass(step) {
   if (step.status === 'completed') return 'bg-green-500'
-  if (step.status === 'current') return 'bg-primary-500'
-  return 'bg-secondary-300'
+  if (step.status === 'current') return 'bg-blue-500'
+  return 'bg-gray-300'
 }
 
 // Dropdown menu functions
@@ -454,19 +498,11 @@ if (typeof window !== 'undefined') {
           <div class="px-4 pb-2">
             <div class="flex items-center justify-between relative py-2">
               <!-- Progress Line Background -->
-              <div class="absolute top-1/2 left-0 right-0 h-0.5 -translate-y-1/2 bg-secondary-200 z-0"></div>
+              <div class="absolute top-1/2 left-0 right-0 h-0.5 -translate-y-1/2 bg-gray-200 z-0"></div>
               <!-- Progress Line Active -->
               <div
                 class="absolute top-1/2 left-0 h-0.5 -translate-y-1/2 z-0 transition-all duration-300"
-                :class="{
-                  'w-0': item.status === 'draft',
-                  'w-1/5': item.status === 'pending_atasan' || item.status === 'pending_admin',
-                  'w-2/5': item.status === 'verified',
-                  'w-3/5': item.status === 'disetujui' || item.status === 'signed',
-                  'w-4/5': item.status === 'selesai',
-                  'w-full': item.status === 'completed'
-                }"
-                :style="{ backgroundColor: item.status === 'draft' ? '' : (item.status === 'completed' || item.status === 'selesai' ? '#22c55e' : '#3b82f6') }"
+                :class="getProgressLineClass(item.status)"
               ></div>
 
               <!-- Dots -->
@@ -478,7 +514,7 @@ if (typeof window !== 'undefined') {
                 <!-- Pulse Ring for Current Step -->
                 <div
                   v-if="step.status === 'current'"
-                  class="absolute inset-0 rounded-full bg-primary-400 animate-ping opacity-75"
+                  class="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-75"
                   style="animation-duration: 1.5s;"
                 ></div>
                 <div
@@ -487,7 +523,7 @@ if (typeof window !== 'undefined') {
                 ></div>
                 <span
                   class="text-xs mt-1 whitespace-nowrap"
-                  :class="step.status === 'current' ? 'text-primary-600 font-medium' : 'text-secondary-600'"
+                  :class="step.status === 'current' ? 'text-blue-600 font-medium' : 'text-gray-600'"
                 >{{ step.label }}</span>
               </div>
             </div>

@@ -51,7 +51,8 @@ async function refreshData() {
     await Promise.all([
       loadStats(),
       loadVerificationInfo(),
-      loadPengajuanNotifications()
+      loadPengajuanNotifications(),
+      loadSuratInfo()
     ])
     toast.success('Data berhasil diperbarui')
   } catch (error) {
@@ -89,6 +90,11 @@ const activeActionMenu = ref(null)
 const hoveredMilestone = ref(null) // Track hovered milestone for tooltip
 const tooltipPosition = ref({ left: '0px', top: '0px' }) // Fixed tooltip position
 
+// Surat menu state
+const activeSuratMenu = ref(null)
+const suratInfoMap = ref(new Map()) // pengajuan_id -> { surat_izin, surat_tugas_mandiri }
+const loadingSurat = ref(false)
+
 // Toggle action menu
 function toggleActionMenu(id) {
   activeActionMenu.value = activeActionMenu.value === id ? null : id
@@ -99,10 +105,98 @@ function closeActionMenu() {
   activeActionMenu.value = null
 }
 
+// Toggle surat menu
+function toggleSuratMenu(id) {
+  activeSuratMenu.value = activeSuratMenu.value === id ? null : id
+}
+
+// Close surat menu
+function closeSuratMenu() {
+  activeSuratMenu.value = null
+}
+
+// Check if pengajuan has any surat
+function hasSurat(pengajuan) {
+  const info = suratInfoMap.value.get(pengajuan.id)
+  return info && (info.surat_izin || info.surat_tugas_mandiri)
+}
+
+// Get surat info for a pengajuan
+function getSuratInfo(pengajuan) {
+  return suratInfoMap.value.get(pengajuan.id) || { surat_izin: null, surat_tugas_mandiri: null }
+}
+
+// Load surat info for pengajuan
+async function loadSuratInfo() {
+  loadingSurat.value = true
+  try {
+    const pengajuanWithSurat = pengajuanStore.pengajuanList.filter(p =>
+      ['signed', 'selesai', 'completed', 'surat_izin'].includes(p.status)
+    )
+
+    const promises = pengajuanWithSurat.map(async (pengajuan) => {
+      try {
+        // Try to get surat izin
+        let suratIzin = null
+        try {
+          const izinResponse = await api.get(`/pengajuan/${pengajuan.id}/surat-izin`)
+          suratIzin = izinResponse.data.data
+        } catch (e) {
+          // No surat izin
+        }
+
+        // Try to get surat tugas mandiri
+        let suratTugasMandiri = null
+        try {
+          const tugasResponse = await api.get(`/pengajuan/${pengajuan.id}/surat-tugas-mandiri`)
+          suratTugasMandiri = tugasResponse.data.data
+        } catch (e) {
+          // No surat tugas mandiri
+        }
+
+        suratInfoMap.value.set(pengajuan.id, {
+          surat_izin: suratIzin,
+          surat_tugas_mandiri: suratTugasMandiri
+        })
+      } catch (error) {
+        console.error(`Failed to load surat info for pengajuan ${pengajuan.id}:`, error)
+      }
+    })
+    await Promise.all(promises)
+  } finally {
+    loadingSurat.value = false
+  }
+}
+
+// Download surat izin
+function downloadSuratIzin(pengajuan) {
+  const info = getSuratInfo(pengajuan)
+  if (info.surat_izin) {
+    const token = authStore.token
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+    const url = `${apiUrl}/admin/surat-izin/${info.surat_izin.id}/download?token=${token}`
+    window.open(url, '_blank')
+  }
+}
+
+// Download surat tugas mandiri
+function downloadSuratTugasMandiri(pengajuan) {
+  const info = getSuratInfo(pengajuan)
+  if (info.surat_tugas_mandiri) {
+    const token = authStore.token
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+    const url = `${apiUrl}/admin/surat-tugas-mandiri/${info.surat_tugas_mandiri.id}/download?token=${token}`
+    window.open(url, '_blank')
+  }
+}
+
 // Close menu when clicking outside
 function handleClickOutside(event) {
   if (!event.target.closest('[id^="action-menu-"]')) {
     closeActionMenu()
+  }
+  if (!event.target.closest('[id^="surat-menu-"]')) {
+    closeSuratMenu()
   }
 }
 
@@ -179,6 +273,7 @@ onMounted(async () => {
   await loadStats()
   await loadVerificationInfo()
   await loadPengajuanNotifications()
+  await loadSuratInfo()
   // Add click outside listener
   document.addEventListener('click', handleClickOutside)
 })
@@ -313,35 +408,41 @@ function getMilestoneSteps(pengajuan) {
 
   const steps = []
 
-  // Step 1: Submit
+  // Step 1: Dikirim
   steps.push({
     label: 'Dikirim',
-    status: ['pending_atasan', 'pending_admin', 'verified', 'disetujui', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' : 'pending',
+    status: ['pending_atasan', 'pending_admin', 'verified', 'surat_dinas', 'surat_izin', 'disetujui', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' : 'pending',
   })
 
-  // Step 2: Verifikasi Admin
-  const adminStep = verificationInfo?.verification_chain?.find(c => c.level === 'admin_bkpsdm')
+  // Step 2: Verifikasi
   steps.push({
     label: 'Verifikasi',
-    status: ['verified', 'disetujui', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' :
+    status: ['verified', 'surat_dinas', 'surat_izin', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' :
               ['pending_atasan', 'pending_admin'].includes(status) ? 'current' : 'pending',
   })
 
-  // Step 3: Disetujui
+  // Step 3: Surat Dinas
   steps.push({
-    label: 'Disetujui',
-    status: ['signed', 'selesai', 'completed'].includes(status) ? 'completed' :
+    label: 'Surat Dinas',
+    status: ['surat_izin', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' :
               status === 'verified' ? 'current' : 'pending',
   })
 
-  // Step 4: TTE/Tandatangan
+  // Step 4: Surat Izin
+  steps.push({
+    label: 'Surat Izin',
+    status: ['signed', 'selesai', 'completed'].includes(status) ? 'completed' :
+              status === 'surat_dinas' ? 'current' : 'pending',
+  })
+
+  // Step 5: TTE
   steps.push({
     label: 'TTE',
     status: ['selesai', 'completed'].includes(status) ? 'completed' :
-              ['disetujui', 'signed'].includes(status) ? 'current' : 'pending',
+              status === 'surat_izin' ? 'current' : 'pending',
   })
 
-  // Step 5: Selesai
+  // Step 6: Selesai
   steps.push({
     label: 'Selesai',
     status: status === 'completed' ? 'completed' :
@@ -353,15 +454,52 @@ function getMilestoneSteps(pengajuan) {
 
 function getStepClass(step) {
   if (step.status === 'completed') return 'bg-green-500'
-  if (step.status === 'current') return 'bg-primary-500'
-  return 'bg-secondary-300'
+  if (step.status === 'current') return 'bg-blue-500'
+  return 'bg-gray-300'
+}
+
+function getProgressLineClass(status) {
+  // Draft - no progress
+  if (status === 'draft' || status === 'dicabut' || status === 'ditolak') {
+    return 'w-0 bg-gray-200'
+  }
+  // Pending atasan/admin - 1/5 progress (20%)
+  if (status === 'pending_atasan' || status === 'pending_admin') {
+    return 'w-1/5 bg-blue-500'
+  }
+  // Verified - 2/5 progress (40%)
+  if (status === 'verified') {
+    return 'w-2/5 bg-blue-500'
+  }
+  // Surat Dinas - 2.5/5 progress (50%)
+  if (status === 'surat_dinas') {
+    return 'w-1/2 bg-blue-500'
+  }
+  // Surat Izin - 3/5 progress (60%)
+  if (status === 'surat_izin') {
+    return 'w-3/5 bg-blue-500'
+  }
+  // Disetujui/Signed - 4/5 progress (80%)
+  if (status === 'disetujui' || status === 'signed') {
+    return 'w-4/5 bg-green-500'
+  }
+  // Selesai - full progress (100%)
+  if (status === 'selesai') {
+    return 'w-full bg-green-500'
+  }
+  // Completed - full progress (100%)
+  if (status === 'completed') {
+    return 'w-full bg-green-500'
+  }
+  // Default
+  return 'w-0 bg-gray-200'
 }
 
 function getLineClass(index, steps) {
   const currentStepIndex = steps.findIndex(s => s.status === 'current')
   if (index < currentStepIndex) return 'bg-green-500'
-  if (index === currentStepIndex) return 'bg-primary-500'
-  return 'bg-secondary-200'
+  if (index === currentStepIndex) return 'bg-blue-500'
+  return 'bg-gray-200'
 }
 
 // Get tooltip info for milestone step
@@ -370,7 +508,8 @@ function getMilestoneTooltip(step, pengajuan) {
     const completedInfo = {
       'Dikirim': 'Pengajuan telah dikirim',
       'Verifikasi': 'Dokumen lengkap & telah diverifikasi admin',
-      'Disetujui': 'Pengajuan disetujui oleh penandatangan (Kepala BKPSDM/Sekda/Bupati)',
+      'Surat Dinas': 'Surat Tugas Belajar telah diterbitkan oleh Kepala Dinas',
+      'Surat Izin': 'Surat Izin Belajar telah diterbitkan oleh Admin BKPSDM',
       'TTE': 'Surat telah ditandatangani secara elektronik',
       'Selesai': 'Proses pengajuan telah selesai'
     }
@@ -386,7 +525,8 @@ function getMilestoneTooltip(step, pengajuan) {
     const currentInfo = {
       'Dikirim': 'Menunggu verifikasi dari atasan langsung',
       'Verifikasi': 'Sedang diverifikasi dokumen oleh admin BKPSDM',
-      'Disetujui': 'Menunggu persetujuan dari penandatangan berwenang',
+      'Surat Dinas': 'Menunggu penerbitan Surat Tugas Belajar oleh Kepala Dinas',
+      'Surat Izin': 'Menunggu penerbitan Surat Izin Belajar oleh Admin BKPSDM',
       'TTE': 'Sedang proses penandatanganan elektronik (TTE)',
       'Selesai': 'Proses hampir selesai'
     }
@@ -394,7 +534,7 @@ function getMilestoneTooltip(step, pengajuan) {
       title: 'Sedang Diproses',
       description: currentInfo[step.label] || 'Tahap ini sedang diproses',
       icon: 'ri-loader-4-line',
-      color: 'text-primary-600'
+      color: 'text-blue-600'
     }
   }
 
@@ -402,7 +542,8 @@ function getMilestoneTooltip(step, pengajuan) {
   const pendingInfo = {
     'Dikirim': 'Pengajuan sudah dikirim',
     'Verifikasi': 'Menunggu verifikasi dokumen oleh admin BKPSDM',
-    'Disetujui': 'Menunggu persetujuan dari penandatangan (Kepala BKPSDM/Sekda/Bupati)',
+    'Surat Dinas': 'Menunggu penerbitan Surat Tugas Belajar oleh Kepala Dinas',
+    'Surat Izin': 'Menunggu penerbitan Surat Izin Belajar oleh Admin BKPSDM',
     'TTE': 'Menunggu proses Tanda Tangan Elektronik',
     'Selesai': 'Menunggu proses penyelesaian'
   }
@@ -410,7 +551,7 @@ function getMilestoneTooltip(step, pengajuan) {
     title: 'Menunggu',
     description: pendingInfo[step.label] || 'Tahap ini belum dimulai',
     icon: 'ri-time-line',
-    color: 'text-secondary-500'
+    color: 'text-gray-500'
   }
 }
 
@@ -746,6 +887,37 @@ async function handleDelete(id) {
                       <button @click="goToDetail(item.id)" class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2">
                         <i class="ri-eye-line"></i> Lihat
                       </button>
+                      <!-- Surat dropdown in mobile -->
+                      <div v-if="hasSurat(item)" class="relative border-t border-secondary-100" :id="`surat-menu-${item.id}`">
+                        <button
+                          @click.stop="toggleSuratMenu(item.id)"
+                          class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center justify-between gap-2"
+                        >
+                          <span class="flex items-center gap-2">
+                            <i class="ri-file-text-line text-primary-600"></i> Surat
+                          </span>
+                          <i class="ri-arrow-down-s-line"></i>
+                        </button>
+                        <div
+                          v-if="activeSuratMenu === item.id"
+                          class="absolute right-full top-0 w-48 bg-white rounded-lg shadow-lg border border-secondary-200 z-30 mr-1"
+                        >
+                          <button
+                            v-if="getSuratInfo(item).surat_izin"
+                            @click="downloadSuratIzin(item)"
+                            class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2"
+                          >
+                            <i class="ri-download-line"></i> Surat Izin Belajar
+                          </button>
+                          <button
+                            v-if="getSuratInfo(item).surat_tugas_mandiri"
+                            @click="downloadSuratTugasMandiri(item)"
+                            class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2"
+                          >
+                            <i class="ri-download-line"></i> Surat Tugas Mandiri
+                          </button>
+                        </div>
+                      </div>
                       <button
                         v-if="canRestore(item)"
                         @click="handleRestore(item.id)"
@@ -776,6 +948,36 @@ async function handleDelete(id) {
                       <i class="ri-eye-line mr-1"></i>
                       Lihat
                     </button>
+                    <!-- Surat dropdown for desktop -->
+                    <div v-if="hasSurat(item)" class="relative" :id="`surat-menu-${item.id}`">
+                      <button
+                        @click.stop="toggleSuratMenu(item.id)"
+                        class="btn btn-secondary btn-sm"
+                      >
+                        <i class="ri-file-text-line mr-1"></i>
+                        Surat
+                        <i class="ri-arrow-down-s-line ml-1"></i>
+                      </button>
+                      <div
+                        v-if="activeSuratMenu === item.id"
+                        class="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-secondary-200 z-20"
+                      >
+                        <button
+                          v-if="getSuratInfo(item).surat_izin"
+                          @click="downloadSuratIzin(item)"
+                          class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2"
+                        >
+                          <i class="ri-download-line text-primary-600"></i> Surat Izin Belajar
+                        </button>
+                        <button
+                          v-if="getSuratInfo(item).surat_tugas_mandiri"
+                          @click="downloadSuratTugasMandiri(item)"
+                          class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2"
+                        >
+                          <i class="ri-download-line text-primary-600"></i> Surat Tugas Mandiri
+                        </button>
+                      </div>
+                    </div>
                     <button
                       v-if="canRestore(item)"
                       @click="handleRestore(item.id)"
@@ -809,19 +1011,11 @@ async function handleDelete(id) {
             <div class="px-4 pb-4">
               <div class="flex items-center justify-between relative">
                 <!-- Progress Line Background -->
-                <div class="absolute top-1/2 left-0 right-0 h-0.5 -translate-y-1/2 bg-secondary-200 z-0"></div>
+                <div class="absolute top-1/2 left-0 right-0 h-0.5 -translate-y-1/2 bg-gray-200 z-0"></div>
                 <!-- Progress Line Active -->
                 <div
                   class="absolute top-1/2 left-0 h-0.5 -translate-y-1/2 z-0 transition-all duration-300"
-                  :class="{
-                    'w-0': item.status === 'draft',
-                    'w-1/5': item.status === 'pending_atasan' || item.status === 'pending_admin',
-                    'w-2/5': item.status === 'verified',
-                    'w-3/5': item.status === 'disetujui' || item.status === 'signed',
-                    'w-4/5': item.status === 'selesai',
-                    'w-full': item.status === 'completed'
-                  }"
-                  :style="{ backgroundColor: item.status === 'draft' ? '' : (item.status === 'completed' || item.status === 'selesai' ? '#22c55e' : '#3b82f6') }"
+                  :class="getProgressLineClass(item.status)"
                 ></div>
 
                 <!-- Dots with Tooltip -->
@@ -835,7 +1029,7 @@ async function handleDelete(id) {
                   <!-- Pulse Ring for Current Step -->
                   <div
                     v-if="step.status === 'current'"
-                    class="absolute inset-0 rounded-full bg-primary-400 animate-ping opacity-75"
+                    class="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-75"
                     style="animation-duration: 1.5s;"
                   ></div>
                   <div
@@ -844,7 +1038,7 @@ async function handleDelete(id) {
                   ></div>
                   <span
                     class="text-xs mt-1 whitespace-nowrap"
-                    :class="step.status === 'current' ? 'text-primary-600 font-medium' : 'text-secondary-600'"
+                    :class="step.status === 'current' ? 'text-blue-600 font-medium' : 'text-gray-600'"
                   >{{ step.label }}</span>
                 </div>
               </div>

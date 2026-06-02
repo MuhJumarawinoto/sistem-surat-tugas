@@ -13,6 +13,12 @@ const routes = [
     component: () => import('@/views/auth/LoginView.vue'),
     meta: { requiresAuth: false },
   },
+  {
+    path: '/verify',
+    name: 'verify',
+    component: () => import('@/views/VerificationView.vue'),
+    meta: { requiresAuth: false },
+  },
 
   // ========== REDIRECT ==========
   {

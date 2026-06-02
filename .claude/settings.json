@@ -40,7 +40,30 @@
       "Bash(curl -s \"https://pddikti.fastapicloud.dev/api/pt/prodi/001002/20241\")",
       "Bash(curl -s \"https://pddikti.fastapicloud.dev/api/pt/prodi/002001/20241\")",
       "Bash(curl -s \"https://pddikti.fastapicloud.dev/api/search/prodi/Universitas Indonesia\")",
-      "Bash(curl -s \"https://pddikti.fastapicloud.dev/api/search/pt/Universitas Indonesia\")"
+      "Bash(curl -s \"https://pddikti.fastapicloud.dev/api/search/pt/Universitas Indonesia\")",
+      "Bash(dir \"c:\\\\Users\\\\Bahlil\\\\Downloads\\\\Documents\\\\Sistem-Surat-Belajar-Mandiri\\\\backend\\\\public\\\\storage\")",
+      "Bash(echo '=== __TRACKED_VAR__ ===')",
+      "Bash(grep -L MainLayout c:/Users/Bahlil/Downloads/Documents/Sistem-Surat-Belajar-Mandiri/frontend/src/views/__TRACKED_VAR__/*.vue)",
+      "Bash(echo \"✓ OK\")",
+      "Bash(awk '{print $9, \"\\(\"$5\"\\)\"}')",
+      "Bash(php check_user.php)",
+      "Bash(php -r ' *)",
+      "Bash(php -l app/Http/Controllers/SuratIzinBelajarController.php)",
+      "Bash(php -r \"echo 'GD Extension: ' . \\(extension_loaded\\('gd'\\) ? 'Yes' : 'No'\\) . PHP_EOL; echo 'GD Functions: ' . \\(function_exists\\('imagecreatetruecolor'\\) ? 'Yes' : 'No'\\) . PHP_EOL;\")",
+      "Bash(composer show *)",
+      "Bash(php -r \"echo 'GD Extension Status: ' . \\(extension_loaded\\('gd'\\) ? 'LOADED' : 'NOT LOADED'\\) . PHP_EOL;\")",
+      "Bash(rm -f storage/app/public/surat-izin-belajar/*.pdf && ls -la storage/app/public/surat-izin-belajar/)",
+      "Bash(php -r \"echo 'GD Extension Status: ' . \\(extension_loaded\\('gd'\\) ? 'YES ✓' : 'NO ✗'\\) . PHP_EOL; echo 'GD Functions: ' . \\(function_exists\\('imagecreatetruecolor'\\) ? 'YES ✓' : 'NO ✗'\\) . PHP_EOL;\")",
+      "Bash(php -r \"echo 'GD Status: ' . \\(extension_loaded\\('gd'\\) ? 'YES' : 'NO'\\) . PHP_EOL;\")",
+      "Bash(php -m)",
+      "Bash(php --ini)",
+      "Bash(php generate_pdf_with_qr.php)",
+      "Bash(curl -s \"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=test\" -o \"storage/app/public/qr-codes/test.png\")",
+      "Bash(explorer.exe \"c:/Users/Bahlil/Downloads/Documents/Sistem-Surat-Belajar-Mandiri/backend/storage/app/public/Surat_Dengan_QR.pdf\")",
+      "Bash(php -r 'require '\\\\''vendor/autoload.php'\\\\''; $app = require '\\\\''bootstrap/app.php'\\\\''; $app->make\\('\\\\''Illuminate\\\\Contracts\\\\Console\\\\Kernel'\\\\''\\)->bootstrap\\(\\); echo '\\\\''Base path: '\\\\'' . base_path\\(\\) . PHP_EOL; echo '\\\\''Storage path: '\\\\'' . storage_path\\('\\\\''app/public'\\\\''\\) . PHP_EOL; echo '\\\\''QR code full path: '\\\\'' . storage_path\\('\\\\''app/public/qr-codes/izin-1.png'\\\\''\\) . PHP_EOL; echo '\\\\''File exists: '\\\\'' . \\(file_exists\\(storage_path\\('\\\\''app/public/qr-codes/izin-1.png'\\\\''\\)\\) ? '\\\\''YES'\\\\'' : '\\\\''NO'\\\\''\\) . PHP_EOL;')"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Bahlil\\Downloads\\Documents\\Sistem-Surat-Belajar-Mandiri\\backend\\storage\\app\\public\\surat-izin-belajar"
     ]
   }
 }

@@ -1,0 +1,118 @@
+// integration/bknApi.js
+// Integrasi dengan API BKN untuk mengambil nilai E-Kinerja
+
+const axios = require('axios');
+
+class BKNIntegration {
+  constructor(config) {
+    this.baseUrl = config.baseUrl || 'https://sso-siasn.bkn.go.id';
+    this.clientId = config.clientId;
+    this.clientSecret = config.clientSecret;
+    this.token = null;
+    this.tokenExpiry = null;
+  }
+
+  // 1. Autentikasi mendapatkan Bearer Token
+  async getToken() {
+    try {
+      const response = await axios.post(
+        `${this.baseUrl}/auth/realms/public-siasn/protocol/openid-connect/token`,
+        new URLSearchParams({
+          grant_type: 'client_credentials',
+          client_id: this.clientId,
+          client_secret: this.clientSecret,
+        }),
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+        }
+      );
+
+      this.token = response.data.access_token;
+      this.tokenExpiry = Date.now() + response.data.expires_in * 1000;
+      return this.token;
+    } catch (error) {
+      console.error('Error getting BKN token:', error.response?.data || error.message);
+      throw new Error('BKN Authentication Failed');
+    }
+  }
+
+  // 2. Ambil daftar periode penilaian
+  async getPeriodeList() {
+    await this.ensureValidToken();
+    
+    try {
+      const response = await axios.get(
+        `${this.baseUrl}/api_kinerja/laporan/periode`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching periode:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  // 3. Ambil nilai SKP per periode (dengan pagination)
+  async getPenilaianByPeriode(periodeId, page = 1, perPage = 100) {
+    await this.ensureValidToken();
+    
+    try {
+      // Gunakan API v2 dengan pagination
+      const response = await axios.get(
+        `${this.baseUrl}/api_kinerja/v2/laporan/penilaian/${periodeId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+          },
+          params: {
+            page: page,
+            perpage: perPage,
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      if (error.response?.status === 500) {
+        console.error('Server Error BKN, fallback ke manual import');
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  // 4. Ambil semua data penilaian (loop pagination)
+  async getAllPenilaian(periodeId) {
+    let allData = [];
+    let currentPage = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      const result = await this.getPenilaianByPeriode(periodeId, currentPage, 100);
+      
+      if (!result || !result.data || result.data.length === 0) {
+        hasMore = false;
+      } else {
+        allData = [...allData, ...result.data];
+        currentPage++;
+        hasMore = result.data.length === 100;
+      }
+    }
+
+    return allData;
+  }
+
+  // Helper: cek token masih valid atau tidak
+  async ensureValidToken() {
+    if (!this.token || Date.now() >= this.tokenExpiry) {
+      await this.getToken();
+    }
+  }
+}
+
+module.exports = BKNIntegration;

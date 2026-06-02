@@ -484,8 +484,27 @@ Error:
 | GET | `/api/admin/surat-izin/{id}/preview` | Preview surat before signing |
 | POST | `/api/admin/surat-izin/{id}/sign` | Sign surat with TTE |
 | GET | `/api/admin/surat-izin/{id}/download` | Download signed surat |
-| GET | `/api/surat-izin/verify/{qr}` | Verify surat authenticity |
+| GET | `/api/surat-izin/verify/{qr}` | Verify surat authenticity (public) |
 | GET | `/api/pengajuan/{id}/surat-izin` | Get surat izin by pengajuan (pemohon) |
+
+### Surat Tugas Mandiri (Admin BKPSDM)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/admin/surat-tugas-mandiri` | List all surat tugas mandiri (admin only) |
+| GET | `/api/admin/surat-tugas-mandiri/pending` | List pengajuan with surat izin, need tugas mandiri |
+| POST | `/api/admin/surat-tugas-mandiri` | Generate surat tugas mandiri PDF draft |
+| GET | `/api/admin/surat-tugas-mandiri/{id}` | Get detail surat tugas mandiri |
+| POST | `/api/admin/surat-tugas-mandiri/{id}/sign` | Sign surat with TTE |
+| GET | `/api/admin/surat-tugas-mandiri/{id}/download` | Download signed surat |
+| GET | `/api/surat-tugas-mandiri/verify/{qrCode}` | Verify surat authenticity (public) |
+| GET | `/api/pengajuan/{id}/surat-tugas-mandiri` | Get surat tugas mandiri by pengajuan (pemohon) |
+
+### Verification (Public)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/surat-izin/verify/{qrCode}` | Verify surat izin authenticity |
+| GET | `/api/surat-tugas/verify/{qrCode}` | Verify surat tugas dinas authenticity |
+| GET | `/api/surat-tugas-mandiri/verify/{qrCode}` | Verify surat tugas mandiri authenticity |
 
 ### Surat (Legacy - Deprecated)
 | Method | Endpoint | Description |
@@ -1952,3 +1971,245 @@ php artisan pddikti:import --file=scrape_progress.json
 |--------|----------|-------------|
 | GET | `/api/master/perguruan-tinggi` | Search local universities (with keyword filter) |
 | GET | `/api/master/prodi` | Search local study programs (with PT and keyword filter) |
+
+---
+
+## Recent Changes (2026-05-29)
+
+### Dashboard "Surat" Button Feature
+
+**Overview:**
+- Added "Surat" button in Dashboard's "Pengajuan Terbaru" section for pengajuan that already have surat
+- Button appears when pengajuan has Surat Izin Belajar or Surat Tugas Mandiri
+- Provides quick access to download available surats directly from dashboard
+
+**Frontend Implementation:**
+- **DashboardView.vue** - Updated with surat menu functionality
+  - `hasSurat(pengajuan)` - Check if pengajuan has any surat
+  - `getSuratInfo(pengajuan)` - Get surat information (surat_izin, surat_tugas_mandiri)
+  - `loadSuratInfo()` - Load surat info for all pengajuan with relevant status
+  - `downloadSuratIzin()` - Download Surat Izin Belajar
+  - `downloadSuratTugasMandiri()` - Download Surat Tugas Mandiri
+
+**Surat Menu Button:**
+- Desktop: Shows "Surat" button with dropdown menu
+- Mobile: Shows "Surat" option in the action dropdown
+- Dropdown displays available surats:
+  - "Surat Izin Belajar" - Downloads signed surat izin belajar
+  - "Surat Tugas Mandiri" - Downloads signed surat tugas mandiri
+
+**Statuses That Trigger Surat Check:**
+- `signed` - Has Surat Izin Belajar
+- `selesai` - Has both Surat Izin Belajar and Surat Tugas Mandiri
+- `completed` - Has both surats
+- `surat_izin` - Has Surat Izin Belajar
+
+**API Endpoints Used:**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/pengajuan/{id}/surat-izin` | Get surat izin by pengajuan |
+| GET | `/api/pengajuan/{id}/surat-tugas-mandiri` | Get surat tugas mandiri by pengajuan |
+| GET | `/api/admin/surat-izin/{id}/download` | Download surat izin with token |
+| GET | `/api/admin/surat-tugas-mandiri/{id}/download` | Download surat tugas mandiri with token |
+
+### QR Code Verification Feature
+
+**Overview:**
+- Added QR Code generation and verification system for surat authenticity
+- Each signed surat (Surat Izin Belajar, Surat Tugas Mandiri) gets a unique QR code
+- Public verification page allows anyone to verify surat authenticity by scanning QR code
+- QR code contains: type, id, nomor_surat, signed_at
+
+**Frontend Implementation:**
+- **VerificationView.vue** - Public verification page at `/verify`
+  - No authentication required
+  - Users can enter QR code or scan to verify surat
+  - Shows surat details if valid (nomor, tanggal, penandatangan, pegawai info)
+  - Displays validity badge with "Dokumen ini sah dan terverifikasi" message
+
+- **SigningDetailView.vue** - Updated with QR code display
+  - "Tampilkan QR Code" button appears after signing
+  - Shows QR code using api.qrserver.com for generation
+  - Displays verification URL for manual verification
+
+- **SuratTugasMandiriDetailView.vue** - Updated with QR code display
+  - Same QR code functionality as SigningDetailView
+  - Button and display for signed surat tugas mandiri
+
+**Backend Implementation:**
+- **SuratTugasMandiriController::verify()** - Fixed verification method
+  - Properly decodes JSON QR code data
+  - Returns standardized response format
+  - Includes surat details: nomor_surat, tanggal_ttd, kepala_dinas, pengajuan info
+
+**QR Code Data Format:**
+```json
+{
+  "type": "surat_izin_belajar" | "surat_tugas_mandiri",
+  "id": 123,
+  "nomor": "800.1.3.1/001/BKPSDM/2026",
+  "signed_at": "2026-05-29T10:00:00.000000Z"
+}
+```
+
+**API Endpoints (Public - No Auth Required):**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/surat-izin/verify/{qrCode}` | Verify surat izin authenticity |
+| GET | `/api/surat-tugas/verify/{qrCode}` | Verify surat tugas dinas authenticity |
+| GET | `/api/surat-tugas-mandiri/verify/{qrCode}` | Verify surat tugas mandiri authenticity |
+
+**Frontend Routes:**
+| Path | Component | Access |
+|------|-----------|--------|
+| `/verify` | VerificationView.vue | Public (no auth) |
+
+---
+
+## Recent Changes (2026-06-02)
+
+### Auto-Generation of SuratTugasMandiri
+
+**Overview:**
+- SuratTugasMandiri sekarang otomatis dibuat saat Admin BKPSDM membuat SuratIzinBelajar
+- Tidak perlu lagi membuat SuratTugasMandiri secara terpisah
+- Proses lebih efisien: 1 langkah untuk menghasilkan 2 surat sekaligus
+
+**Backend Implementation:**
+- **SuratIzinBelajarController::store()** - Updated to auto-create SuratTugasMandiri
+  - Setelah SuratIzinBelajar dibuat, SuratTugasMandiri otomatis dibuat
+  - Menggunakan data yang sama dari pengajuan dan surat izin
+  - Status pengajuan berubah menjadi `surat_izin`
+
+**Database Relationship:**
+- `surat_tugas_mandiri.surat_izin_belajar_id` - Foreign key ke SuratIzinBelajar
+- `surat_tugas_mandiri.surat_tugas_dinas_id` - Foreign key ke SuratTugasDinas (dari surat izin)
+
+### Bug Fixes
+
+**Undefined in Download URLs:**
+- Fixed undefined values in download URLs by using proper response.data.data access
+- Updated DashboardView.vue to correctly parse paginated API responses
+- All download links now work correctly with proper token authentication
+
+**Admin Page Layout:**
+- Added MainLayout wrapper to SuratIzinView.vue
+- Added MainLayout wrapper to SuratTugasDinasView.vue
+- Breadcrumb component now properly included in admin pages
+- Navbar and sidebar now appear correctly in all admin views
+
+### Known Issues & Debugging Notes
+
+**LocalStorage Token Issue:**
+- If login works but token remains null in localStorage, check:
+  1. DevTools Console for JavaScript errors during login
+  2. Network tab to verify API response contains token
+  3. frontend/.env has correct VITE_API_URL pointing to localhost:8000/api
+  4. Browser storage settings allow localStorage
+  5. Clear browser cache and localStorage, retry login
+
+**Debug Commands:**
+```javascript
+// In browser console after login attempt
+localStorage.getItem('token')  // Should return token string
+localStorage.getItem('user')    // Should return user JSON string
+```
+
+```bash
+# Backend - verify login returns token
+curl -X POST http://localhost:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{"identity":"kepala@bkpsdm.go.id","password":"password"}'
+```
+
+### Updated API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/admin/surat-izin` | Generate surat izin + auto-create surat tugas mandiri |
+| GET | `/api/admin/surat-tugas-mandiri` | List all surat tugas mandiri (admin only) - now auto-generated |
+| GET | `/api/kepala/signing` | View pengajuan ready for TTE signing (kepala role) |
+
+### Milestone Color System Fixes
+
+**Overview:**
+- Fixed milestone status colors not appearing correctly in pemohon dashboard
+- Fixed milestone status colors not appearing correctly in admin verification page
+- Updated color system to use standard Tailwind colors instead of custom colors
+
+**Frontend Implementation:**
+- **DashboardView.vue** - Fixed milestone color system
+  - Replaced custom Tailwind colors (`bg-primary-500`, `bg-secondary-300`) with standard colors
+  - Added `getProgressLineClass()` function for proper progress line styling
+  - Updated `getMilestoneSteps()` with 6 steps: Dikirim, Verifikasi, Surat Dinas, Surat Izin, TTE, Selesai
+  - Color mapping: Green (completed), Blue (current/pulse), Gray (pending)
+
+- **VerifikasiView.vue** - Fixed milestone color system
+  - Same fixes as DashboardView
+  - Changed from inline style to Tailwind classes
+  - Handles all statuses including `surat_dinas` and `surat_izin`
+
+**Status Color Mapping:**
+| Step Status | Color Class | Description |
+|-------------|-------------|-------------|
+| `completed` | `bg-green-500` | Step sudah selesai |
+| `current` | `bg-blue-500` | Step sedang diproses (with pulse animation) |
+| `pending` | `bg-gray-300` | Step belum dimulai |
+| `rejected` | `bg-red-500` | Pengajuan ditolak |
+
+**Progress Line Width by Status:**
+| Status | Width | Color |
+|--------|-------|-------|
+| `draft`, `dicabut`, `ditolak` | 0% | Gray |
+| `pending_atasan`, `pending_admin` | 16% | Blue |
+| `verified` | 33% | Blue |
+| `surat_dinas` | 50% | Blue |
+| `surat_izin` | 66% | Blue |
+| `signed` | 83% | Blue |
+| `selesai`, `completed` | 100% | Green |
+
+### Document Preview Auto-Download Fix
+
+**Overview:**
+- Fixed documents automatically downloading when admin clicks "Verifikasi" or "Detail" button
+- Replaced direct `<img>` and `<iframe>` loading with clickable placeholder
+
+**Frontend Implementation:**
+- **VerifikasiDetailView.vue** - Fixed auto-download issue
+  - Removed document preloading that triggered automatic downloads
+  - Replaced with clickable placeholder showing document icon
+  - Click placeholder to open `DocumentPreviewModal` for preview
+
+### TTE Menu Not Showing for Kepala
+
+**Overview:**
+- Fixed TTE (Tanda Tangan Elektronik) menu not showing for kepala@bkpsdm.go.id account
+- Kepala users now have access to signing functionality
+
+**Backend Fix:**
+- **SuratIzinBelajarController.php** - Fixed missing Notification import
+  - Added: `use App\Models\Notification;`
+  - Fixed missing closing brace for `verify()` function
+  - 500 error when signing surat now resolved
+
+### Barcode Integration
+
+**Overview:**
+- Added barcode generation for Surat Izin Belajar PDF
+- Barcode contains surat number for quick identification
+- Uses `picqer/php-barcode-generator` library
+
+**Backend Implementation:**
+- **BarcodeService** - New service for barcode generation
+  - `generateAndSave()` - Generate barcode and save to storage
+  - `generateForSurat()` - Generate barcode for surat with nomor_surat
+  - `generateAsHtml()` - Generate barcode as HTML for PDF rendering
+
+**Frontend/PDF Integration:**
+- **surat-izin-belajar.blade.php** - Barcode displayed in PDF
+  - Positioned at bottom of document
+  - Contains surat nomor for identification
+  - Renders below QR code section
+
+---
