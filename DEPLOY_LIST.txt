@@ -1,0 +1,88 @@
+================================================================================
+                    DAFTAR FILE UNTUK DEPLOY PRODUCTION
+================================================================================
+
+📁 SERVER: be-surat-tugas.velotek.co.id
+📅 TANGGAL: 2026-05-29
+📝 NOTES: Fix layout admin, auto-generate Surat Tugas Mandiri, fix undefined bug
+
+================================================================================
+                            BACKEND FILES
+================================================================================
+
+Upload ke: public_html/api/
+
+1. Controllers (app/Http/Controllers/)
+   ├── SuratIzinBelajarController.php
+   │   └── Changes: Auto-create SuratTugasMandiri when creating SuratIzin
+   └── SuratTugasMandiriController.php
+       └── Changes: Update logo path to use storage
+
+2. Models (app/Models/)
+   └── SuratTugasMandiri.php
+       └── Changes: Add protected $table = 'surat_tugas_mandiri'
+
+================================================================================
+                          FRONTEND FILES
+================================================================================
+
+Upload ke: public_html/ (replace entire dist/ folder)
+
+Run locally first:
+  cd frontend
+  npm run build
+
+Then upload:
+  frontend/dist/* → public_html/
+
+================================================================================
+                         DATABASE COMMANDS
+================================================================================
+
+Run via cPanel Terminal atau phpMyAdmin:
+
+-- Fix kepala dinas is_kepala_unit flag
+UPDATE users SET is_kepala_unit = 1 
+WHERE email LIKE '%kepala%' OR email LIKE '%kadis%';
+
+-- Verify
+SELECT id, name, email, unit_kerja_id, is_kepala_unit 
+FROM users 
+WHERE role_id IN (SELECT id FROM roles WHERE name IN ('kepala', 'admin_bkpsdm'));
+
+================================================================================
+                       VERIFICATION STEPS
+================================================================================
+
+Setelah deploy, test alur berikut:
+
+1. Login sebagai PEMOHON (drajat@disdik.go.id)
+   ▫ Buat pengajuan baru
+   ▫ Submit pengajuan
+   ▫ Tunggu verifikasi admin
+
+2. Login sebagai ADMIN (admin@bkpsdm.go.id)
+   ▫ Buka menu Verifikasi
+   ▫ Approve pengajuan
+   ▫ Status harus berubah ke "verified"
+   ▫ Buka menu Surat Izin Belajar
+   ▫ Generate surat (harus auto-create 2 surat)
+
+3. Login sebagai KEPALA DINAS (kadisdik@disdik.go.id)
+   ▫ Buka menu Surat Tugas Belajar
+   ▫ Pastikan list pending muncul
+   ▫ Pastikan navbar/sidebar muncul
+
+4. Test download surat
+   ▫ Pastikan tidak ada error "undefined" di URL
+
+================================================================================
+                         ROLLBACK PLAN
+================================================================================
+
+Jika ada masalah:
+1. Restore backup sebelumnya
+2. Jalankan migration rollback:
+   php artisan migrate:rollback
+
+================================================================================
