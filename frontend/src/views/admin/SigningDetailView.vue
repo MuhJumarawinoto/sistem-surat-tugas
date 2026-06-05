@@ -107,7 +107,7 @@ async function downloadSurat() {
       ? import.meta.env.VITE_API_URL.replace('/api', '')
       : 'http://localhost:8000'
 
-    const url = `${baseUrl}/api/admin/surat-izin/${suratIzin.value.id}/download?token=${token}`
+    const url = `${baseUrl}/api/admin/surat-izin/${suratIzin.value.id}/download?token=${encodeURIComponent(token)}`
     window.open(url, '_blank')
   } catch (error) {
     console.error('Download failed:', error)

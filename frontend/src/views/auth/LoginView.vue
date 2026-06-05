@@ -2,10 +2,12 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useToastStore } from '@/stores/toast'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const toast = useToastStore()
 
 const form = ref({
   identity: '',
@@ -13,21 +15,18 @@ const form = ref({
 })
 
 const loading = ref(false)
-const error = ref('')
-const infoMessage = ref('')
 
 // Cek pesan session expired saat mount
 onMounted(() => {
   const sessionMessage = sessionStorage.getItem('sessionMessage')
   if (sessionMessage) {
-    infoMessage.value = sessionMessage
+    toast.info(sessionMessage, 5000)
     sessionStorage.removeItem('sessionMessage')
     sessionStorage.removeItem('sessionExpiredShown')
   }
 })
 
 async function handleLogin() {
-  error.value = ''
   loading.value = true
 
   try {
@@ -43,7 +42,7 @@ async function handleLogin() {
       router.push('/dashboard')
     }
   } catch (err) {
-    error.value = err.response?.data?.message || 'Login gagal. Silakan coba lagi.'
+    toast.error(err.response?.data?.message || 'Login gagal. Silakan coba lagi.', 4000)
   } finally {
     loading.value = false
   }
@@ -68,7 +67,7 @@ async function handleLogin() {
               <img src="/logo.png" alt="Logo" class="h-full w-auto object-contain" />
             </div>
             <div>
-              <h1 class="text-3xl font-bold text-white">Sistem Surat Belajar Mandiri</h1>
+              <h1 class="text-3xl font-bold text-white">SI-TEMA CANTIK</h1>
               <p class="text-white/80">BKPSDM Kabupaten Sukabumi</p>
             </div>
           </div>
@@ -76,7 +75,7 @@ async function handleLogin() {
           <!-- Tagline -->
           <div class="space-y-6">
             <h2 class="text-4xl font-bold text-white leading-tight">
-              Sistem Pengajuan Izin Belajar Mandiri
+              Sistem Informasi Tugas Belajar Mandiri<br>dan Pencantuman Gelar Akademik
             </h2>
             <p class="text-white/80 text-lg">
               BKPSDM Kabupaten Sukabumi
@@ -131,7 +130,7 @@ async function handleLogin() {
             <img src="/logo.png" alt="Logo" class="h-full w-auto object-contain" />
           </div>
           <div>
-            <h1 class="text-xl font-bold text-secondary-800">SIPINTAR</h1>
+            <h1 class="text-xl font-bold text-secondary-800">SI-TEMA CANTIK</h1>
             <p class="text-xs text-secondary-500">BKPSDM Kab. Sukabumi</p>
           </div>
         </div>
@@ -142,18 +141,6 @@ async function handleLogin() {
             <div class="text-center mb-6">
               <h2 class="text-2xl font-bold text-secondary-800">Selamat Datang</h2>
               <p class="text-secondary-500 mt-1">Silakan masuk ke akun Anda</p>
-            </div>
-
-            <!-- Error Alert -->
-            <div v-if="error" class="alert alert-danger mb-4">
-              <i class="ri-error-warning-line text-lg"></i>
-              <span>{{ error }}</span>
-            </div>
-
-            <!-- Info Alert (Session Expired) -->
-            <div v-if="infoMessage" class="alert alert-info mb-4">
-              <i class="ri-information-line text-lg"></i>
-              <span>{{ infoMessage }}</span>
             </div>
 
             <!-- Login Form -->

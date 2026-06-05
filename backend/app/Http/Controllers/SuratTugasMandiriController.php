@@ -144,18 +144,18 @@ class SuratTugasMandiriController extends Controller
         }
 
         // Check if surat izin belajar exists
-        if (!$pengajuan->suratIzinBelajar || $pengajuan->suratIzinBelajar->isEmpty()) {
+        if (!$pengajuan->suratIzinBelajar) {
             return response()->json(['message' => 'Surat Izin Belajar must be created first'], 400);
         }
 
-        $suratIzinBelajar = $pengajuan->suratIzinBelajar->first();
+        $suratIzinBelajar = $pengajuan->suratIzinBelajar;
 
         DB::beginTransaction();
         try {
             $surat = SuratTugasMandiri::create([
                 'pengajuan_id' => $pengajuan->id,
                 'surat_izin_belajar_id' => $suratIzinBelajar->id,
-                'surat_tugas_dinas_id' => $pengajuan->suratTugasDinas->first()?->id,
+                'surat_tugas_dinas_id' => $pengajuan->suratTugasDinas?->id,
                 'nomor_surat' => $request->nomor_surat,
                 'tahun' => $request->tahun,
                 'tanggal_surat' => $request->tanggal_surat,
@@ -414,36 +414,47 @@ class SuratTugasMandiriController extends Controller
      */
     public function download(Request $request, $id)
     {
-        // Check token from query parameter (for direct download link)
-        if ($request->has('token')) {
-            $token = $request->query('token');
-            $personalAccessToken = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
-            if (!$personalAccessToken) {
-                return response()->json(['message' => 'Invalid token'], 401);
+        try {
+            // Check token from query parameter (for direct download link)
+            if ($request->has('token')) {
+                $token = $request->query('token', '');
+                $personalAccessToken = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
+                if (!$personalAccessToken) {
+                    return response()->json(['message' => 'Invalid token'], 401);
+                }
+                $user = $personalAccessToken->tokenable;
+            } else {
+                $user = $request->user();
+                if (!$user) {
+                    return response()->json(['message' => 'Unauthorized'], 401);
+                }
             }
-            $user = $personalAccessToken->tokenable;
-        } else {
-            $user = $request->user();
+
+            $surat = SuratTugasMandiri::with('pengajuan')->findOrFail($id);
+
+            if (!$surat->isSigned()) {
+                return response()->json(['message' => 'Surat has not been signed yet.'], 400);
+            }
+
+            // Pemohon can only download their own surat
+            if ($user->isPemohon() && $surat->pengajuan->user_id !== $user->id) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
+
+            $filePath = storage_path('app/public/' . $surat->file_path);
+
+            if (!file_exists($filePath)) {
+                return response()->json(['message' => 'File not found at: ' . $surat->file_path], 404);
+            }
+
+            return response()->download($filePath, "Surat_Tugas_Belajar_Mandiri_{$surat->tahun}.pdf");
+        } catch (\Exception $e) {
+            \Log::error('SuratTugasMandiri download error: ' . $e->getMessage(), [
+                'id' => $id,
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json(['message' => 'Download failed: ' . $e->getMessage()], 500);
         }
-
-        $surat = SuratTugasMandiri::with('pengajuan')->findOrFail($id);
-
-        if (!$surat->isSigned()) {
-            return response()->json(['message' => 'Surat has not been signed yet.'], 400);
-        }
-
-        // Pemohon can only download their own surat
-        if ($user->isPemohon() && $surat->pengajuan->user_id !== $user->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        $filePath = storage_path('app/public/' . $surat->file_path);
-
-        if (!file_exists($filePath)) {
-            return response()->json(['message' => 'File not found'], 404);
-        }
-
-        return response()->download($filePath, "Surat_Tugas_Belajar_Mandiri_{$surat->tahun}.pdf");
     }
 
     /**

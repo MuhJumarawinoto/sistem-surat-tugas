@@ -8,6 +8,25 @@
             margin: 15mm 15mm 15mm 15mm;
             size: A4 portrait;
         }
+
+        /* Preview Mode - A4 Page Styling */
+        .preview-wrapper {
+            background: #525659;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .a4-page {
+            background: white;
+            width: 210mm;
+            min-height: 297mm;
+            padding: 15mm 15mm 15mm 15mm;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+            position: relative;
+        }
+
         body {
             font-family: Arial, 'Times New Roman', serif;
             font-size: 10pt;
@@ -15,6 +34,7 @@
             margin: 0;
             padding: 0;
             color: #000000;
+            background: #525659;
         }
         .header {
             text-align: center;
@@ -156,9 +176,54 @@
             border-top: 2pt solid #000000;
             margin: 5mm 0;
         }
+
+        /* Print Mode - Hide preview wrapper styling */
+        @media print {
+            .preview-wrapper {
+                background: none;
+                padding: 0;
+            }
+            .a4-page {
+                box-shadow: none;
+                width: auto;
+                min-height: auto;
+            }
+            body {
+                background: white;
+            }
+        }
     </style>
 </head>
 <body>
+    {{-- Floating Download Button (Preview Mode Only) --}}
+    @if(isset($_GET['token']))
+    <div style="position: fixed; top: 20px; right: 20px; z-index: 1000;">
+        <a href="/api/admin/surat-izin/{{ $surat->id }}/download?token={{ $_GET['token'] }}"
+           class="btn-download"
+           style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 8px; font-family: Arial, sans-serif; font-size: 14px; font-weight: 600; box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: all 0.3s ease;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Download PDF
+        </a>
+    </div>
+    <style>
+        .btn-download:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3) !important;
+        }
+        @media print {
+            .btn-download {
+                display: none !important;
+            }
+        }
+    </style>
+    @endif
+
+    <div class="preview-wrapper">
+        <div class="a4-page">
     <div class="header">
         <div class="header-line-top"></div>
         <div class="header-line-bottom">
@@ -235,7 +300,11 @@
                 <p>3. Peraturan Pemerintah Nomor 17 Tahun 2020 tentang Manajemen Pegawai Negeri Sipil;</p>
                 <p>4. Peraturan Daerah Kabupaten Sukabumi Nomor 3 Tahun 2024 tentang Pembentukan dan Susunan Perangkat Daerah;</p>
                 <p>5. Peraturan Bupati Sukabumi Nomor 2 Tahun 2022 tentang Pedoman Tugas Belajar; dan</p>
+                @if($surat->suratTugasDinas)
                 <p>6. Surat Tugas {{ $surat->suratTugasDinas->full_nomor_surat }} tanggal {{ \Carbon\Carbon::parse($surat->suratTugasDinas->tanggal_ttd)->locale('id')->translatedFormat('d F Y') }}.</p>
+                @else
+                <p>6. Permohonan Izin Belajar Mandiri {{ $surat->pengajuan->nomor_pengajuan }} tanggal {{ \Carbon\Carbon::parse($surat->pengajuan->created_at)->locale('id')->translatedFormat('d F Y') }}.</p>
+                @endif
             </div>
         </div>
 
@@ -282,5 +351,7 @@
         <p style="font-family: Arial, sans-serif; font-size: 8pt; color: #666; margin-top: 2mm; text-align: center;">{{ $surat->nomor_surat }}</p>
     </div>
     @endif
+        </div><!-- End a4-page -->
+    </div><!-- End preview-wrapper -->
 </body>
 </html>

@@ -639,14 +639,14 @@ actions: {
 8. **Statement Tidak Sedang Menjalankan Hukuman** - No disciplinary action statement
 9. **Surat Pernyataan** - Personal declaration letter
 
-## Pengajuan Status Flow
+## Pengajuan Status Flow (Simplified)
 
 ```
-draft → pending_atasan → pending_admin → verified → surat_dinas → surat_izin → signed → selesai/completed
-                                             ↓                              ↓
-                                          ditolak                         ditolak
-                                             ↑
-                                 cancel (tarik kembali)
+draft → pending_admin → verified → signed → selesai/completed
+              ↓                              ↓
+           ditolak                        ditolak
+              ↑
+              └── cancel (tarik kembali)
 
 draft → delete → dicabut (masuk riwayat)
 ```
@@ -654,71 +654,62 @@ draft → delete → dicabut (masuk riwayat)
 | Status | Penjelasan | Bisa Edit/Hapus | Bisa Dicabut | Bisa Dipulihkan |
 |--------|------------|-----------------|--------------|-----------------|
 | `draft` | Pengajuan dibuat, belum dikirim | Ya | - | - |
-| `pending_atasan` | Menunggu approval atasan langsung | Tidak | Ya (→draft) | - |
-| `pending_admin` | Menunggu verifikasi admin | Tidak | Ya (→draft) | - |
-| `verified` | Dokumen diverifikasi admin, menunggu Surat Tugas Dinas | Tidak | Ya (→draft) | - |
-| `surat_dinas` | Surat Tugas Dinas sudah dibuat, menunggu Surat Izin | Tidak | Tidak | - |
-| `surat_izin` | Surat Izin sudah dibuat, menunggu TTE | Tidak | Tidak | - |
-| `disetujui` | Disetujui oleh penandatangan | Tidak | Tidak | - |
-| `signed` | Surat ditandatangani (TTE) | Tidak | Tidak | - |
-| `ditolak` | Ditolak admin/atasan | Tidak | Tidak | - |
-| `selesai` | Surat selesai | Tidak | Tidak | - |
+| `pending_admin` | Menunggu verifikasi admin BKPSDM | Tidak | Ya (→draft) | - |
+| `verified` | Dokumen diverifikasi, siap dibuatkan Surat Izin | Tidak | Ya (→draft) | - |
+| `signed` | Surat Izin sudah ditandatangani TTE | Tidak | Tidak | - |
+| `selesai` | Surat Tugas Belajar sudah dibuat | Tidak | Tidak | - |
 | `completed` | Proses lengkap | Tidak | Tidak | - |
+| `ditolak` | Ditolak admin | Tidak | Tidak | - |
 | `dicabut` | Pengajuan dihapus dari draft/riwayat | Tidak | - | Ya |
 
-### Alur Lengkap dengan 2 Tahap Surat
+### Alur Lengkap (Simplified - No Atasan Approval)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│              ALUR PENGAJUAN DENGAN 2 TAHAP SURAT                │
+│              ALUR PENGAJUAN DISEDERHANAKAN                       │
 └─────────────────────────────────────────────────────────────────┘
 
-  [PEMOHON]                    [ATASAN]                  [ADMIN]
-       │                           │                          │
-   Buat Pengajuan            Review & Approve         Verify Dokumen
-       │                           │                          │
-       ▼                           ▼                          ▼
-    draft ──────────────→ pending_atasan ─────────→ pending_admin
-                                                           │
-                                                           ▼
-                                                        verified
-                                                           │
-                                    ┌──────────────────────┘
-                                    │
-                                    ▼
-                         ┌───────────────────────┐
-                         │   [KEPALA DINAS]       │
-                         │   (Unit Kerja)         │
-                         └───────────────────────┘
-                                    │
-                         Create Surat Tugas Belajar
-                                    │
-                                    ▼
-                                   surat_dinas
-                                    │
-                                    ▼
-                         ┌───────────────────────┐
-                         │   [ADMIN BKPSDM]      │
-                         └───────────────────────┘
-                                    │
-                      Generate Surat Izin Belajar
-                                    │
-                                    ▼
-                                  surat_izin
-                                    │
-                                    ▼
-                         ┌───────────────────────┐
-                         │   [KEPALA BKPSDM]      │
-                         └───────────────────────┘
-                                    │
-                              Sign with TTE
-                                    │
-                                    ▼
-                                   signed
-                                    │
-                                    ▼
-                                 selesai
+  [PEMOHON]                  [ADMIN BKPSDM]              [KEPALA BKPSDM]
+       │                           │                            │
+   Buat Pengajuan         Verify Dokumen           Generate & TTE Surat
+       │                           │                            │
+       ▼                           ▼                            ▼
+    draft ──────────────→ pending_admin ──────────────→ verified
+                                                               │
+                                                               │
+                                                        Generate Surat Izin
+                                                        + TTE (1 step)
+                                                               │
+                                                               ▼
+                                                            signed
+                                                               │
+                                                               │
+                                                      ┌─────────────────┐
+                                                      │   [ADMIN BKPSDM] │
+                                                      └─────────────────┘
+                                                               │
+                                                      Create Surat Tugas
+                                                      (same TTE date)
+                                                               │
+                                                               ▼
+                                                            selesai
 ```
+
+**Alur Penarikan (Cancel):**
+1. **Pending/Verified** → Klik "Cabut Berkas" → Status kembali jadi **draft**
+2. Pengajuan dapat diedit kembali dan dikirim ulang
+
+**Alur Penghapusan (Delete):**
+1. **Draft** → Klik "Hapus" → Status jadi **dicabut** → Masuk **Riwayat**
+2. **Dicabut** → Klik "Pulihkan" → Status kembali jadi **draft**
+3. Data tetap tersimpan (tidak dihapus permanen)
+
+**Alur Singkat:**
+1. **User** → Buat & kirim pengajuan
+2. **Admin BKPSDM** → Verifikasi dokumen
+3. **Kepala BKPSDM** → Generate & TTE Surat Izin Belajar
+4. **Admin BKPSDM** → Buat Surat Tugas Belajar (dengan TTE yang sama)
+5. **Selesai** → User unduh surat
 
 **Alur Penarikan (Cancel):**
 1. **Pending/Verified** → Klik "Cabut Berkas" → Status kembali jadi **draft**
@@ -1818,56 +1809,49 @@ draft → pending_atasan → pending_admin → verified
 
 | Status | Penjelasan |
 |--------|------------|
-| `verified` | Dokumen diverifikasi admin, menunggu Surat Tugas Dinas |
-| `surat_dinas` | Surat Tugas Dinas sudah dibuat, menunggu Surat Izin |
-| `surat_izin` | Surat Izin sudah dibuat, menunggu TTE |
-| `signed` | Sudah ditandatangani TTE |
+| `verified` | Dokumen diverifikasi admin, siap dibuatkan Surat Izin |
+| `signed` | Surat Izin sudah ditandatangani TTE |
 | `selesai` / `completed` | Proses lengkap |
+
+**Simplified Flow (2026-06-02):**
+```
+draft → pending_admin → verified → signed (Surat Izin + TTE) → selesai
+```
 
 ---
 
 ## Role & Permission Updates
 
-### Role "kepala" (Kepala Dinas per Unit Kerja)
-
-| Permission | Description |
-|------------|-------------|
-| `view_surat_tugas` | View list pengajuan verified untuk unit kerja nya |
-| `create_surat_tugas` | Create surat tugas dinas |
-| `update_surat_tugas` | Update surat tugas (draft only) |
-| `delete_surat_tugas` | Delete surat tugas (draft only) |
-| `download_surat_tugas` | Download PDF surat tugas |
-
 ### Role "admin" (Admin BKPSDM)
 
 | Permission | Description |
 |------------|-------------|
-| `view_all_surat_tugas` | View all surat tugas dinas |
-| `create_surat_izin` | Generate surat izin belajar mandiri |
-| `sign_surat_izin` | Sign surat izin with TTE (kepala) |
+| `verify_dokumen` | Verifikasi kelengkapan dokumen pengajuan |
+| `view_all_surat_izin` | View semua surat izin belajar |
+| `create_surat_tugas` | Create surat tugas belajar (setelah surat izin signed) |
 
 ### Role "kepala" (Kepala BKPSDM)
 
 | Permission | Description |
 |------------|-------------|
-| `sign_surat_izin` | Sign surat izin with TTE |
+| `generate_sign_surat_izin` | Generate & TTE Surat Izin Belajar |
+| `view_pending_signing` | View list pengajuan ready for TTE |
 
 ---
 
 ## Notes for Development
 
-### Surat Tugas Dinas
-- **Letterhead**: Dynamic sesuai unit kerja masing-masing
-- **Kepala Dinas**: Auto-detect dari user role kepala di unit kerja
-- **Nomor Surat**: Auto-increment per unit kerja per tahun
-- **Wajib**: Harus dibuat sebelum Admin BKPSDM bisa buat Surat Izin
+### Surat Izin Belajar (Simplified Flow)
+- **Dibuat oleh**: Kepala BKPSDM
+- **Status langsung signed**: Tidak ada draft, langsung signed dengan TTE
+- **QR Code**: Otomatis dibuat saat generate surat
+- **Dasar Hukum Point 6**: Rekomendasi Admin BKPSDM
 
-### Surat Izin Belajar
-- **Letterhead**: BKPSDM (fixed)
-- **Dasar Hukum Point 6**: Refer ke Surat Tugas Dinas (nomor, tanggal, nama dinas)
-- **TTE**: BSrE BSSN integration
-- **Font**: Times New Roman for official document feel
-- **Paper size**: A4 with standard margins
+### Surat Tugas Belajar (Simplified Flow)
+- **Dibuat oleh**: Admin BKPSDM
+- **Prerequisite**: Surat Izin Belajar harus sudah signed
+- **TTE Date**: Menggunakan tanggal TTE yang sama dengan Surat Izin
+- **Status Pengajuan**: Berubah menjadi `selesai` setelah dibuat
 
 ---
 
@@ -2211,5 +2195,587 @@ curl -X POST http://localhost:8000/api/auth/login \
   - Positioned at bottom of document
   - Contains surat nomor for identification
   - Renders below QR code section
+
+### Simplified Pengajuan Flow (No Atasan Approval)
+
+**Overview:**
+- Sistem disederhanakan dengan menghapus persetujuan atasan
+- Pemohon mengajukan langsung ke Admin BKPSDM untuk verifikasi
+- Kepala BKPSDM membuat & menandatangani Surat Izin Belajar dengan TTE dalam satu langkah
+- Admin BKPSDM kemudian membuat Surat Tugas Belajar menggunakan TTE yang sama
+
+**Alur Baru:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              ALUR PENGAJUAN DISEDERHANAKAN                       │
+└─────────────────────────────────────────────────────────────────┘
+
+  [PEMOHON]                  [ADMIN BKPSDM]              [KEPALA BKPSDM]
+       │                           │                            │
+   Buat Pengajuan        Verifikasi Dokumen          Generate & TTE
+       │                           │                            │
+       ▼                           ▼                            ▼
+    draft ───────────────→ pending_admin ─────────────→ verified
+                                                                  │
+                                                                  ▼
+                                                          ┌─────────────────┐
+                                                          │  Generate Surat  │
+                                                          │  Izin + TTE      │
+                                                          └─────────────────┘
+                                                                  │
+                                                                  ▼
+                                                               signed
+                                                                  │
+                                                                  │
+                                                         ┌─────────────────┐
+                                                         │  Admin BKPSDM   │
+                                                         └─────────────────┘
+                                                                  │
+                                                         Create Surat Tugas
+                                                         (same TTE date)
+                                                                  │
+                                                                  ▼
+                                                                selesai
+```
+
+**Status Flow Baru:**
+| Status | Penjelasan |
+|--------|------------|
+| `draft` | Pengajuan dibuat, belum dikirim |
+| `pending_admin` | Menunggu verifikasi dokumen oleh Admin BKPSDM |
+| `verified` | Dokumen lengkap & valid, siap dibuatkan Surat Izin |
+| `signed` | Surat Izin Belajar sudah ditandatangani TTE |
+| `selesai` | Surat Tugas Belajar sudah dibuat |
+
+**Role Baru yang Bertugas:**
+| Role | Tugas |
+|------|------|
+| **Pemohon** | Buat & kirim pengajuan, download surat |
+| **Admin BKPSDM** | Verifikasi dokumen, buat Surat Tugas Belajar |
+| **Kepala BKPSDM** | Generate & TTE Surat Izin Belajar |
+
+**Backend Implementation:**
+- **PengajuanController**
+  - Removed atasan approval logic from `store()` and `cancel()` methods
+  - Removed `approved_by_atasan`, `approved_at_atasan`, `tanggal_submit_atasan` handling
+  - Status flow simplified: draft → pending_admin → verified → signed → selesai
+
+- **SuratIzinBelajarController**
+  - `pending()` method looks for `verified` status (was `surat_dinas`)
+  - `store()` only allows Kepala BKPSDM to create
+  - Creates SuratIzinBelajar with status `signed` directly (no draft intermediate)
+  - No requirement for surat_tugas_dinas to exist first
+  - Includes QR code generation in one step
+
+- **SuratTugasDinasController**
+  - `pending()` method looks for `signed` status (was `signed`)
+  - `store()` requires pengajuan to have signed SuratIzinBelajar first
+  - Uses same TTE date from SuratIzinBelajar
+  - Updates pengajuan status to `selesai` after creation
+
+**Frontend Implementation:**
+- **SigningView.vue** - Rewritten for simplified flow
+  - Calls `/admin/surat-izin/pending` for verified pengajuan list
+  - POST directly to `/admin/surat-izin` for generate & TTE in one step
+  - Button text: "Generate & TTE"
+  - Removed separate detail/sign modal flow
+
+- **SuratIzinView.vue** - Simplified
+  - Shows only list of signed surat (removed generate/sign modals)
+  - Focused on download functionality
+
+**Updated Milestone Steps (4 Steps):**
+1. Dikirim → 2. Verifikasi → 3. TTE (Kepala) → 4. Selesai
+
+**API Endpoints Updated:**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/admin/surat-izin/pending` | List verified pengajuan ready for TTE |
+| POST | `/api/admin/surat-izin` | Generate & sign Surat Izin (Kepala BKPSDM only) |
+| GET | `/api/kepala/surat-tugas/pending` | List signed pengajuan ready for Surat Tugas |
+| POST | `/api/kepala/surat-tugas` | Create Surat Tugas (Admin BKPSDM only) |
+
+---
+
+## Recent Changes (2026-06-03)
+
+### PDF Template Improvements (Surat Tugas Dinas)
+
+**Overview:**
+- Fixed PDF page break issues to ensure accurate preview and download
+- Removed gray background margin in downloaded PDF
+- Fixed empty second page appearing in PDF output
+- Changed font to Arial for entire document
+- Added page break indicators in preview mode
+
+**PDF Template Structure:**
+- **Preview Mode**: Shows A4 page with gray background (#525659)
+- **PDF Mode**: Pure white background with no gray margins
+- **Page Break Indicator**: Red dotted line at bottom of each page in preview
+- **"Next Page" Indicator**: Shows "▼ HALAMAN BERIKUTNYA ▼" when content overflows
+
+**CSS Changes:**
+```css
+/* Conditional background for preview only */
+.preview-wrapper.is-preview {
+    background: #525659;  /* Only in preview */
+}
+
+/* PDF page with zero margins */
+@page {
+    margin-top: 0;
+    margin-bottom: 0;
+    margin-left: 0;
+    margin-right: 0;
+    size: A4 portrait;
+}
+
+/* Page element - min-height instead of fixed height */
+.preview-page {
+    width: 210mm;
+    min-height: 297mm;  /* Allows content to be shorter */
+    /* No page-break-after - prevents forced page breaks */
+}
+```
+
+**Controller Updates:**
+- **SuratTugasDinasController::preview()** - Passes `isPreview: true` for gray background
+- **SuratTugasDinasController::generatePdf()** - Passes `isPreview: false` for white background
+
+**Font Update:**
+- Changed from `Times New Roman, Arial, serif` to `Arial, sans-serif`
+- Applied consistently across entire document
+
+**Bug Fixes:**
+- **Gray margin in PDF** - Fixed by using conditional CSS class `is-preview`
+- **Empty second page** - Fixed by removing `page-break-after: always` and using `min-height` instead of fixed `height`
+- **Preview/PDF mismatch** - Both now use same structure with conditional preview-only styling
+
+**Template File:**
+- `backend/resources/views/pdf/surat-tugas-dinas.blade.php`
+
+### Admin Sidebar Menu Updates
+
+**Overview:**
+- Hid "Surat Tugas Mandiri" menu from admin sidebar
+- Hid "Surat Izin Belajar" menu from admin sidebar
+- Fixed hover highlight issue affecting all surat menu items
+
+**Sidebar Changes:**
+- **Surat menu group** now only shows "Surat Tugas Belajar"
+- Both "Surat Izin Belajar" and "Surat Tugas Mandiri" are hidden from sidebar navigation
+- These routes are still accessible via direct URL or API
+
+**Highlight Fix:**
+```javascript
+// Before: All surat routes highlighted together
+if (path.startsWith('/admin/surat')) {
+  return route.path.startsWith('/admin/surat')
+}
+
+// After: Exact matching for each route
+if (path === '/admin/surat-izin') {
+  return route.path === '/admin/surat-izin' || route.path.startsWith('/admin/surat-izin/')
+}
+if (path === '/admin/surat-tugas') {
+  return route.path === '/admin/surat-tugas' || route.path.startsWith('/admin/surat-tugas/')
+}
+```
+
+**Component Updated:**
+- `frontend/src/components/layout/Sidebar.vue` - Menu configuration and isActive() function
+
+### Milestone Component Update - Simplified to 4 Steps
+
+**Overview:**
+- Updated milestone system from 6 steps to 4 steps to match simplified flow
+- Fixed milestone showing wrong step for completed pengajuan
+- Added hover tooltip on milestone dots for better UX
+- Updated all milestone implementations across the app for consistency
+
+**New Milestone Flow (4 Steps):**
+```
+Dikirim → Verifikasi → TTE (Kepala) → Selesai
+```
+
+**Status Mapping:**
+| Status | Step Position | Color |
+|--------|---------------|-------|
+| `draft` | - | Gray (0%) |
+| `pending_admin` | Step 1 (Dikirim) current | Blue (25%) |
+| `verified` | Step 2 (Verifikasi) current | Blue (50%) |
+| `signed` | Step 3 (TTE) current | Blue (75%) |
+| `selesai` | Step 4 (Selesai) current | Green (100%) |
+| `completed` | Step 4 (Selesai) completed | Green (100%) |
+
+**Components Updated:**
+
+1. **VerifikasiView.vue** (Admin verification page)
+   - `getMilestoneSteps()` - Updated to 4 steps logic
+   - `getProgressLineClass()` - Updated percentages (25%, 50%, 75%, 100%)
+   - `getStepStatusDescription()` - Added hover tooltip function
+   - Added `title` attribute to milestone dots
+
+2. **DashboardView.vue** (Pemohon dashboard)
+   - `getMilestoneSteps()` - Updated to 4 steps logic
+   - `getProgressLineClass()` - Updated percentages
+   - `getMilestoneTooltip()` - Updated tooltip descriptions for 4 steps
+
+3. **PengajuanMilestone.vue** (Reusable component)
+   - `steps` computed - Reduced to 4 steps
+   - `getStepStatus()` - Updated mapping logic
+   - `progressPercentage` - Updated calculation (25%, 50%, 75%, 100%)
+
+**Bug Fixes:**
+
+**Issue 1 - Completed Pengajuan Still Shows at TTE Step:**
+- **Cause**: Status `selesai` was mapped to `'current'` instead of `'completed'`
+- **Fix**: Changed logic to treat both `selesai` and `completed` as `'completed'` at step 4
+- **Result**: Pengajuan with status `selesai` or `completed` now shows green at "Selesai" step
+
+**Issue 2 - No Hover Tooltip on Milestone Dots:**
+- **Cause**: No title attribute or tooltip component on milestone dots
+- **Fix**: Added `title` attribute with dynamic description based on step status
+- **Result**: Hovering on milestone dots now shows tooltip like:
+  - "Selesai: Sudah selesai" (green)
+  - "TTE: Sedang diproses" (blue pulse)
+  - "Verifikasi: Belum diproses" (gray)
+
+**Code Changes:**
+```javascript
+// Updated milestone steps (4 steps)
+function getMilestoneSteps(pengajuan) {
+  const status = pengajuan.status
+  const steps = []
+
+  // Step 1: Dikirim
+  steps.push({
+    label: 'Dikirim',
+    status: ['pending_admin', 'verified', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' : 'pending',
+  })
+
+  // Step 2: Verifikasi
+  steps.push({
+    label: 'Verifikasi',
+    status: ['verified', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' :
+              ['pending_admin'].includes(status) ? 'current' : 'pending',
+  })
+
+  // Step 3: TTE
+  steps.push({
+    label: 'TTE',
+    status: ['selesai', 'completed'].includes(status) ? 'completed' :
+              ['signed'].includes(status) ? 'current' : 'pending',
+  })
+
+  // Step 4: Selesai
+  steps.push({
+    label: 'Selesai',
+    status: ['selesai', 'completed'].includes(status) ? 'completed' : 'pending',
+  })
+
+  return steps
+}
+```
+
+**Progress Line Width:**
+- `pending_admin` → 25% (1/4)
+- `verified` → 50% (2/4)
+- `signed` → 75% (3/4)
+- `selesai/completed` → 100% (4/4)
+
+### Riwayat Verifikasi Menu
+
+**Overview:**
+- Added "Riwayat Verifikasi" menu in admin sidebar
+- Shows only pengajuan with completed verification (verified, signed, selesai, completed)
+- Completed pengajuan are hidden from "Verifikasi Dokumen" menu
+- Provides download buttons for Surat Izin Belajar and Surat Tugas Belajar
+
+**Frontend Implementation:**
+- **RiwayatVerifikasiView.vue** - New view for riwayat verifikasi
+  - Stats dashboard (total, verified, signed, selesai)
+  - Search functionality across multiple fields
+  - Download buttons for both surat types
+  - 4-step milestone display with tooltips
+  - Mobile responsive design
+
+**Sidebar Updates:**
+- Added "Riwayat Verifikasi" under Verifikasi menu group
+- Updated `isActive()` function for route highlighting
+
+**VerifikasiView Updates:**
+- Filtered out verified/signed/selesai/completed from list
+- Updated stats to show Draft and Ditolak instead
+
+**API Endpoints Used:**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/pengajuan/{id}/surat-izin` | Get surat izin by pengajuan |
+| GET | `/api/pengajuan/{id}/surat-tugas-mandiri` | Get surat tugas mandiri by pengajuan |
+| GET | `/api/admin/surat-izin/{id}/download` | Download surat izin with token |
+| GET | `/api/admin/surat-tugas-mandiri/{id}/download` | Download surat tugas with token |
+
+**Frontend Route:**
+| Path | Component | Access |
+|------|-----------|--------|
+| `/admin/riwayat-verifikasi` | RiwayatVerifikasiView.vue | Admin BKPSDM only |
+
+### Download URL Token Encoding Fix
+
+**Overview:**
+- Fixed download URLs failing with 500 Internal Server Error
+- Issue: Token containing pipe character `|` was not URL-encoded
+- Solution: Added `encodeURIComponent()` to all token query parameters
+
+**Files Fixed:**
+1. `RiwayatVerifikasiView.vue` - 2 download functions (surat izin & surat tugas)
+2. `DashboardView.vue` - 2 download functions (surat izin & surat tugas)
+3. `SuratIzinView.vue` - 1 download function
+4. `SuratTugasMandiriDetailView.vue` - 2 functions (preview & download)
+5. `SigningDetailView.vue` - 1 download function
+6. `SigningHistoryView.vue` - 1 download function
+7. `DetailPengajuanView.vue` - 1 download function
+
+**Code Pattern:**
+```javascript
+// Before (causes 500 error with pipe character)
+const url = `${apiUrl}/admin/surat-izin/${id}/download?token=${token}`
+
+// After (properly encoded)
+const url = `${apiUrl}/admin/surat-izin/${id}/download?token=${encodeURIComponent(token)}`
+```
+
+**Download Endpoints (Public - Token Auth):**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/admin/surat-izin/{id}/download` | Download signed surat izin |
+| GET | `/api/admin/surat-tugas-mandiri/{id}/download` | Download signed surat tugas mandiri |
+| GET | `/api/admin/surat-tugas-mandiri/{id}/pdf` | Preview/download surat tugas PDF |
+| GET | `/api/admin/surat-izin/{id}/preview` | Preview surat izin HTML |
+| GET | `/api/kepala/surat-tugas/{id}/pdf` | Download surat tugas dinas PDF |
+
+---
+
+## Recent Changes (2026-06-04)
+
+### Surat Izin Belajar Preview Route Enhancement
+
+**Overview:**
+- Updated preview route to support token authentication for public access
+- Added QR code and barcode generation for preview display
+- Added floating download button on preview page for better UX
+- Preview page now shows complete surat with verification elements
+
+**Backend Implementation:**
+- **SuratIzinBelajarController::preview()** - Updated to support token authentication
+  - Checks token from query parameter (public access) or auth user (logged in)
+  - Generates QR code for verification
+  - Generates barcode for surat identification
+  - Returns view with QR and barcode as base64 images
+
+**Frontend/PDF Template:**
+- **surat-izin-belajar.blade.php** - Added floating download button
+  - Button appears in top-right corner when token is present
+  - Gradient design with hover animation
+  - Hidden in print mode (CSS `@media print`)
+  - Uses token from query parameter for download link
+
+**API Endpoint:**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/admin/surat-izin/{id}/preview?token={token}` | Preview surat izin HTML (public) |
+
+**Preview URL Format:**
+```
+/api/admin/surat-izin/{id}/preview?token={encoded_token}
+```
+
+**Files Updated:**
+- `backend/app/Http/Controllers/SuratIzinBelajarController.php` - preview() and download() method
+- `backend/resources/views/pdf/surat-izin-belajar.blade.php` - Download button
+- `frontend/src/views/admin/SuratIzinView.vue` - Preview button with responsive design
+
+**Frontend Implementation (SuratIzinView.vue):**
+- Desktop: Shows both "Preview" and "Download" buttons inline
+- Mobile: Shows dropdown menu (3 dots) with Preview and Download options
+- Preview button opens surat in new tab with QR code and barcode
+- Click outside to close dropdown menus
+- Smooth dropdown animation
+
+**Button Styling:**
+- Preview: `btn btn-outline btn-sm` with eye icon
+- Download: `btn btn-secondary btn-sm` with download icon
+- Mobile dropdown items: Hover effect with icons
+
+**Download Synchronization:**
+- `download()` method now always generates PDF on-the-fly
+- Ensures downloaded PDF matches preview template exactly
+- Includes QR code and barcode in every download
+- Uses Arial font as specified in template
+
+---
+
+## Recent Changes (2026-06-04)
+
+### Pegawai Import from JSON - 75 Employees Imported
+
+**Overview:**
+- Created artisan command `pegawai:import` for importing pegawai data from JSON
+- Added support for SIMPEG JSON format (auto-detected)
+- Implemented automatic unit kerja creation during import
+- Fixed BOM (Byte Order Mark) handling in JSON files
+- Successfully imported 75 employees from `data_pegawai_simpeg.json`
+
+**Backend Implementation:**
+- **ImportPegawai Command** - New artisan command for CLI import
+  - `php artisan pegawai:import {file} --mode=sync`
+  - Modes: sync (create+update), create (new only), update (existing only)
+  - Progress bar for real-time feedback
+  - Summary table after completion
+
+- **PegawaiSyncController Update** - Added BOM handling
+  - Automatically removes UTF-8 BOM from uploaded JSON files
+  - Auto-detects format (standard vs SIMPEG)
+
+**SIMPEG Format Support:**
+- Fields: nip, nama, tempat_tgl_lahir, golongan, tmt_golongan, jabatan, tmt_jabatan, status_pegawai, tmt_pegawai, masa_kerja_tahun, masa_kerja_bulan, unit_kerja
+- Automatic email generation: {nip}@simpeg.local
+- Automatic golongan → jabatan kategori mapping
+- Automatic unit kerja creation if not exists
+
+**Golongan to Jabatan Kategori Mapping:**
+| Golongan | Kategori |
+|----------|----------|
+| IV/e, IV/d | kepala |
+| IV/c, IV/b, IV/a | kabid |
+| III/d, III/c | kasi |
+| Others | staf |
+
+**Import Result:**
+- 75 new pegawai imported
+- 22 unit kerja created
+- Total pegawai in database: 80
+- All pegawai set with default password: `password123`
+
+**Files Updated:**
+- `backend/app/Console/Commands/ImportPegawai.php` - New artisan command
+- `backend/app/Http/Controllers/PegawaiSyncController.php` - BOM handling
+
+---
+
+## Recent Changes (2026-06-04)
+
+### Pegawai Sync & Import Feature
+
+**Overview:**
+- Added import pegawai from JSON file functionality
+- Admin can sync employee data from external sources
+- Download template feature for correct JSON format
+- Three import modes: create, update, sync
+
+**Backend Implementation:**
+- **PegawaiSyncController** - New controller for pegawai sync
+  - `importFromJson()` - Import pegawai from JSON file
+  - `syncFromSimpeg()` - Placeholder for future SIMPEG API integration
+  - `getStats()` - Get pegawai sync statistics
+  - `downloadTemplate()` - Download JSON template
+
+**Frontend Implementation:**
+- **PegawaiView.vue** - Updated with sync features
+  - Stats section showing total pegawai and unit kerja
+  - "Download Template" button - Get correct JSON format
+  - "Import JSON" button - Upload and import pegawai data
+  - Import modal with mode selection (sync/create/update)
+  - Import result display (success/updated/skipped/failed counts)
+  - Error details display for failed imports
+
+**JSON Format for Import:**
+
+**Standard Format:**
+```json
+[
+  {
+    "nip": "198001012010011001",
+    "nama": "Nama Pegawai",
+    "email": "pegawai@example.com",
+    "pangkat_gol": "Penata Tk.I - III/d",
+    "jabatan": "Jabatan Pegawai",
+    "unit_kerja_kode": "01",
+    "unit_kerja_nama": "Nama Unit Kerja",
+    "unit_kerja_singkatan": "Singkatan",
+    "jabatan_kategori": "staf",
+    "atasan_nip": "197506152005011002",
+    "is_active": true
+  }
+]
+```
+
+**SIMPEG Format (Auto-detected):**
+```json
+[
+  {
+    "nip": "198805232007011001",
+    "nama": "GANJAR ANUGRAH, S.IP.,M.Si.",
+    "tempat_tgl_lahir": "SUKABUMI,23 May 1988",
+    "golongan": "IV/a",
+    "tmt_golongan": "01 April 2023",
+    "jabatan": "KEPALA BADAN...",
+    "tmt_jabatan": "01 April 2026",
+    "status_pegawai": "PNS",
+    "tmt_pegawai": "01 May 2008",
+    "masa_kerja_tahun": "13",
+    "masa_kerja_bulan": "6",
+    "unit_kerja": "Nama Unit Kerja"
+  }
+]
+```
+
+**Import Modes:**
+| Mode | Description |
+|------|-------------|
+| `sync` | Create new pegawai + update existing (default) |
+| `create` | Only create new pegawai, skip existing |
+| `update` | Only update existing pegawai, skip new |
+
+**Artisan Command:**
+```bash
+# Import pegawai from JSON file
+php artisan pegawai:import path/to/file.json --mode=sync
+
+# Options:
+# --mode=sync   : Create new + update existing (default)
+# --mode=create : Only create new pegawai
+# --mode=update : Only update existing pegawai
+```
+
+**API Endpoints (Admin Only):**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/admin/pegawai-sync/import` | Import pegawai from JSON |
+| POST | `/api/admin/pegawai-sync/sync-simpeg` | Sync from SIMPEG API (placeholder) |
+| GET | `/api/admin/pegawai-sync/stats` | Get sync statistics |
+| GET | `/api/admin/pegawai-sync/template` | Download JSON template |
+
+**How to Use:**
+1. Login as admin (`admin@bkpsdm.go.id`)
+2. Go to "Data Pegawai" menu
+3. Click "Download Template" to get JSON format
+4. Fill template with pegawai data
+5. Click "Import JSON" and select the file
+6. Choose import mode (sync/create/update)
+7. Click "Import Data" to process
+8. View results and error details
+
+**Features:**
+- **Auto Unit Kerja Creation**: If unit kerja doesn't exist, it's created automatically
+- **Golongan Mapping**: Automatically maps golongan to jabatan kategori:
+  - IV/e, IV/d → kepala
+  - IV/c, IV/b, IV/a → kabid
+  - III/d, III/c → kasi
+  - Others → staf
+- **Email Generation**: For SIMPEG format, email is auto-generated from NIP (nip@simpeg.local)
+- **BOM Handling**: Automatically removes BOM (Byte Order Mark) from JSON files
+- **Password Default**: All imported pegawai get default password `password123`
 
 ---

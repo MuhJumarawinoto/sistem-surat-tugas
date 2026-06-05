@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMasterStore } from '@/stores/master'
 import { usePengajuanStore } from '@/stores/pengajuan'
@@ -18,9 +18,30 @@ const masterStore = useMasterStore()
 const pengajuanStore = usePengajuanStore()
 const toast = useToastStore()
 
+// Debounce utility
+function debounce(fn, delay) {
+  let timeoutId
+  return function (...args) {
+    clearTimeout(timeoutId)
+    timeoutId = setTimeout(() => fn.apply(this, args), delay)
+  }
+}
+
 // Page header subtitle with nomor pengajuan
 const headerSubtitle = computed(() => {
   return nomorPengajuan.value ? `Nomor: ${nomorPengajuan.value}` : 'Isi formulir untuk mengajukan izin belajar mandiri'
+})
+
+// Show education fields only after jenjang is selected
+const showEducationFields = computed(() => {
+  return !!form.value.jenjang_id
+})
+
+// Get selected jenjang name
+const selectedJenjangName = computed(() => {
+  if (!form.value.jenjang_id) return ''
+  const jenjang = masterStore.jenjang.find(j => j.id === form.value.jenjang_id)
+  return jenjang?.nama || ''
 })
 
 const form = ref({
@@ -32,6 +53,26 @@ const form = ref({
   lokasi_pt: '',
   rencana_mulai: '',
   rencana_selesai: '',
+})
+
+// Watch jenjang changes and reset related fields
+watch(() => form.value.jenjang_id, (newVal, oldVal) => {
+  // Only reset if jenjang actually changed (not on initial load)
+  if (oldVal && newVal !== oldVal) {
+    // Reset PT and prodi fields when jenjang changes
+    selectedPT.value = null
+    form.value.perguruan_tinggi_id = ''
+    form.value.perguruan_tinggi = ''
+    form.value.nama_prodi = ''
+    form.value.akreditasi_prodi = ''
+    form.value.lokasi_pt = ''
+    filteredPT.value = []
+    filteredProdi.value = []
+    showPTDropdown.value = false
+    showProdiDropdown.value = false
+
+    toast.info(`Jenjang diubah. Silakan pilih perguruan tinggi jenjang ${selectedJenjangName.value}`)
+  }
 })
 
 // Dropdown states
@@ -129,12 +170,16 @@ onMounted(async () => {
   await masterStore.fetchAll()
   nomorPengajuan.value = await pengajuanStore.getNomorPengajuan()
 
-  // Close dropdowns when clicking outside
+  // Close dropdowns when clicking outside - use a more specific check
   document.addEventListener('click', handleClickOutside)
 })
 
 function handleClickOutside(event) {
-  if (!event.target.closest('.relative')) {
+  // Check if click is outside any dropdown container
+  const ptDropdown = event.target.closest('[data-dropdown="pt"]')
+  const prodiDropdown = event.target.closest('[data-dropdown="prodi"]')
+
+  if (!ptDropdown && !prodiDropdown) {
     closeDropdowns()
   }
 }
@@ -169,6 +214,8 @@ async function handleDropdownFocus(type) {
 }
 
 // Perguruan Tinggi Dropdown
+const debouncedSearchPT = ref(null)
+
 async function searchPerguruanTinggi(keyword) {
   ptSearchKeyword.value = keyword
 
@@ -198,6 +245,9 @@ async function searchPerguruanTinggi(keyword) {
   }
 }
 
+// Create debounced version (500ms delay)
+const debouncedSearchPerguruanTinggi = debounce(searchPerguruanTinggi, 500)
+
 function selectPerguruanTinggi(pt) {
   selectedPT.value = pt
   form.value.perguruan_tinggi_id = pt.id
@@ -209,6 +259,8 @@ function selectPerguruanTinggi(pt) {
   form.value.nama_prodi = ''
   filteredProdi.value = []
   prodiDropdownMessage.value = ''
+  // Auto-load programs for selected PT
+  loadProdiForPT(pt.id)
 }
 
 function clearPerguruanTinggi() {
@@ -222,6 +274,51 @@ function clearPerguruanTinggi() {
 }
 
 // Prodi Dropdown
+// Get jenjang code from selected jenjang_id
+function getJenjangCode() {
+  if (!form.value.jenjang_id) return null
+  const jenjang = masterStore.jenjang.find(j => j.id === form.value.jenjang_id)
+  return jenjang?.kode || jenjang?.nama || null
+}
+
+// Filter prodi by selected jenjang (client-side)
+function filterProdiByJenjang(prodiList) {
+  const jenjangCode = getJenjangCode()
+  if (!jenjangCode) return prodiList
+
+  // Filter by jenjang - match by code or name
+  return prodiList.filter(prodi => {
+    const prodiJenjang = prodi.jenjang?.toUpperCase() || ''
+    return prodiJenjang === jenjangCode.toUpperCase() ||
+           prodiJenjang.includes(jenjangCode.toUpperCase()) ||
+           jenjangCode.toUpperCase().includes(prodiJenjang)
+  })
+}
+
+// Load all programs for a specific PT (when PT is selected)
+async function loadProdiForPT(ptId) {
+  loadingProdi.value = true
+  prodiDropdownMessage.value = 'Memuat program studi...'
+  showProdiDropdown.value = true
+  try {
+    const results = await masterStore.fetchProdi(ptId, '')
+    // Filter by jenjang
+    const filtered = filterProdiByJenjang(results)
+    filteredProdi.value = filtered
+
+    if (filtered.length === 0) {
+      prodiDropdownMessage.value = `Tidak ada program studi jenjang ${selectedJenjangName.value} untuk perguruan tinggi ini.`
+    } else {
+      prodiDropdownMessage.value = `Ditemukan ${filtered.length} program studi jenjang ${selectedJenjangName.value} di ${selectedPT.value?.nama_pt}`
+    }
+  } catch (error) {
+    prodiDropdownMessage.value = 'Gagal memuat data. Silakan coba lagi.'
+    console.error('Error loading Prodi for PT:', error)
+  } finally {
+    loadingProdi.value = false
+  }
+}
+
 async function searchProdi(keyword) {
   prodiSearchKeyword.value = keyword
 
@@ -231,14 +328,17 @@ async function searchProdi(keyword) {
     try {
       const ptId = selectedPT.value ? selectedPT.value.id : null
       const results = await masterStore.fetchProdi(ptId, keyword)
-      filteredProdi.value = results
+      // Filter by jenjang
+      const filtered = filterProdiByJenjang(results)
+      filteredProdi.value = filtered
 
-      if (results.length === 0) {
+      if (filtered.length === 0) {
+        const jenjangText = selectedJenjangName.value ? ` jenjang ${selectedJenjangName.value}` : ''
         prodiDropdownMessage.value = ptId
-          ? 'Tidak ada program studi untuk perguruan tinggi ini. Coba kata kunci lain.'
+          ? `Tidak ada program studi${jenjangText} untuk perguruan tinggi ini. Coba kata kunci lain.`
           : 'Tidak ditemukan. Pilih perguruan tinggi terlebih dahulu untuk hasil yang lebih spesifik.'
       } else {
-        prodiDropdownMessage.value = `Ditemukan ${results.length} program studi`
+        prodiDropdownMessage.value = `Ditemukan ${filtered.length} program studi jenjang ${selectedJenjangName.value}`
       }
       showProdiDropdown.value = true
     } catch (error) {
@@ -254,9 +354,13 @@ async function searchProdi(keyword) {
   }
 }
 
+// Create debounced version (500ms delay)
+const debouncedSearchProdi = debounce(searchProdi, 500)
+
 function selectProdi(prodi) {
   form.value.nama_prodi = prodi.nama_prodi
-  if (prodi.akreditasi && !form.value.akreditasi_prodi) {
+  // Auto-fill akreditasi from prodi data
+  if (prodi.akreditasi) {
     form.value.akreditasi_prodi = prodi.akreditasi
   }
   showProdiDropdown.value = false
@@ -489,36 +593,55 @@ const uploadedCount = computed(() => {
                 <div class="relative">
                   <select
                     v-model="form.jenjang_id"
-                    @focus="handleDropdownFocus('jenjang')"
                     required
                     class="select-field appearance-none pr-10"
-                    :disabled="loadingDropdown || masterStore.loading"
                   >
                     <option value="">Pilih Jenjang</option>
-                    <option v-if="loadingDropdown || masterStore.loading" disabled>Loading...</option>
+                    <option v-if="masterStore.loading" disabled>Loading...</option>
+                    <option v-else-if="masterStore.jenjang.length === 0" disabled>Tidak ada data</option>
                     <option v-for="j in masterStore.jenjang" :key="j.id" :value="j.id">
                       {{ j.nama }}
                     </option>
                   </select>
                   <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                    <LoadingSpinner v-if="loadingDropdown || masterStore.loading" size="sm" />
+                    <LoadingSpinner v-if="masterStore.loading" size="sm" />
                     <i v-else class="ri-arrow-down-s-line text-secondary-400"></i>
                   </div>
                 </div>
               </div>
 
+              <!-- Education Fields (readonly until jenjang is selected) -->
+              <div class="space-y-4">
+
+                <!-- Info Banner (shows when jenjang is selected) -->
+                <div v-if="showEducationFields" class="flex items-center gap-2 p-3 bg-success-50 border border-success-200 rounded-lg mb-4">
+                  <i class="ri-check-double-line text-success-600"></i>
+                  <p class="text-sm text-success-700">
+                    Menampilkan program studi jenjang <span class="font-semibold">{{ selectedJenjangName }}</span>
+                  </p>
+                </div>
+
+                <!-- Info Banner (shows when jenjang NOT selected) -->
+                <div v-else class="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg mb-4">
+                  <i class="ri-information-line text-amber-600"></i>
+                  <p class="text-sm text-amber-700">
+                    Pilih jenjang terlebih dahulu untuk mengaktifkan formulir
+                  </p>
+                </div>
+
               <!-- 2. Perguruan Tinggi -->
-              <div class="relative">
+              <div class="relative" data-dropdown="pt">
                 <label class="input-label">Perguruan Tinggi <span class="text-xs text-primary-600 font-normal">(Ketik untuk mencari dari database PDDikti)</span></label>
                 <div class="relative">
                   <input
-                    :value="form.perguruan_tinggi"
-                    @input="(e) => { form.perguruan_tinggi = e.target.value; searchPerguruanTinggi(e.target.value) }"
-                    @focus="() => form.perguruan_tinggi && searchPerguruanTinggi(form.perguruan_tinggi)"
+                    v-model="form.perguruan_tinggi"
+                    @input="(e) => { if(showEducationFields) { debouncedSearchPerguruanTinggi(e.target.value) } }"
+                    @focus="() => showEducationFields && form.perguruan_tinggi && searchPerguruanTinggi(form.perguruan_tinggi)"
                     type="text"
                     required
-                    class="input-field pr-10"
-                    placeholder="Ketik nama perguruan tinggi (minimal 2 karakter)..."
+                    :readonly="!showEducationFields"
+                    :class="{'input-field': !showEducationFields, 'input-field cursor-text': showEducationFields, 'bg-secondary-100 cursor-not-allowed': !showEducationFields}"
+                    :placeholder="showEducationFields ? 'Ketik untuk mencari perguruan tinggi...' : 'Pilih jenjang terlebih dahulu...'"
                   />
                   <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
                     <LoadingSpinner v-if="loadingPT" size="sm" />
@@ -573,17 +696,18 @@ const uploadedCount = computed(() => {
               </div>
 
               <!-- 3. Program Studi -->
-              <div class="relative">
+              <div class="relative" data-dropdown="prodi">
                 <label class="input-label">Program Studi <span class="text-xs text-primary-600 font-normal">(Ketik untuk mencari dari database PDDikti)</span></label>
                 <div class="relative">
                   <input
-                    :value="form.nama_prodi"
-                    @input="(e) => { form.nama_prodi = e.target.value; searchProdi(e.target.value) }"
-                    @focus="() => form.nama_prodi && searchProdi(form.nama_prodi)"
+                    v-model="form.nama_prodi"
+                    @input="(e) => { if(showEducationFields) { debouncedSearchProdi(e.target.value) } }"
+                    @focus="() => showEducationFields && selectedPT && !form.nama_prodi && loadProdiForPT(selectedPT.id)"
                     type="text"
                     required
-                    class="input-field pr-10"
-                    placeholder="Ketik nama program studi (minimal 2 karakter)..."
+                    :readonly="!showEducationFields"
+                    :class="{'input-field': !showEducationFields, 'input-field cursor-text': showEducationFields, 'bg-secondary-100 cursor-not-allowed': !showEducationFields}"
+                    :placeholder="showEducationFields ? (selectedPT ? 'Ketik untuk mencari program studi...' : 'Pilih perguruan tinggi terlebih dahulu...') : 'Pilih jenjang terlebih dahulu...'"
                   />
                   <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
                     <LoadingSpinner v-if="loadingProdi" size="sm" />
@@ -640,20 +764,25 @@ const uploadedCount = computed(() => {
                 <!-- Hint -->
                 <p v-if="!selectedPT" class="text-xs text-amber-600 mt-1">
                   <i class="ri-lightbulb-line"></i>
-                  Pilih perguruan tinggi terlebih dahulu untuk hasil yang lebih spesifik.
+                  Pilih perguruan tinggi terlebih dahulu untuk melihat program studi yang tersedia.
+                </p>
+                <p v-else class="text-xs text-success-600 mt-1">
+                  <i class="ri-check-line"></i>
+                  Klik pada kolom untuk melihat semua program studi di {{ selectedPT.nama_pt }}, atau ketik untuk mencari.
                 </p>
               </div>
 
               <!-- 4. Akreditasi Prodi -->
               <div>
-                <label class="input-label">Akreditasi Prodi <span class="text-xs text-primary-600 font-normal">(Data dari PDDikti)</span></label>
+                <label class="input-label">Akreditasi Prodi <span class="text-xs text-success-600 font-normal">(Otomatis dari program studi)</span></label>
                 <div class="relative">
                   <select
                     v-model="form.akreditasi_prodi"
                     @focus="handleDropdownFocus('akreditasi')"
                     required
+                    :disabled="!showEducationFields"
                     class="select-field appearance-none pr-10"
-                    :disabled="loadingDropdown || masterStore.loading"
+                    :class="{'bg-secondary-100 cursor-not-allowed': !showEducationFields}"
                   >
                     <option value="">Pilih Akreditasi Prodi</option>
                     <option v-if="loadingDropdown || masterStore.loading" disabled>Loading...</option>
@@ -676,6 +805,13 @@ const uploadedCount = computed(() => {
                     {{ form.akreditasi_prodi }}
                   </span>
                   <span class="text-secondary-500 ml-1">- Dipilih</span>
+                  <span v-if="form.nama_prodi" class="text-success-600 ml-1">
+                    <i class="ri-magic-line"></i> Otomatis dari program studi
+                  </span>
+                </p>
+                <p v-else class="text-xs text-secondary-500 mt-1">
+                  <i class="ri-information-line text-primary-500"></i>
+                  Akreditasi akan otomatis terisi saat memilih program studi
                 </p>
               </div>
 
@@ -687,7 +823,8 @@ const uploadedCount = computed(() => {
                     v-model="form.lokasi_pt"
                     type="text"
                     required
-                    class="input-field"
+                    :readonly="!showEducationFields"
+                    :class="{'input-field': showEducationFields, 'input-field bg-secondary-100 cursor-not-allowed': !showEducationFields}"
                     placeholder="Otomatis terisi dari perguruan tinggi yang dipilih"
                   />
                   <div v-if="form.lokasi_pt" class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
@@ -704,13 +841,15 @@ const uploadedCount = computed(() => {
               <div class="grid grid-cols-2 gap-4">
                 <div>
                   <label class="input-label">Rencana Mulai</label>
-                  <input v-model="form.rencana_mulai" type="date" required class="input-field" />
+                  <input v-model="form.rencana_mulai" type="date" required :readonly="!showEducationFields" :class="{'input-field': showEducationFields, 'input-field bg-secondary-100 cursor-not-allowed': !showEducationFields}" />
                 </div>
                 <div>
                   <label class="input-label">Rencana Selesai</label>
-                  <input v-model="form.rencana_selesai" type="date" required class="input-field" />
+                  <input v-model="form.rencana_selesai" type="date" required :readonly="!showEducationFields" :class="{'input-field': showEducationFields, 'input-field bg-secondary-100 cursor-not-allowed': !showEducationFields}" />
                 </div>
               </div>
+              </div>
+              <!-- End Education Fields -->
             </div>
           </div>
         </div>

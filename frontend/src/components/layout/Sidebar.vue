@@ -1,10 +1,29 @@
 <script setup>
-import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
+const router = useRouter()
 const authStore = useAuthStore()
+
+// Props for mobile menu
+const props = defineProps({
+  mobileMenuOpen: {
+    type: Boolean,
+    default: false
+  }
+})
+
+// Emit event for close
+const emit = defineEmits(['closeMobileMenu'])
+
+// Close mobile menu when route changes
+watch(() => route.path, () => {
+  if (props.mobileMenuOpen) {
+    emit('closeMobileMenu')
+  }
+})
 
 const menuGroups = computed(() => {
   const groups = []
@@ -38,13 +57,14 @@ const menuGroups = computed(() => {
       title: 'Verifikasi',
       items: [
         { path: '/admin/verifikasi', label: 'Verifikasi Dokumen', icon: 'ri-verified-badge-line' },
+        { path: '/admin/riwayat-verifikasi', label: 'Riwayat Verifikasi', icon: 'ri-history-line' },
       ],
     })
     groups.push({
       title: 'Surat',
       items: [
         { path: '/admin/surat-izin', label: 'Surat Izin Belajar', icon: 'ri-file-text-line' },
-        { path: '/admin/surat-tugas-mandiri', label: 'Surat Tugas Mandiri', icon: 'ri-file-list-line' },
+        { path: '/admin/surat-tugas', label: 'Surat Tugas Belajar', icon: 'ri-file-list-line' },
       ],
     })
     groups.push({
@@ -86,12 +106,31 @@ const menuGroups = computed(() => {
 })
 
 function isActive(path) {
+  // Exact match for dashboard
   if (path === '/dashboard') {
     return route.path === '/dashboard'
   }
-  if (path.startsWith('/admin/surat')) {
-    return route.path.startsWith('/admin/surat')
+
+  // Admin verifikasi routes
+  if (path === '/admin/verifikasi') {
+    return route.path === '/admin/verifikasi' || route.path.startsWith('/admin/verifikasi/')
   }
+  if (path === '/admin/riwayat-verifikasi') {
+    return route.path === '/admin/riwayat-verifikasi' || route.path.startsWith('/admin/riwayat-verifikasi/')
+  }
+
+  // Exact match for admin surat routes (no startsWith - causes all to highlight)
+  if (path === '/admin/surat-izin') {
+    return route.path === '/admin/surat-izin' || route.path.startsWith('/admin/surat-izin/')
+  }
+  if (path === '/admin/surat-tugas') {
+    return route.path === '/admin/surat-tugas' || route.path.startsWith('/admin/surat-tugas/')
+  }
+  if (path === '/admin/surat-tugas-mandiri') {
+    return route.path === '/admin/surat-tugas-mandiri' || route.path.startsWith('/admin/surat-tugas-mandiri/')
+  }
+
+  // Kepala routes
   if (path.startsWith('/kepala/surat-tugas')) {
     return route.path.startsWith('/kepala/surat-tugas')
   }
@@ -101,12 +140,30 @@ function isActive(path) {
   if (path.startsWith('/kepala/riwayat')) {
     return route.path.startsWith('/kepala/riwayat')
   }
+
+  // Default: check if route starts with path
   return route.path.startsWith(path)
 }
 </script>
 
 <template>
-  <aside class="sidebar bg-white">
+  <!-- Mobile sidebar with off-canvas behavior -->
+  <aside
+    class="sidebar bg-white fixed lg:relative z-40 transition-transform duration-300 ease-in-out"
+    :class="mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
+  >
+    <!-- Close Button (Mobile Only) -->
+    <div class="lg:hidden flex items-center justify-between px-4 py-3 border-b border-secondary-200">
+      <span class="font-semibold text-secondary-800">Menu</span>
+      <button
+        @click="emit('closeMobileMenu')"
+        class="btn btn-ghost btn-icon text-secondary-600 hover:text-secondary-800"
+        aria-label="Close menu"
+      >
+        <i class="ri-close-line text-xl"></i>
+      </button>
+    </div>
+
     <!-- Sidebar Navigation -->
     <nav class="sidebar-nav overflow-y-auto scrollbar-thin">
       <div v-for="(group, groupIndex) in menuGroups" :key="groupIndex" class="mb-6">
@@ -140,3 +197,28 @@ function isActive(path) {
     </nav>
   </aside>
 </template>
+
+<style scoped>
+/* Sidebar base styles */
+.sidebar {
+  /* Desktop: full height of viewport, taking space in flex container */
+  height: calc(100vh - 64px);
+}
+
+/* Mobile: fixed positioning, below navbar */
+@media (max-width: 1023px) {
+  .sidebar {
+    position: fixed;
+    top: 64px;
+    left: 0;
+  }
+}
+
+/* Desktop: relative positioning, part of flex layout */
+@media (min-width: 1024px) {
+  .sidebar {
+    position: relative;
+    top: 0;
+  }
+}
+</style>

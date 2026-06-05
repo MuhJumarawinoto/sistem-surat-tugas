@@ -21,13 +21,13 @@ const showModal = ref(false)
 const selectedPengajuan = ref(null)
 const activeDropdown = ref(null)
 
-// Hitung statistik verifikasi
+// Hitung statistik verifikasi (hanya yang belum selesai diverifikasi)
 const stats = computed(() => {
   return {
     total: pengajuanList.value.length,
     pendingAdmin: pengajuanList.value.filter(p => p.status === 'pending_admin').length,
-    verified: pengajuanList.value.filter(p => p.status === 'verified').length,
-    suratDinas: pengajuanList.value.filter(p => p.status === 'surat_dinas').length,
+    draft: pengajuanList.value.filter(p => p.status === 'draft').length,
+    ditolak: pengajuanList.value.filter(p => p.status === 'ditolak').length,
   }
 })
 
@@ -51,11 +51,14 @@ function openVerificationPage(id) {
 async function loadPengajuan() {
   loading.value = true
   try {
-    // Ambil semua pengajuan yang perlu verifikasi admin (pending_admin dan pending_atasan)
-    // Filter akan dilakukan di backend berdasarkan role admin
+    // Ambil semua pengajuan yang perlu verifikasi admin
+    // Filter akan dilakukan di frontend untuk hanya menampilkan yang belum selesai diverifikasi
     const data = await pengajuanStore.fetchPengajuan()
-    // fetchPengajuan returns array directly
-    pengajuanList.value = data || []
+    // Filter: Hanya tampilkan yang belum selesai diverifikasi (bukan verified, signed, selesai, completed)
+    // Data yang sudah selesai diverifikasi ada di menu Riwayat Verifikasi
+    pengajuanList.value = (data || []).filter(p =>
+      !['verified', 'signed', 'selesai', 'completed'].includes(p.status)
+    )
 
     console.log('Admin pengajuan loaded:', pengajuanList.value.length, 'items')
 
@@ -194,7 +197,7 @@ function getFinalSigner(pengajuan) {
   }
 }
 
-// Milestone dot-line functions
+// Milestone dot-line functions (Updated for Simplified Flow - 4 Steps)
 function getMilestoneSteps(pengajuan) {
   const status = pengajuan.status
   const steps = []
@@ -202,78 +205,53 @@ function getMilestoneSteps(pengajuan) {
   // Step 1: Dikirim
   steps.push({
     label: 'Dikirim',
-    status: ['pending_atasan', 'pending_admin', 'verified', 'surat_dinas', 'surat_izin', 'disetujui', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' : 'pending',
+    status: ['pending_admin', 'verified', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' : 'pending',
   })
 
   // Step 2: Verifikasi
   steps.push({
     label: 'Verifikasi',
-    status: ['verified', 'surat_dinas', 'surat_izin', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' :
+    status: ['verified', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' :
               ['pending_admin'].includes(status) ? 'current' : 'pending',
   })
 
-  // Step 3: Surat Dinas
-  steps.push({
-    label: 'Surat Dinas',
-    status: ['surat_izin', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' :
-              status === 'verified' ? 'current' : 'pending',
-  })
-
-  // Step 4: Surat Izin
-  steps.push({
-    label: 'Surat Izin',
-    status: ['signed', 'selesai', 'completed'].includes(status) ? 'completed' :
-              status === 'surat_dinas' ? 'current' : 'pending',
-  })
-
-  // Step 5: TTE
+  // Step 3: TTE (Kepala BKPSDM)
   steps.push({
     label: 'TTE',
     status: ['selesai', 'completed'].includes(status) ? 'completed' :
-              status === 'surat_izin' ? 'current' : 'pending',
+              ['signed'].includes(status) ? 'current' : 'pending',
   })
 
-  // Step 6: Selesai
+  // Step 4: Selesai
   steps.push({
     label: 'Selesai',
-    status: status === 'completed' ? 'completed' :
-              status === 'selesai' ? 'current' : 'pending',
+    status: ['selesai', 'completed'].includes(status) ? 'completed' :
+              ['signed'].includes(status) ? 'current' : 'pending',
   })
 
   return steps
 }
 
 function getProgressLineClass(status) {
+  // Simplified Flow: 4 Steps - Dikirim → Verifikasi → TTE → Selesai
   // Draft - no progress
   if (status === 'draft' || status === 'dicabut' || status === 'ditolak') {
     return 'w-0 bg-gray-200'
   }
-  // Pending atasan/admin - 1/6 progress (16.7%)
-  if (status === 'pending_atasan' || status === 'pending_admin') {
-    return 'w-1/6 bg-blue-500'
+  // Pending Admin - 1/4 progress (25%) - Dikirim completed, Verifikasi current
+  if (status === 'pending_admin') {
+    return 'w-1/4 bg-blue-500'
   }
-  // Verified - 2/6 progress (33.3%)
+  // Verified - 2/4 progress (50%) - Verifikasi completed, TTE current
   if (status === 'verified') {
-    return 'w-1/3 bg-blue-500'
+    return 'w-2/4 bg-blue-500'
   }
-  // Surat Dinas - 2.5/6 progress (41.7%)
-  if (status === 'surat_dinas') {
-    return 'w-5/12 bg-blue-500'
+  // Signed - 3/4 progress (75%) - TTE completed, Selesai current
+  if (status === 'signed') {
+    return 'w-3/4 bg-blue-500'
   }
-  // Surat Izin - 3/6 progress (50%)
-  if (status === 'surat_izin') {
-    return 'w-1/2 bg-blue-500'
-  }
-  // Signed/Disetujui - 4/6 progress (66.7%)
-  if (status === 'signed' || status === 'disetujui') {
-    return 'w-2/3 bg-green-500'
-  }
-  // Selesai - 5/6 progress (83.3%)
-  if (status === 'selesai') {
-    return 'w-5/6 bg-green-500'
-  }
-  // Completed - full progress (100%)
-  if (status === 'completed') {
+  // Selesai/Completed - full progress (100%)
+  if (status === 'selesai' || status === 'completed') {
     return 'w-full bg-green-500'
   }
   // Default
@@ -284,6 +262,13 @@ function getStepClass(step) {
   if (step.status === 'completed') return 'bg-green-500'
   if (step.status === 'current') return 'bg-blue-500'
   return 'bg-gray-300'
+}
+
+function getStepStatusDescription(status, label) {
+  if (status === 'completed') return 'Sudah selesai'
+  if (status === 'current') return 'Sedang diproses'
+  if (status === 'pending') return 'Belum diproses'
+  return label
 }
 
 // Dropdown menu functions
@@ -326,15 +311,15 @@ if (typeof window !== 'undefined') {
         <span class="text-sm text-blue-600">Verifikasi:</span>
         <span class="font-semibold text-lg text-blue-700">{{ stats.pendingAdmin }}</span>
       </div>
-      <div class="flex items-center gap-2.5 px-4 py-2.5 bg-green-50 rounded-lg border border-green-200">
-        <i class="ri-checkbox-circle-line text-green-500"></i>
-        <span class="text-sm text-green-600">Terverifikasi:</span>
-        <span class="font-semibold text-lg text-green-700">{{ stats.verified }}</span>
+      <div class="flex items-center gap-2.5 px-4 py-2.5 bg-gray-50 rounded-lg border border-gray-200">
+        <i class="ri-draft-line text-gray-500"></i>
+        <span class="text-sm text-gray-600">Draft:</span>
+        <span class="font-semibold text-lg text-gray-700">{{ stats.draft }}</span>
       </div>
-      <div class="flex items-center gap-2.5 px-4 py-2.5 bg-purple-50 rounded-lg border border-purple-200">
-        <i class="ri-file-list-line text-purple-500"></i>
-        <span class="text-sm text-purple-600">Surat Dinas:</span>
-        <span class="font-semibold text-lg text-purple-700">{{ stats.suratDinas }}</span>
+      <div class="flex items-center gap-2.5 px-4 py-2.5 bg-red-50 rounded-lg border border-red-200">
+        <i class="ri-close-circle-line text-red-500"></i>
+        <span class="text-sm text-red-600">Ditolak:</span>
+        <span class="font-semibold text-lg text-red-700">{{ stats.ditolak }}</span>
       </div>
     </div>
 
@@ -520,6 +505,7 @@ if (typeof window !== 'undefined') {
                 <div
                   class="w-3 h-3 rounded-full transition-all duration-300 relative cursor-pointer hover:scale-125"
                   :class="getStepClass(step)"
+                  :title="`${step.label}: ${getStepStatusDescription(step.status, step.label)}`"
                 ></div>
                 <span
                   class="text-xs mt-1 whitespace-nowrap"

@@ -545,10 +545,10 @@ watch(() => route.path, (newPath) => {
         >
           <div
             v-if="selectedPengajuan || loadingDetail"
-            class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden animate-slide-up flex flex-col"
+            class="bg-white w-full h-full sm:h-auto sm:max-w-2xl sm:max-h-[90vh] sm:rounded-xl shadow-xl overflow-hidden animate-slide-up flex flex-col"
           >
             <!-- Modal Header -->
-            <div class="flex items-center justify-between p-6 border-b border-secondary-200">
+            <div class="flex items-center justify-between p-4 sm:p-6 border-b border-secondary-200 bg-white sticky top-0 z-10">
               <div>
                 <h3 class="text-lg font-semibold text-secondary-800">Detail Pengajuan</h3>
                 <p class="text-sm text-secondary-500">{{ selectedPengajuan?.nomor_pengajuan || '-' }}</p>
@@ -562,7 +562,7 @@ watch(() => route.path, (newPath) => {
             </div>
 
             <!-- Modal Body -->
-            <div class="p-6 overflow-y-auto flex-1">
+            <div class="p-4 sm:p-6 overflow-y-auto flex-1">
               <LoadingSpinner v-if="loadingDetail" size="md" text="Memuat detail..." />
 
               <div v-else-if="selectedPengajuan" class="space-y-6">
@@ -710,10 +710,10 @@ watch(() => route.path, (newPath) => {
             </div>
 
             <!-- Modal Footer -->
-            <div v-if="!loadingDetail && selectedPengajuan" class="flex items-center justify-end gap-2 p-6 border-t border-secondary-200">
+            <div v-if="!loadingDetail && selectedPengajuan" class="flex items-center justify-end gap-2 p-4 sm:p-6 border-t border-secondary-200 bg-white sticky bottom-0">
               <button
                 @click="closeDetailModal"
-                class="btn btn-ghost"
+                class="btn btn-ghost flex-1 sm:flex-none"
               >
                 Tutup
               </button>
@@ -721,7 +721,7 @@ watch(() => route.path, (newPath) => {
                 v-if="canEdit(selectedPengajuan.status)"
                 :to="`/pengajuan/${selectedPengajuan.id}/edit`"
                 @click="closeDetailModal"
-                class="btn btn-primary gap-2"
+                class="btn btn-primary gap-2 flex-1 sm:flex-none justify-center"
               >
                 <i class="ri-edit-line"></i>
                 <span>Edit Pengajuan</span>

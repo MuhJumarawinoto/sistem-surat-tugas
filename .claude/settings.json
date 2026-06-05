@@ -60,10 +60,31 @@
       "Bash(php generate_pdf_with_qr.php)",
       "Bash(curl -s \"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=test\" -o \"storage/app/public/qr-codes/test.png\")",
       "Bash(explorer.exe \"c:/Users/Bahlil/Downloads/Documents/Sistem-Surat-Belajar-Mandiri/backend/storage/app/public/Surat_Dengan_QR.pdf\")",
-      "Bash(php -r 'require '\\\\''vendor/autoload.php'\\\\''; $app = require '\\\\''bootstrap/app.php'\\\\''; $app->make\\('\\\\''Illuminate\\\\Contracts\\\\Console\\\\Kernel'\\\\''\\)->bootstrap\\(\\); echo '\\\\''Base path: '\\\\'' . base_path\\(\\) . PHP_EOL; echo '\\\\''Storage path: '\\\\'' . storage_path\\('\\\\''app/public'\\\\''\\) . PHP_EOL; echo '\\\\''QR code full path: '\\\\'' . storage_path\\('\\\\''app/public/qr-codes/izin-1.png'\\\\''\\) . PHP_EOL; echo '\\\\''File exists: '\\\\'' . \\(file_exists\\(storage_path\\('\\\\''app/public/qr-codes/izin-1.png'\\\\''\\)\\) ? '\\\\''YES'\\\\'' : '\\\\''NO'\\\\''\\) . PHP_EOL;')"
+      "Bash(php -r 'require '\\\\''vendor/autoload.php'\\\\''; $app = require '\\\\''bootstrap/app.php'\\\\''; $app->make\\('\\\\''Illuminate\\\\Contracts\\\\Console\\\\Kernel'\\\\''\\)->bootstrap\\(\\); echo '\\\\''Base path: '\\\\'' . base_path\\(\\) . PHP_EOL; echo '\\\\''Storage path: '\\\\'' . storage_path\\('\\\\''app/public'\\\\''\\) . PHP_EOL; echo '\\\\''QR code full path: '\\\\'' . storage_path\\('\\\\''app/public/qr-codes/izin-1.png'\\\\''\\) . PHP_EOL; echo '\\\\''File exists: '\\\\'' . \\(file_exists\\(storage_path\\('\\\\''app/public/qr-codes/izin-1.png'\\\\''\\)\\) ? '\\\\''YES'\\\\'' : '\\\\''NO'\\\\''\\) . PHP_EOL;')",
+      "Bash(curl -X POST http://localhost:8000/api/login -H \"Content-Type: application/json\" -H \"Accept: application/json\" -d \"{\\\\\"identity\\\\\":\\\\\"admin@bkpsdm.go.id\\\\\",\\\\\"password\\\\\":\\\\\"password\\\\\"}\")",
+      "Bash(curl -X GET http://localhost:8000/api/pegawai?per_page=5 -H 'Accept: application/json' -H 'Authorization: Bearer 51|OxmbT9DBCtKduGarQgKUq536DZ4lqvVQRe9LDf18794cbc5b')",
+      "Bash(echo \"=== Test Roles ===\")",
+      "Bash(curl -s -X GET http://localhost:8000/api/pegawai/roles -H 'Accept: application/json' -H 'Authorization: Bearer 51|OxmbT9DBCtKduGarQgKUq536DZ4lqvVQRe9LDf18794cbc5b')",
+      "Bash(php -r \"var_dump\\(json_decode\\(file_get_contents\\('data_pegawai_simpeg.json'\\)\\)\\);\")",
+      "Bash(php -r \"echo json_last_error_msg\\(\\);\")",
+      "Bash(php test_json.php)",
+      "Bash(cd c:/Users/Bahlil/Downloads/Documents/Sistem-Surat-Belajar-Mandiri/backend && rm -f home_page.html pegawai_list.html login_response.html simpeg_login*.html)",
+      "Bash(dir /a)",
+      "Bash(curl -s http://localhost:8000/api/master/jenjang)",
+      "Bash(taskkill /PID 3840 /F)",
+      "Bash(taskkill /PID 12644 /F)",
+      "Bash(curl -s http://localhost:8000/api/master/jenjang -H \"Accept: application/json\")",
+      "Bash(curl -s http://127.0.0.1:8000/api/master/jenjang)",
+      "Bash(curl -s \"http://127.0.0.1:8000/api/master/perguruan-tinggi?keyword=padjad\")",
+      "Bash(curl -s \"http://127.0.0.1:8000/api/master/prodi?perguruan_tinggi_id=75\")",
+      "Bash(curl -X POST http://127.0.0.1:8000/api/login -H 'Content-Type: application/json' -H 'Accept: application/json' -d '{\"identity\":\"drajat@disdik.go.id\",\"password\":\"password\"}')",
+      "Bash(curl -s http://127.0.0.1:8000/api/me -H 'Accept: application/json' -H 'Authorization: Bearer 57|0ULvOxujqqGDIlE6tGWcjf7VjJBiH41MTdR5h5St6c846b53')",
+      "Bash(curl -s http://127.0.0.1:8000/api/me -H 'Accept: application/json')"
     ],
     "additionalDirectories": [
-      "C:\\Users\\Bahlil\\Downloads\\Documents\\Sistem-Surat-Belajar-Mandiri\\backend\\storage\\app\\public\\surat-izin-belajar"
+      "C:\\Users\\Bahlil\\Downloads\\Documents\\Sistem-Surat-Belajar-Mandiri\\backend\\storage\\app\\public\\surat-izin-belajar",
+      "C:\\Users\\Bahlil\\Downloads",
+      "C:\\Users\\Bahlil\\Downloads\\Documents\\Sistem-Surat-Belajar-Mandiri\\backend"
     ]
   }
 }

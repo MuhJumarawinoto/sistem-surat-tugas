@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
     'nomor_pengajuan',
@@ -72,14 +73,14 @@ class Pengajuan extends Model
         return $this->hasMany(SuratTugas::class);
     }
 
-    public function suratTugasDinas(): HasMany
+    public function suratTugasDinas(): HasOne
     {
-        return $this->hasMany(SuratTugasDinas::class);
+        return $this->hasOne(SuratTugasDinas::class);
     }
 
-    public function suratIzinBelajar(): HasMany
+    public function suratIzinBelajar(): HasOne
     {
-        return $this->hasMany(SuratIzinBelajar::class);
+        return $this->hasOne(SuratIzinBelajar::class);
     }
 
     public function latestSuratTugasDinas(): BelongsTo

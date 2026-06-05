@@ -1,0 +1,156 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    ALUR SISTEM IZIN BELAJAR MANDIRI (SIPINTAR)                  ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  1. PEMOHON (PNS)                                                            │
+│  ───────────────────                                                          │
+│  Email: drajat@disdik.go.id | Password: password                               │
+│                                                                              │
+│  ✅ Bisa membuat pengajuan izin belajar                                         │
+│  ✅ Upload dokumen persyaratan (9 dokumen)                                     │
+│  ✅ Edit pengajuan (status draft)                                              │
+│  ✅ Kirim pengajuan untuk verifikasi                                           │
+│  ✅ Tarik kembali pengajuan (status pending/verified)                          │
+│  ✅ Hapus pengajuan (status draft)                                            │
+│  ✅ Download Surat Izin Belajar dan Surat Tugas (setelah signed)              │
+│                                                                              │
+│  MENU:                                                                       │
+│  • Dashboard → Lihat status pengajuan                                         │
+│  • Buat Pengajuan Baru → Form pengajuan + upload dokumen                     │
+│  • Riwayat Pengajuan → Lihat semua pengajuan                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  2. ADMIN BKPSDM                                                            │
+│  ────────────────                                                             │
+│  Email: admin@bkpsdm.go.id | Password: password                                │
+│                                                                              │
+│  ✅ Verifikasi kelengkapan dokumen pengajuan                                  │
+│  ✅ Approve/Reject pengajuan                                                  │
+│  ✅ Generate Surat Izin Belajar (draft)                                       │
+│  ✅ Buat Surat Tugas Mandiri (setelah Surat Izin signed)                    │
+│  ✅ Download semua surat                                                     │
+│  ✅ Kelola data pegawai                                                      │
+│  ✅ Sync pegawai dari SIMPEG / Import JSON                                    │
+│                                                                              │
+│  MENU:                                                                       │
+│  • Verifikasi Dokumen → List pending, verify dokumen, approve/reject         │
+│  • Riwayat Verifikasi → List verified/signed, download surat                 │
+│  • Surat Izin Belajar → Generate & TTE Surat Izin                           │
+│  • Surat Tugas Belajar → Buat Surat Tugas (setelah Surat Izin signed)      │
+│  • Data Pegawai → Kelola data pegawai, sync SIMPEG                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  3. KEPALA BKPSDM                                                            │
+│  ────────────────                                                             │
+│  Email: kepala@bkpsdm.go.id | Password: password                               │
+│                                                                              │
+│  ✅ Generate & TTE Surat Izin Belajar                                        │
+│  ✅ Lihat daftar surat yang perlu ditandatangani                              │
+│  ✅ Riwayat TTE                                                              │
+│                                                                              │
+│  MENU:                                                                       │
+│  • Surat Perlu TTE → List pengajuan verified siap TTE                        │
+│  • Riwayat TTE → List surat yang sudah ditandatangani                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  4. KEPALA DINAS (OPD)                                                       │
+│  ───────────────────                                                           │
+│  Role: kepala dengan is_kepala_unit = true                                    │
+│                                                                              │
+│  ✅ Buat Surat Tugas Belajar untuk pegawai di unit kerja nya                 │
+│  ✅ Lihat pegawai verified yang belum ada Surat Tugas                         │
+│  ✅ Generate PDF Surat Tugas                                                  │
+│                                                                              │
+│  MENU:                                                                       │
+│  • Surat Tugas Belajar → List pegawai, buat surat                             │
+│  • Surat Perlu TTE → (jika juga Kepala BKPSDM)                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                         ALUR STATUS PENGAJUAN                                   ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  PEMOHON                       ADMIN                    KEPALA                  │
+│     │                             │                       │                      │
+│  [Draft] ──────────────→ [Pending Admin] ─────────→ [Verified]             │
+│     │                             │                       │                      │
+│     │                        Verifikasi Dokumen         │                      │
+│     │                             │                       │                      │
+│     │←────── Approved/Reject ─────┘                       │                      │
+│     │                                                   │                      │
+│     │                                              Generate & TTE            │
+│     │                                                   │                      │
+│     │←─────────────────────────────────────────────── [Signed]              │
+│     │                                                   │                      │
+│     │                                Admin Buat ─────────┘                      │
+│     │                                Surat Tugas                                 │
+│     │                                                   │                      │
+│     │←─────────────────────────────────────────────── [Selesai]             │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                        STATUS PENGAJUAN & ARTINYA                                   ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Status        │ Artinya                       │ Bisa Edit/Hapus?             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  draft        │ Baru dibuat, belum dikirim     │ ✅ Ya                        │
+│  pending_admin│ Menunggu verifikasi admin     │ ❌ Tidak (bisa tarik)       │
+│  verified     │ Dokumen lengkap, siap surat   │ ❌ Tidak (bisa tarik)       │
+│  signed       │ Surat Izin sudah TTE          │ ❌ Tidak                     │
+│  selesai      │ Surat Tugas sudah dibuat      │ ❌ Tidak                     │
+│  ditolak      │ Ditolak admin                 │ ❌ Tidak                     │
+│  dicabut      │ Dihapus dari draft/riwayat   │ ❌ Tidak (bisa pulihkan)    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                        DOKUMEN YANG DIBUTUHKAN (9)                               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+  1. Surat Permohonan
+  2. SK CPNS
+  3. SK PNS
+  4. SK Pangkat Terakhir
+  5. SK Jabatan Terakhir
+  6. Penilaian Kinerja (2 tahun terakhir)
+  7. Rekomendasi Atasan
+  8. Statement Tidak Sedang Menjalankan Hukuman
+  9. Surat Pernyataan
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                           FITUR TAMBAHAN                                       ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+  ✅ Import/Export data pegawai (JSON)
+  ✅ Sync pegawai dari SIMPEG (auto-login & fetch)
+  ✅ Preview PDF sebelum download
+  ✅ QR Code untuk verifikasi surat
+  ✅ Notifikasi real-time
+  ✅ Riwayat pengajuan (termasuk yang dicabut)
+  ✅ Restore pengajuan yang dicabut
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                        KONTAK & BANTUAN                                         ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+  📧 Email Support: admin@bkpsdm.go.id
+  🌐 Website: https://sipintar.bkpsdm.go.id
+  📱 WhatsApp: [Admin BKPSDM]
+
+  Untuk bantuan teknis, hubungi Admin BKPSDM.
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                           VERSION                                            ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+  Versi: 1.0.0
+  Terakhir diupdate: Juni 2026
+  Dikembangkan oleh: Tim IT BKPSDM Kabupaten Sukabumi

@@ -16,7 +16,7 @@ class VerificationController extends Controller
      */
     public function getVerificationInfo(Request $request, string $pengajuanId): JsonResponse
     {
-        $pengajuan = Pengajuan::with(['user', 'user.atasan', 'jenjang'])->findOrFail($pengajuanId);
+        $pengajuan = Pengajuan::with(['user', 'jenjang'])->findOrFail($pengajuanId);
         $user = $pengajuan->user;
 
         // Get verification rule based on user's jabatan_kategori
@@ -149,7 +149,7 @@ class VerificationController extends Controller
     }
 
     /**
-     * Get human-readable label for atasan level
+     * Get human-readable label for level
      */
     private function getLevelLabel(string $level): string
     {

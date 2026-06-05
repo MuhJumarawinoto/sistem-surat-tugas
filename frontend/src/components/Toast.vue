@@ -23,24 +23,34 @@ const props = defineProps({
 
 const emit = defineEmits(['close'])
 
-const typeClasses = computed(() => {
-  const classes = {
-    success: 'bg-white border-l-4 border-green-500 text-green-800',
-    error: 'bg-white border-l-4 border-red-500 text-red-800',
-    warning: 'bg-white border-l-4 border-amber-500 text-amber-800',
-    info: 'bg-white border-l-4 border-blue-500 text-blue-800'
+const toastStyles = computed(() => {
+  const styles = {
+    success: {
+      container: 'bg-white border-l-4 border-green-500 shadow-lg shadow-green-500/10',
+      icon: 'ri-checkbox-circle-fill text-green-500',
+      iconBg: 'bg-green-100'
+    },
+    error: {
+      container: 'bg-white border-l-4 border-red-500 shadow-lg shadow-red-500/10',
+      icon: 'ri-close-circle-fill text-red-500',
+      iconBg: 'bg-red-100'
+    },
+    warning: {
+      container: 'bg-white border-l-4 border-amber-500 shadow-lg shadow-amber-500/10',
+      icon: 'ri-error-warning-fill text-amber-500',
+      iconBg: 'bg-amber-100'
+    },
+    info: {
+      container: 'bg-white border-l-4 border-blue-500 shadow-lg shadow-blue-500/10',
+      icon: 'ri-information-fill text-blue-500',
+      iconBg: 'bg-blue-100'
+    }
   }
-  return classes[props.type]
+  return styles[props.type] || styles.info
 })
 
-const iconClasses = computed(() => {
-  const classes = {
-    success: 'ri-checkbox-circle-fill text-green-500',
-    error: 'ri-close-circle-fill text-red-500',
-    warning: 'ri-error-warning-fill text-amber-500',
-    info: 'ri-information-fill text-blue-500'
-  }
-  return classes[props.type]
+const progressWidth = computed(() => {
+  return '100%'
 })
 </script>
 
@@ -56,19 +66,51 @@ const iconClasses = computed(() => {
     >
       <div
         v-if="show"
-        class="fixed top-20 right-4 z-50 max-w-sm w-full shadow-lg rounded-lg p-4 flex items-start gap-3"
-        :class="typeClasses"
+        class="fixed top-4 right-4 sm:top-20 sm:right-4 z-[9999] min-w-[320px] max-w-md w-full rounded-xl overflow-hidden"
+        :class="toastStyles.container"
       >
-        <i :class="[iconClasses, 'text-xl flex-shrink-0 mt-0.5']"></i>
-        <div class="flex-1">
-          <p class="text-sm font-medium">{{ message }}</p>
+        <div class="flex items-start gap-3 p-4">
+          <!-- Icon -->
+          <div :class="['w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0', toastStyles.iconBg]">
+            <i :class="[toastStyles.icon, 'text-xl']"></i>
+          </div>
+
+          <!-- Content -->
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-secondary-800">{{ message }}</p>
+          </div>
+
+          <!-- Close Button -->
+          <button
+            @click="emit('close')"
+            class="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-secondary-400 hover:bg-secondary-100 hover:text-secondary-600 transition-all"
+          >
+            <i class="ri-close-line text-lg"></i>
+          </button>
         </div>
-        <button
-          @click="emit('close')"
-          class="flex-shrink-0 text-secondary-400 hover:text-secondary-600 transition-colors"
-        >
-          <i class="ri-close-line text-lg"></i>
-        </button>
+
+        <!-- Progress Bar (auto-dismiss indicator) -->
+        <div class="h-1 bg-secondary-100">
+          <Transition
+            enter-active-class="transition ease-out duration-[3000ms]"
+            enter-from-class="w-0"
+            enter-to-class="w-full"
+            leave-active-class="transition-opacity duration-200"
+            leave-from-class="opacity-100"
+            leave-to-class="opacity-0"
+          >
+            <div
+              v-if="show"
+              class="h-full"
+              :class="{
+                'bg-green-500': type === 'success',
+                'bg-red-500': type === 'error',
+                'bg-amber-500': type === 'warning',
+                'bg-blue-500': type === 'info'
+              }"
+            ></div>
+          </Transition>
+        </div>
       </div>
     </Transition>
   </Teleport>

@@ -87,25 +87,23 @@ class SuratIzinBelajarController extends Controller
     }
 
     /**
-     * Get pending pengajuan (has surat dinas but no surat izin yet).
+     * Get pending pengajuan (verified but no surat izin yet).
+     * New simplified flow: verified → Kepala BKPSDM generates Surat Izin + TTE
      */
     public function pending(Request $request)
     {
         $user = auth()->user();
 
         if (!$user->isAdminBkpsdm() && !$user->isKepalaBkpsdm()) {
-            return response()->json(['message' => 'Unauthorized. Admin only.'], 403);
+            return response()->json(['message' => 'Unauthorized. Admin and Kepala BKPSDM only.'], 403);
         }
 
         $query = Pengajuan::with([
             'user',
             'jenjang',
-            'suratTugasDinas' => function ($q) {
-                $q->with(['unitKerja', 'kepalaDinas']);
-            },
+            'user.unitKerja',
         ])
-            ->where('status', 'surat_dinas')
-            ->whereHas('suratTugasDinas')
+            ->where('status', 'verified')
             ->whereDoesntHave('suratIzinBelajar');
 
         $pengajuan = $query->orderBy('updated_at', 'desc')->paginate($request->per_page ?? 10);
@@ -123,32 +121,31 @@ class SuratIzinBelajarController extends Controller
 
     /**
      * Store (generate) new surat izin belajar.
+     * New simplified flow: verified → generate & sign in one step by Kepala BKPSDM
      */
     public function store(Request $request)
     {
         $user = auth()->user();
 
-        if (!$user->isAdminBkpsdm() && !$user->isKepalaBkpsdm()) {
-            return response()->json(['message' => 'Unauthorized. Admin only.'], 403);
+        if (!$user->isKepalaBkpsdm()) {
+            return response()->json(['message' => 'Unauthorized. Only Kepala BKPSDM can generate and sign surat izin.'], 403);
         }
 
         $request->validate([
             'pengajuan_id' => 'required|exists:pengajuan,id',
         ]);
 
-        $pengajuan = Pengajuan::with(['suratTugasDinas', 'user', 'jenjang'])->findOrFail($request->pengajuan_id);
+        $pengajuan = Pengajuan::with(['user', 'jenjang'])->findOrFail($request->pengajuan_id);
 
-        // Check if pengajuan has surat tugas dinas
-        if (!$pengajuan->hasSuratTugasDinas()) {
-            return response()->json(['message' => 'Pengajuan must have surat tugas dinas first.'], 400);
+        // Check if pengajuan is verified
+        if ($pengajuan->status !== 'verified') {
+            return response()->json(['message' => 'Pengajuan must be verified first.'], 400);
         }
 
         // Check if surat izin already exists
         if ($pengajuan->hasSuratIzinBelajar()) {
             return response()->json(['message' => 'Surat izin belajar already exists for this pengajuan.'], 400);
         }
-
-        $suratTugasDinas = $pengajuan->suratTugasDinas;
 
         DB::beginTransaction();
         try {
@@ -158,40 +155,51 @@ class SuratIzinBelajarController extends Controller
             $nextNomor = $lastNomor ? ((int) filter_var($lastNomor->nomor_surat, FILTER_SANITIZE_NUMBER_INT) + 1) : 1;
             $nomorSurat = "800.1.3.1/{$nextNomor}/BKPSDM/{$year}";
 
+            // Generate QR code for verification
+            $qrCodeData = json_encode([
+                'type' => 'surat_izin_belajar',
+                'id' => 0, // Will be updated after save
+                'nomor' => $nomorSurat,
+                'signed_at' => now()->toIso8601String(),
+            ]);
+
             $suratIzin = SuratIzinBelajar::create([
                 'pengajuan_id' => $pengajuan->id,
-                'surat_tugas_dinas_id' => $suratTugasDinas->id,
                 'nomor_surat' => $nomorSurat,
                 'tahun' => $year,
-                'status' => 'draft',
+                'qr_code' => $qrCodeData,
+                'status' => 'signed',
+                'signed_at' => now(),
+                'signed_by' => $user->name,
+                'signed_by_nip' => $user->nip,
             ]);
 
-            // Generate nomor surat tugas mandiri (otomatis bersamaan)
-            $lastNomorTugas = SuratTugasMandiri::where('tahun', $year)->orderBy('id', 'desc')->first();
-            $nextNomorTugas = $lastNomorTugas ? str_pad((int) filter_var($lastNomorTugas->nomor_surat, FILTER_SANITIZE_NUMBER_INT) + 1, 3, '0', STR_PAD_LEFT) : '001';
-
-            $suratTugasMandiri = SuratTugasMandiri::create([
-                'pengajuan_id' => $pengajuan->id,
-                'surat_izin_belajar_id' => $suratIzin->id,
-                'surat_tugas_dinas_id' => $suratTugasDinas->id,
-                'nomor_surat' => $nextNomorTugas,
-                'tahun' => $year,
-                'tanggal_surat' => now()->toDateString(),
-                'tempat_ttd' => 'Sukabumi',
-                'status' => 'draft',
+            // Update QR code with actual ID
+            $qrCodeData = json_encode([
+                'type' => 'surat_izin_belajar',
+                'id' => $suratIzin->id,
+                'nomor' => $nomorSurat,
+                'signed_at' => now()->toIso8601String(),
             ]);
+            $suratIzin->update(['qr_code' => $qrCodeData]);
 
             // Update pengajuan status
-            $pengajuan->update(['status' => 'surat_izin']);
+            $pengajuan->update(['status' => 'signed']);
+
+            // Send notification to pemohon
+            Notification::createForUser(
+                $pengajuan->user_id,
+                'success',
+                'Surat Izin Belajar Telah Terbit',
+                "Surat Izin Belajar Anda dengan nomor {$nomorSurat} telah ditandatangani. Silakan download surat di menu Riwayat Pengajuan.",
+                $pengajuan->id
+            );
 
             DB::commit();
 
             return response()->json([
-                'message' => 'Surat izin belajar dan surat tugas mandiri generated successfully.',
-                'data' => [
-                    'surat_izin' => $suratIzin->load(['pengajuan.user', 'pengajuan.jenjang', 'suratTugasDinas']),
-                    'surat_tugas_mandiri' => $suratTugasMandiri,
-                ],
+                'message' => 'Surat izin belajar generated and signed successfully.',
+                'data' => $suratIzin->load(['pengajuan.user', 'pengajuan.jenjang']),
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -223,13 +231,29 @@ class SuratIzinBelajarController extends Controller
 
     /**
      * Preview surat izin belajar (HTML).
+     * Supports both authenticated user and token query parameter.
      */
-    public function preview($id)
+    public function preview(Request $request, $id)
     {
-        $user = auth()->user();
+        // Check token from query parameter (for public access)
+        if ($request->has('token')) {
+            $token = $request->query('token', '');
+            // Try Sanctum token first
+            $personalAccessToken = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
+            if ($personalAccessToken) {
+                $user = $personalAccessToken->tokenable;
+            } else {
+                $user = null;
+            }
 
-        if (!$user->isAdminBkpsdm() && !$user->isKepalaBkpsdm()) {
-            return response()->json(['message' => 'Unauthorized. Admin only.'], 403);
+            if (!$user) {
+                return response()->json(['message' => 'Unauthorized - Invalid token'], 401);
+            }
+        } else {
+            $user = auth()->user();
+            if (!$user) {
+                return response()->json(['message' => 'Unauthorized - No user'], 401);
+            }
         }
 
         $surat = SuratIzinBelajar::with([
@@ -239,7 +263,32 @@ class SuratIzinBelajarController extends Controller
             'suratTugasDinas.kepalaDinas',
         ])->findOrFail($id);
 
-        return view('pdf.surat-izin-belajar', ['surat' => $surat]);
+        // Check permission - admin/kepala can preview all, user can only preview own
+        if (!$user->isAdminBkpsdm() && !$user->isKepalaBkpsdm() && $surat->pengajuan->user_id !== $user->id) {
+            return response()->json(['message' => 'Unauthorized - Permission denied'], 403);
+        }
+
+        // Generate QR code for verification
+        $qrCodeData = json_encode([
+            'type' => 'surat_izin_belajar',
+            'id' => $surat->id,
+            'nomor' => $surat->nomor_surat,
+            'signed_at' => $surat->signed_at ?? now()->toIso8601String(),
+        ]);
+        $qrCodePath = $this->qrCodeService->generateAndSave($qrCodeData, "izin-{$surat->id}");
+
+        // Generate barcode for surat identification
+        $barcodePath = $this->barcodeService->generateForSurat($surat->nomor_surat, 'izin', $surat->id);
+
+        // Convert images to base64 for embedding in HTML
+        $qrCodeBase64 = 'data:image/png;base64,' . base64_encode(Storage::disk('public')->get($qrCodePath));
+        $barcodeBase64 = 'data:image/png;base64,' . base64_encode(Storage::disk('public')->get($barcodePath));
+
+        return view('pdf.surat-izin-belajar', [
+            'surat' => $surat,
+            'qrCodeBase64' => $qrCodeBase64,
+            'barcodeBase64' => $barcodeBase64,
+        ]);
     }
 
     /**
@@ -391,48 +440,49 @@ class SuratIzinBelajarController extends Controller
 
     /**
      * Download signed surat izin belajar.
+     * Always generates PDF on-the-fly to match preview template with QR code and barcode.
      */
     public function download(Request $request, $id)
     {
-        // Check token from query parameter (for direct download link)
-        if ($request->has('token')) {
-            $token = $request->query('token');
-            // Try Sanctum token first
-            $personalAccessToken = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
-            if ($personalAccessToken) {
-                $user = $personalAccessToken->tokenable;
+        try {
+            // Check token from query parameter (for direct download link)
+            if ($request->has('token')) {
+                $token = $request->query('token', '');
+                // Try Sanctum token first
+                $personalAccessToken = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
+                if ($personalAccessToken) {
+                    $user = $personalAccessToken->tokenable;
+                } else {
+                    $user = null;
+                }
+
+                if (!$user) {
+                    return response()->json(['message' => 'Unauthorized - Invalid token'], 401);
+                }
             } else {
-                $user = null;
+                $user = auth()->user();
+                if (!$user) {
+                    return response()->json(['message' => 'Unauthorized - No user'], 401);
+                }
             }
 
-            if (!$user) {
-                return response()->json(['message' => 'Unauthorized'], 401);
+            $surat = SuratIzinBelajar::with([
+                'pengajuan.user.unitKerja',
+                'pengajuan.jenjang',
+                'suratTugasDinas.unitKerja',
+                'suratTugasDinas.kepalaDinas',
+            ])->findOrFail($id);
+
+            // Check permission - admin/kepala can download all, user can only download own
+            if (!$user->isAdminBkpsdm() && !$user->isKepalaBkpsdm() && $surat->pengajuan->user_id !== $user->id) {
+                return response()->json(['message' => 'Unauthorized - Permission denied'], 403);
             }
-        } else {
-            $user = auth()->user();
-            if (!$user) {
-                return response()->json(['message' => 'Unauthorized'], 401);
+
+            if (!$surat->isSigned()) {
+                return response()->json(['message' => 'Surat has not been signed yet.'], 400);
             }
-        }
 
-        $surat = SuratIzinBelajar::with([
-            'pengajuan.user.unitKerja',
-            'pengajuan.jenjang',
-            'suratTugasDinas.unitKerja',
-            'suratTugasDinas.kepalaDinas',
-        ])->findOrFail($id);
-
-        // Check permission - admin/kepala can download all, user can only download own
-        if (!$user->isAdminBkpsdm() && !$user->isKepalaBkpsdm() && $surat->pengajuan->user_id !== $user->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        if (!$surat->isSigned()) {
-            return response()->json(['message' => 'Surat has not been signed yet.'], 400);
-        }
-
-        // Generate PDF on-the-fly if file doesn't exist
-        if (!$surat->file_path || !Storage::disk('public')->exists($surat->file_path)) {
+            // Always generate PDF on-the-fly to match preview template
             // Generate QR code
             $qrCodeBase64 = null;
             if ($surat->qr_code) {
@@ -453,15 +503,14 @@ class SuratIzinBelajarController extends Controller
 
             $filename = "Surat_Izin_Belajar_{$surat->pengajuan->user->nip}_{$surat->tahun}.pdf";
 
-            // Update file path for future downloads
-            $filePath = "surat-izin-belajar/{$filename}";
-            Storage::disk('public')->put($filePath, $pdf->output());
-            $surat->update(['file_path' => $filePath]);
-
             return $pdf->download($filename);
+        } catch (\Exception $e) {
+            \Log::error('SuratIzin download error: ' . $e->getMessage(), [
+                'id' => $id,
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json(['message' => 'Download failed: ' . $e->getMessage()], 500);
         }
-
-        return Storage::disk('public')->download($surat->file_path);
     }
 
     /**
@@ -478,7 +527,7 @@ class SuratIzinBelajarController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $surat = $pengajuan->suratIzinBelajar()->with(['suratTugasDinas'])->first();
+        $surat = $pengajuan->suratIzinBelajar;
 
         if (!$surat) {
             return response()->json(['message' => 'Surat izin belajar not found'], 404);

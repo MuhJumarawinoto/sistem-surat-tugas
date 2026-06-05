@@ -99,3 +99,66 @@ graph TD
     E -->|Approve| F
     F --> G[Generate Surat]
     
+
+
+    alur simple 
+    Alur Simpel Pengajuan Izin Belajar Mandiri
+Overview
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    ALUR PENGAJUAN IZIN BELAJAR MANDIRI (VERSI SIMPEL)     │
+└─────────────────────────────────────────────────────────────────────────────┘
+TAHAP 1: Pemohon Membuat & Mengirim Pengajuan
+Role: pemohon (PNS)
+
+No	Aksi	Status
+1	Buat pengajuan + upload 9 dokumen	draft
+2	Kirim pengajuan	pending_admin
+TAHAP 2: Admin BKPSDM Verifikasi Dokumen
+Role: admin (Admin BKPSDM)
+
+No	Aksi	Status
+1	Verifikasi 9 dokumen	pending_admin
+2	Setujui jika lengkap	verified
+TAHAP 3: Kepala BKPSDM Terbitkan Surat Izin Belajar + TTE
+Role: kepala (Kepala BKPSDM)
+
+No	Aksi	Status	Output
+1	Generate Surat Izin Belajar	verified → surat_izin	PDF Draft
+2	TTE Elektronik	surat_izin → signed	PDF Signed + QR Code
+3	Selesai	signed → selesai	-
+TAHAP 4: Admin BKPSDM Terbitkan Surat Tugas Belajar (TTE Sama)
+Role: admin (Admin BKPSDM)
+
+No	Aksi	Output
+1	Generate Surat Tugas Belajar	PDF dengan TTE sama
+2	Download/Simpan	File tersedia
+Ringkasan Status Flow (Baru)
+
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│   draft      │───▶│ pending_     │───▶│  verified    │───▶│ surat_izin   │
+│              │    │ admin        │    │              │    │   + TTE      │
+│ PEMOHON     │    │              │    │              │    │ KEPALA BKPSDM│
+└──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
+                                                                 │
+                                                                 ▼
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│ surat_tugas  │◀───│   signed     │───▶│   selesai    │───▶│  completed   │
+│   (TTE sama) │    │              │    │              │    │              │
+│ ADMIN BKPSDM │    │              │    │              │    │ PEMOHON     │
+└──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
+Ringkasan Role (Baru)
+Role	Tanggung Jawab
+Pemohon	Buat, kirim, download surat
+Admin BKPSDM	Verifikasi dokumen, buat Surat Tugas Belajar
+Kepala BKPSDM	TTE + Surat Izin Belajar
+Apakah Anda Ingin Implementasi Code?
+Saya perlu update beberapa file untuk alur baru ini:
+
+File	Perubahan
+PengajuanController.php	Hapus pending_atasan, langsung pending_admin
+VerificationController.php	Hapus approval level atasan
+Frontend routes	Hapus menu "Persetujuan" untuk atasan
+SuratIzinBelajarController.php	Kepala BKPSDM langsung generate + TTE
+SuratTugasDinasController.php	Admin buat Surat Tugas dengan TTE yang sama
+Apakah saya lanjutkan implementasi?

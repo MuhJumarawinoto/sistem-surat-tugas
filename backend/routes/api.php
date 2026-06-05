@@ -10,13 +10,26 @@ use App\Http\Controllers\SuratTugasController;
 use App\Http\Controllers\MasterController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PegawaiController;
+use App\Http\Controllers\PegawaiSyncController;
 use App\Http\Controllers\PDDiktiController;
 use App\Http\Controllers\PDDiktiSyncController;
 use App\Http\Controllers\VerificationController;
 use App\Http\Controllers\SuratTugasDinasController;
 use App\Http\Controllers\SuratIzinBelajarController;
+use App\Http\Controllers\SuratTugasMandiriController;
 
 Route::post('/login', [AuthController::class, 'login'])->name('login');
+
+// Master Data Routes (Public - no auth required)
+Route::prefix('master')->group(function () {
+    Route::get('/jenjang', [MasterController::class, 'jenjang']);
+    Route::get('/unit-kerja', [MasterController::class, 'unitKerja']);
+    Route::get('/status-pengajuan', [MasterController::class, 'statusPengajuan']);
+    Route::get('/jenis-dokumen', [MasterController::class, 'jenisDokumen']);
+    Route::get('/akreditasi', [MasterController::class, 'akreditasi']);
+    Route::get('/perguruan-tinggi', [MasterController::class, 'perguruanTinggi']);
+    Route::get('/prodi', [MasterController::class, 'prodi']);
+});
 
 // PDDikti API (Public - no auth required)
 Route::prefix('pddikti')->group(function () {
@@ -40,6 +53,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{id}/structure', [PegawaiController::class, 'getStructure']);
         Route::put('/{id}', [PegawaiController::class, 'update']);
         Route::delete('/{id}', [PegawaiController::class, 'destroy']);
+    });
+
+    // Pegawai Sync (Admin only)
+    Route::prefix('admin/pegawai-sync')->middleware('admin')->group(function () {
+        Route::post('/import', [PegawaiSyncController::class, 'importFromJson']);
+        Route::post('/sync-simpeg', [PegawaiSyncController::class, 'syncFromSimpeg']);
+        Route::get('/test-connection', [PegawaiSyncController::class, 'testSimpegConnection']);
+        Route::get('/stats', [PegawaiSyncController::class, 'getStats']);
+        Route::get('/template', [PegawaiSyncController::class, 'downloadTemplate']);
     });
 
     // Verification routes
@@ -88,16 +110,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{id}/sign-tte', [SuratTugasController::class, 'signTte']);
     });
 
-    Route::prefix('master')->group(function () {
-        Route::get('/jenjang', [MasterController::class, 'jenjang']);
-        Route::get('/unit-kerja', [MasterController::class, 'unitKerja']);
-        Route::get('/status-pengajuan', [MasterController::class, 'statusPengajuan']);
-        Route::get('/jenis-dokumen', [MasterController::class, 'jenisDokumen']);
-        Route::get('/akreditasi', [MasterController::class, 'akreditasi']);
-        Route::get('/perguruan-tinggi', [MasterController::class, 'perguruanTinggi']);
-        Route::get('/prodi', [MasterController::class, 'prodi']);
-    });
-
     Route::prefix('notifications')->group(function () {
         Route::get('/', [NotificationController::class, 'index']);
         Route::get('/all-messages', [NotificationController::class, 'allMessages']);
@@ -140,6 +152,16 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Verify Surat Tugas Dinas (Public)
     Route::get('/surat-tugas/verify/{qrCode}', [SuratTugasDinasController::class, 'verify']);
+
+    // Surat Tugas Dinas (Admin BKPSDM) - Simplified flow: create after Surat Izin signed
+    Route::prefix('admin/surat-tugas')->group(function () {
+        Route::get('/', [SuratTugasDinasController::class, 'index']);
+        Route::get('/pending', [SuratTugasDinasController::class, 'pending']);
+        Route::post('/', [SuratTugasDinasController::class, 'store']);
+        Route::get('/{id}', [SuratTugasDinasController::class, 'show']);
+        // preview moved to public routes
+        // pdf moved to public routes
+    });
 
     // Surat Izin Belajar (Admin BKPSDM & Kepala BKPSDM)
     // Controller handles permission check internally
@@ -192,5 +214,8 @@ Route::prefix('admin/surat-izin/editor')->group(function () {
 
 // Download Routes (Public - controller checks token from query parameter)
 Route::get('/admin/surat-izin/{id}/download', [SuratIzinBelajarController::class, 'download']);
+Route::get('/admin/surat-izin/{id}/preview', [SuratIzinBelajarController::class, 'preview']);
+Route::get('/admin/surat-tugas/{id}/pdf', [SuratTugasDinasController::class, 'generatePdf']);
+Route::get('/admin/surat-tugas/{id}/preview', [SuratTugasDinasController::class, 'preview']);
 Route::get('/admin/surat-tugas-mandiri/{id}/download', [SuratTugasMandiriController::class, 'download']);
 Route::get('/kepala/surat-tugas/{id}/pdf', [SuratTugasDinasController::class, 'generatePdf']);

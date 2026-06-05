@@ -3,17 +3,43 @@ import api from '@/services/api'
 
 let tokenCheckInterval = null
 
+// Helper function to safely get from localStorage
+function getFromLocalStorage(key, parse = false) {
+  try {
+    const value = localStorage.getItem(key)
+
+    // Handle null, undefined, or "undefined" string
+    if (value === null || value === 'undefined') return null
+
+    return parse ? JSON.parse(value) : value
+  } catch (error) {
+    console.error(`[AUTH] Error reading ${key} from localStorage:`, error)
+
+    // Clear corrupted data
+    localStorage.removeItem(key)
+    return null
+  }
+}
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
-    user: JSON.parse(localStorage.getItem('user')) || null,
-    token: localStorage.getItem('token') || null,
-    tokenExpiryTime: localStorage.getItem('tokenExpiryTime') || null,
+    user: getFromLocalStorage('user', true),
+    token: getFromLocalStorage('token'),
+    tokenExpiryTime: getFromLocalStorage('tokenExpiryTime'),
     loading: false,
     showSessionWarning: false,
   }),
 
   getters: {
-    isAuthenticated: (state) => !!state.token,
+    isAuthenticated: (state) => {
+      const authenticated = !!state.token && !!state.user
+      console.log('[AUTH] isAuthenticated check:', {
+        hasToken: !!state.token,
+        hasUser: !!state.user,
+        result: authenticated
+      })
+      return authenticated
+    },
     userRole: (state) => state.user?.role || null,
     isPemohon: (state) => state.user?.role === 'pemohon',
     isAtasan: (state) => state.user?.role === 'atasan',
@@ -32,12 +58,60 @@ export const useAuthStore = defineStore('auth', {
   },
 
   actions: {
+    // Initialize store from localStorage (call this on app mount if needed)
+    initializeFromStorage() {
+      this.user = getFromLocalStorage('user', true)
+      this.token = getFromLocalStorage('token')
+      this.tokenExpiryTime = getFromLocalStorage('tokenExpiryTime')
+
+      console.log('[AUTH] Initialized from storage:', {
+        hasToken: !!this.token,
+        hasUser: !!this.user,
+        userRole: this.user?.role,
+        rawToken: this.token?.substring(0, 30) + '...'
+      })
+
+      // Clean up corrupted data
+      this.cleanupCorruptedData()
+
+      // Start token check if token exists
+      if (this.token && this.tokenExpiryTime) {
+        this.startTokenCheck()
+      }
+    },
+
+    // Clean up corrupted localStorage data
+    cleanupCorruptedData() {
+      const token = localStorage.getItem('token')
+      const user = localStorage.getItem('user')
+
+      // Remove "undefined" string values
+      if (token === 'undefined' || token === 'null') {
+        console.warn('[AUTH] Removing corrupted token from localStorage')
+        localStorage.removeItem('token')
+      }
+
+      if (user === 'undefined' || user === 'null') {
+        console.warn('[AUTH] Removing corrupted user from localStorage')
+        localStorage.removeItem('user')
+      }
+
+      // Also clear token expiry
+      const expiry = localStorage.getItem('tokenExpiryTime')
+      if (expiry === 'undefined' || expiry === 'null') {
+        localStorage.removeItem('tokenExpiryTime')
+      }
+    },
     async login(identity, password) {
       this.loading = true
       try {
         const response = await api.post('/login', { identity, password })
+
+        // Update store state
         this.token = response.data.token
         this.user = response.data.user
+
+        // Save to localStorage
         localStorage.setItem('token', this.token)
         localStorage.setItem('user', JSON.stringify(this.user))
 
@@ -46,11 +120,25 @@ export const useAuthStore = defineStore('auth', {
         this.tokenExpiryTime = expiryTime.toISOString()
         localStorage.setItem('tokenExpiryTime', this.tokenExpiryTime)
 
+        console.log('[AUTH] Login successful:', {
+          token: this.token ? 'exists' : 'missing',
+          user: this.user,
+          role: this.user?.role,
+          isAuthenticated: !!this.token
+        })
+
+        // Verify storage
+        console.log('[AUTH] Verification:', {
+          localStorageToken: localStorage.getItem('token')?.substring(0, 20) + '...',
+          storeToken: this.token?.substring(0, 20) + '...'
+        })
+
         // Start token check interval
         this.startTokenCheck()
 
         return response.data
       } catch (error) {
+        console.error('[AUTH] Login failed:', error)
         throw error
       } finally {
         this.loading = false

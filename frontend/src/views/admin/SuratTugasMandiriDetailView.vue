@@ -58,14 +58,14 @@ function goBack() {
 function previewPdf() {
   const token = authStore.token
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
-  const url = `${apiUrl}/admin/surat-tugas-mandiri/${suratId.value}/pdf?token=${token}`
+  const url = `${apiUrl}/admin/surat-tugas-mandiri/${suratId.value}/pdf?token=${encodeURIComponent(token)}`
   window.open(url, '_blank')
 }
 
 function downloadPdf() {
   const token = authStore.token
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
-  const url = `${apiUrl}/admin/surat-tugas-mandiri/${suratId.value}/download?token=${token}`
+  const url = `${apiUrl}/admin/surat-tugas-mandiri/${suratId.value}/download?token=${encodeURIComponent(token)}`
   window.open(url, '_blank')
 }
 

@@ -9,8 +9,15 @@ const authStore = useAuthStore()
 
 const showUserMenu = ref(false)
 
+// Emit event for mobile menu toggle
+const emit = defineEmits(['toggleMobileMenu'])
+
 function toggleMenu() {
   showUserMenu.value = !showUserMenu.value
+}
+
+function toggleMobileMenu() {
+  emit('toggleMobileMenu')
 }
 
 function closeMenu() {
@@ -80,18 +87,31 @@ onUnmounted(() => {
   <!-- Top Navbar -->
   <nav class="top-navbar bg-gradient-to-r from-primary-700 via-primary-600 to-accent shadow-lg z-50">
     <div class="flex items-center justify-between px-4 sm:px-6 h-16">
-      <!-- Logo & Title -->
-      <div class="flex items-center gap-3 cursor-pointer" @click="goHome">
+      <!-- Left Side: Hamburger + Logo & Title -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <!-- Hamburger Menu Button (Mobile Only) -->
+        <button
+          v-if="authStore.isAuthenticated"
+          @click="toggleMobileMenu"
+          class="lg:hidden btn btn-ghost btn-icon text-white hover:bg-white/10"
+          aria-label="Toggle menu"
+        >
+          <i class="ri-menu-line text-2xl"></i>
+        </button>
+
+        <!-- Logo & Title -->
+        <div class="flex items-center gap-2 sm:gap-3 cursor-pointer" @click="goHome">
         <div class="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-lg flex items-center justify-center p-1 flex-shrink-0">
           <img src="/logo.png" alt="Logo" class="h-full w-auto object-contain" />
         </div>
         <div class="text-white">
-          <h1 class="text-base sm:text-lg font-bold leading-tight">Sistem Surat Belajar Mandiri</h1>
+          <h1 class="text-base sm:text-lg font-bold leading-tight">SI-TEMA CANTIK</h1>
           <p class="text-xs text-white/80 hidden sm:block">BKPSDM Kabupaten Sukabumi</p>
         </div>
       </div>
+    </div>
 
-      <!-- Right Side Actions -->
+    <!-- Right Side Actions -->
       <div class="flex items-center gap-2 sm:gap-3">
         <!-- User Info (when logged in) -->
         <template v-if="authStore.isAuthenticated">

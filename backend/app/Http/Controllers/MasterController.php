@@ -18,7 +18,8 @@ class MasterController extends Controller
         $jenjang = Cache::remember('master:jenjang', self::CACHE_TTL, function () {
             return JenjangPendidikan::where('is_active', true)
                 ->orderBy('urutan')
-                ->get(['id', 'nama', 'kode', 'urutan']);
+                ->get(['id', 'nama', 'kode', 'urutan'])
+                ->toArray();
         });
 
         return response()->json($jenjang);
@@ -29,7 +30,8 @@ class MasterController extends Controller
         $unitKerja = Cache::remember('master:unit_kerja', self::CACHE_TTL, function () {
             return UnitKerja::where('is_active', true)
                 ->orderBy('nama')
-                ->get(['id', 'nama', 'singkatan']);
+                ->get(['id', 'nama', 'singkatan'])
+                ->toArray();
         });
 
         return response()->json($unitKerja);
@@ -87,14 +89,15 @@ class MasterController extends Controller
                 ->whereNotNull('akreditasi')
                 ->where('akreditasi', '!=', '')
                 ->orderBy('akreditasi')
-                ->pluck('akreditasi');
+                ->pluck('akreditasi')
+                ->toArray();
 
-            return $values->map(function ($item) {
+            return array_map(function ($item) {
                 return [
                     'value' => $item,
                     'label' => $item,
                 ];
-            })->toArray();
+            }, $values);
         });
 
         return response()->json($akreditasiList);

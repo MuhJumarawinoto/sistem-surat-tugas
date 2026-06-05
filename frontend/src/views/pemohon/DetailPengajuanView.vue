@@ -143,7 +143,7 @@ async function downloadSuratIzin() {
       ? import.meta.env.VITE_API_URL.replace('/api', '')
       : 'http://localhost:8000'
 
-    const url = `${baseUrl}/api/admin/surat-izin/${suratIzin.value.id}/download?token=${token}`
+    const url = `${baseUrl}/api/admin/surat-izin/${suratIzin.value.id}/download?token=${encodeURIComponent(token)}`
 
     // Open in new tab to trigger download
     window.open(url, '_blank')

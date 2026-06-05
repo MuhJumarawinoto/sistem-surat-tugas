@@ -1,10 +1,12 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import router from './router'
+import { useAuthStore } from './stores/auth'
 import './style.css'
 import App from './App.vue'
 
 const app = createApp(App)
+const pinia = createPinia()
 
 // Click outside directive
 app.directive('click-outside', {
@@ -21,7 +23,11 @@ app.directive('click-outside', {
   },
 })
 
-app.use(createPinia())
+app.use(pinia)
 app.use(router)
+
+// Initialize auth store from localStorage before mounting
+const authStore = useAuthStore()
+authStore.initializeFromStorage()
 
 app.mount('#app')

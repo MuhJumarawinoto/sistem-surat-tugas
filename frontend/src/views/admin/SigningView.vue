@@ -14,6 +14,7 @@ const pengajuanStore = usePengajuanStore()
 const pengajuanList = ref([])
 const loading = ref(false)
 const searchQuery = ref('')
+const submitting = ref(false)
 
 const headerActions = computed(() => [
   {
@@ -31,36 +32,34 @@ onMounted(async () => {
 async function loadPengajuan() {
   loading.value = true
   try {
-    // Ambil surat izin yang statusnya draft (perlu TTE)
-    const response = await api.get('/admin/surat-izin', {
+    // New flow: Get verified pengajuan (pending surat izin belajar)
+    const response = await api.get('/admin/surat-izin/pending', {
       params: {
-        status: 'draft',
         per_page: 50
       }
     })
     // Handle different response formats
-    let suratList = []
+    let pengajuanData = []
     if (response.data?.data && Array.isArray(response.data.data)) {
-      suratList = response.data.data
+      pengajuanData = response.data.data
     } else if (response.data && Array.isArray(response.data)) {
-      suratList = response.data
+      pengajuanData = response.data
     } else if (Array.isArray(response.data)) {
-      suratList = response.data
+      pengajuanData = response.data
     }
 
-    console.log('Surat list:', suratList)
+    console.log('Pengajuan list:', pengajuanData)
 
-    // Map surat izin ke format yang dibutuhkan view
-    pengajuanList.value = suratList.map(surat => ({
-      id: surat.id, // Use surat_izin ID as primary ID
-      pengajuan_id: surat.pengajuan?.id,
-      nomor_pengajuan: surat.pengajuan?.nomor_pengajuan,
-      nama_prodi: surat.pengajuan?.nama_prodi,
-      perguruan_tinggi: surat.pengajuan?.perguruan_tinggi,
-      status: 'draft', // draft berarti perlu TTE
-      user: surat.pengajuan?.user,
-      jenjang: surat.pengajuan?.jenjang,
-      surat_izin: surat
+    // Map pengajuan ke format yang dibutuhkan view
+    pengajuanList.value = pengajuanData.map(p => ({
+      id: p.id, // Use pengajuan ID
+      pengajuan_id: p.id,
+      nomor_pengajuan: p.nomor_pengajuan,
+      nama_prodi: p.nama_prodi,
+      perguruan_tinggi: p.perguruan_tinggi,
+      status: 'verified', // verified berarti perlu generate & sign Surat Izin
+      user: p.user,
+      jenjang: p.jenjang
     }))
 
     console.log('Mapped list:', pengajuanList.value)
@@ -71,14 +70,28 @@ async function loadPengajuan() {
   }
 }
 
-function goToSigning(id) {
-  // Navigate ke signing detail dengan surat_izin_id
-  router.push(`/kepala/signing/${id}`)
+async function goToSigning(id) {
+  submitting.value = true
+  try {
+    // New flow: Generate & sign Surat Izin Belajar in one step
+    const response = await api.post('/admin/surat-izin', {
+      pengajuan_id: id
+    })
+    console.log('Surat generated:', response.data)
+    alert('Surat Izin Belajar berhasil dibuat dan ditandatangani!')
+    await loadPengajuan()
+  } catch (error) {
+    console.error('Failed to generate surat:', error)
+    alert('Gagal membuat surat: ' + (error.response?.data?.message || error.message))
+  } finally {
+    submitting.value = false
+  }
 }
 
 function getStatusLabel(status) {
   const labels = {
-    draft: 'Perlu TTE',
+    verified: 'Perlu Generate & TTE',
+    draft: 'Draft',
     signed: 'Sudah Ditandatangani',
     selesai: 'Selesai',
     completed: 'Selesai'
@@ -88,7 +101,8 @@ function getStatusLabel(status) {
 
 function getStatusBadge(status) {
   const badges = {
-    draft: 'badge-warning',
+    verified: 'badge-primary',
+    draft: 'badge-secondary',
     signed: 'badge-success',
     selesai: 'badge-success',
     completed: 'badge-success'
@@ -114,8 +128,8 @@ const filteredList = computed(() => {
 <template>
   <MainLayout>
     <PageHeader
-      title="Tanda Tangan Surat"
-      subtitle="Daftar pengajuan yang siap ditandatangani"
+      title="Tanda Tangan Surat Izin Belajar"
+      subtitle="Daftar pengajuan verified yang siap dibuatkan Surat Izin Belajar dengan TTE"
       :actions="headerActions"
     />
 
@@ -145,7 +159,7 @@ const filteredList = computed(() => {
         <div class="w-16 h-16 rounded-full bg-secondary-100 flex items-center justify-center mx-auto mb-4">
           <i class="ri-file-text-line text-3xl text-secondary-400"></i>
         </div>
-        <p class="text-secondary-500">Tidak ada pengajuan yang siap ditandatangani</p>
+        <p class="text-secondary-500">Tidak ada pengajuan yang siap dibuatkan Surat Izin Belajar</p>
       </div>
     </div>
 
@@ -176,10 +190,11 @@ const filteredList = computed(() => {
             <div class="flex items-center gap-2">
               <button
                 @click="goToSigning(item.id)"
+                :disabled="submitting"
                 class="btn btn-primary btn-sm"
               >
                 <i class="ri-edit-line mr-1"></i>
-                Tandatangani
+                {{ submitting ? 'Memproses...' : 'Generate & TTE' }}
               </button>
             </div>
           </div>

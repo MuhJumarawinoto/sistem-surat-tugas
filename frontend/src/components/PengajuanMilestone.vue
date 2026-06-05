@@ -17,7 +17,7 @@ const props = defineProps({
 const loading = ref(false)
 const pengajuan = ref(null)
 
-// Updated status mapping based on actual database values
+// Updated status mapping based on actual database values (Simplified Flow - 4 Steps)
 const steps = computed(() => {
   if (!pengajuan.value) return []
 
@@ -26,35 +26,21 @@ const steps = computed(() => {
   return [
     {
       id: 'kirim',
-      label: 'Pengajuan Dikirim',
+      label: 'Dikirim',
       icon: 'ri-send-plane-fill',
       description: getStatusDescription(status, 'kirim'),
       status: getStepStatus(status, 'kirim')
     },
     {
       id: 'verifikasi',
-      label: 'Verifikasi Dokumen',
+      label: 'Verifikasi',
       icon: 'ri-file-search-line',
       description: 'Admin memverifikasi kelengkapan dokumen',
       status: getStepStatus(status, 'verifikasi')
     },
     {
-      id: 'surat_dinas',
-      label: 'Surat Tugas Dinas',
-      icon: 'ri-file-text-line',
-      description: 'Kepala Dinas membuat Surat Tugas Belajar',
-      status: getStepStatus(status, 'surat_dinas')
-    },
-    {
-      id: 'surat_izin',
-      label: 'Surat Izin Belajar',
-      icon: 'ri-shield-check-line',
-      description: 'Admin BKPSDM membuat Surat Izin Belajar',
-      status: getStepStatus(status, 'surat_izin')
-    },
-    {
       id: 'tte',
-      label: 'Tanda Tangan Elektronik',
+      label: 'TTE',
       icon: 'ri-edit-sign-line',
       description: 'Kepala BKPSDM menandatangani surat',
       status: getStepStatus(status, 'tte')
@@ -79,37 +65,27 @@ function getStatusDescription(pengajuanStatus, stepId) {
   return ''
 }
 
-// Determine step status based on pengajuan status
+// Determine step status based on pengajuan status (Simplified Flow - 4 Steps)
 function getStepStatus(pengajuanStatus, stepId) {
   // Rejected status
   if (pengajuanStatus === 'ditolak') return 'rejected'
 
   // Step status logic
-  const stepOrder = ['kirim', 'verifikasi', 'surat_dinas', 'surat_izin', 'tte', 'selesai']
+  const stepOrder = ['kirim', 'verifikasi', 'tte', 'selesai']
 
   // Map pengajuan status to step index
   let currentStepIndex = -1
 
   if (pengajuanStatus === 'draft') {
     currentStepIndex = -1 // Not started
-  } else if (pengajuanStatus === 'pending_atasan') {
-    currentStepIndex = 0 // At 'kirim' step - menunggu approval atasan
   } else if (pengajuanStatus === 'pending_admin') {
     currentStepIndex = 0 // At 'kirim' step - menunggu verifikasi admin
   } else if (pengajuanStatus === 'verified') {
     currentStepIndex = 1 // At 'verifikasi' step
-  } else if (pengajuanStatus === 'surat_dinas') {
-    currentStepIndex = 2 // At 'surat_dinas' step
-  } else if (pengajuanStatus === 'surat_izin') {
-    currentStepIndex = 3 // At 'surat_izin' step
   } else if (pengajuanStatus === 'signed') {
-    currentStepIndex = 4 // At 'tte' step
-  } else if (pengajuanStatus === 'disetujui') {
-    // Legacy status - map to appropriate step based on context
-    // If disetujui, assume it's past verification and waiting for surat
-    currentStepIndex = 2 // At 'surat_dinas' step
+    currentStepIndex = 2 // At 'tte' step
   } else if (pengajuanStatus === 'selesai' || pengajuanStatus === 'completed') {
-    currentStepIndex = 5 // At 'selesai' step
+    currentStepIndex = 3 // At 'selesai' step
   }
 
   const stepIndex = stepOrder.indexOf(stepId)
@@ -124,14 +100,13 @@ function getStepStatus(pengajuanStatus, stepId) {
 }
 
 const progressPercentage = computed(() => {
+  // Simplified Flow: 4 Steps - Dikirim → Verifikasi → TTE → Selesai
   const status = pengajuan.value?.status
   if (status === 'ditolak' || status === 'draft') return 0
-  if (status === 'pending_atasan' || status === 'pending_admin') return 16  // 1/6
-  if (status === 'verified') return 33      // 2/6
-  if (status === 'surat_dinas' || status === 'disetujui') return 50  // 3/6
-  if (status === 'surat_izin') return 66   // 4/6
-  if (status === 'signed') return 83       // 5/6
-  if (status === 'selesai' || status === 'completed') return 100
+  if (status === 'pending_admin') return 25  // 1/4 - Dikirim completed, Verifikasi current
+  if (status === 'verified') return 50      // 2/4 - Verifikasi completed, TTE current
+  if (status === 'signed') return 75       // 3/4 - TTE completed, Selesai current
+  if (status === 'selesai' || status === 'completed') return 100  // 4/4 - Selesai
   return 0
 })
 

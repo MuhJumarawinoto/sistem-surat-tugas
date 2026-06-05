@@ -10,6 +10,23 @@
             margin: 20mm 20mm 15mm 25mm;
         }
 
+        /* Preview Mode - A4 Page Styling */
+        .preview-wrapper {
+            background: #525659;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        .a4-page {
+            background: white;
+            width: 210mm;
+            min-height: 297mm;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+            position: relative;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -20,12 +37,12 @@
             font-family: 'Times New Roman', Times, serif;
             font-size: 12pt;
             color: #000;
-            background: #fff;
+            background: #525659;
         }
 
         .page {
             width: 100%;
-            padding: 20mm 20mm 15mm 25mm;
+            /* Padding handled by .a4-page */
         }
 
         /* ── HEADER ── */
@@ -288,10 +305,28 @@
         .bold { font-weight: bold; }
         .underline { text-decoration: underline; }
         .text-center { text-align: center; }
+
+        /* Print Mode - Hide preview wrapper styling */
+        @media print {
+            .preview-wrapper {
+                background: none;
+                padding: 0;
+            }
+            .a4-page {
+                box-shadow: none;
+                width: auto;
+                min-height: auto;
+            }
+            body {
+                background: white;
+            }
+        }
     </style>
 </head>
 <body>
-<div class="page">
+<div class="preview-wrapper">
+    <div class="a4-page">
+        <div class="page">
 
     {{-- ══════════════════════════════════════════
          KOP SURAT
@@ -529,6 +564,8 @@
     </div>
     @endif
 
-</div>
+        </div><!-- End page -->
+    </div><!-- End a4-page -->
+</div><!-- End preview-wrapper -->
 </body>
 </html>

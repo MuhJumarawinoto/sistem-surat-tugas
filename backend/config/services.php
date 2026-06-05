@@ -41,4 +41,11 @@ return [
         'cache_ttl' => env('PDDIKTI_CACHE_TTL', 86400), // 24 jam
     ],
 
+    'simpeg' => [
+        'base_url' => env('SIMPEG_BASE_URL', 'https://simpeg.bkpsdmcloud.com'),
+        'username' => env('SIMPEG_USERNAME', 'admin'),
+        'password' => env('SIMPEG_PASSWORD', 'Admin123'),
+        'timeout' => env('SIMPEG_TIMEOUT', 30),
+    ],
+
 ];

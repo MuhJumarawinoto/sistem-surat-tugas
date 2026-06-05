@@ -60,6 +60,12 @@ function setupInterceptors(instance) {
   instance.interceptors.response.use(
     (response) => response,
     (error) => {
+      console.log('[API] Response error:', {
+        status: error.response?.status,
+        url: error.config?.url,
+        hasToken: !!localStorage.getItem('token')
+      })
+
       // Handle 401 Unauthorized - Session expired
       if (error.response?.status === 401) {
         // Cegah multiple redirect

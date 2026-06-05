@@ -92,8 +92,9 @@ const tooltipPosition = ref({ left: '0px', top: '0px' }) // Fixed tooltip positi
 
 // Surat menu state
 const activeSuratMenu = ref(null)
-const suratInfoMap = ref(new Map()) // pengajuan_id -> { surat_izin, surat_tugas_mandiri }
+const suratInfoMap = ref(new Map()) // pengajuan_id -> { surat_izin, surat_tugas_mandiri, surat_tugas_dinas }
 const loadingSurat = ref(false)
+const downloadingSurat = ref(new Map()) // pengajuan_id -> { izin: false, tugas_mandiri: false, tugas_dinas: false }
 
 // Toggle action menu
 function toggleActionMenu(id) {
@@ -118,12 +119,12 @@ function closeSuratMenu() {
 // Check if pengajuan has any surat
 function hasSurat(pengajuan) {
   const info = suratInfoMap.value.get(pengajuan.id)
-  return info && (info.surat_izin || info.surat_tugas_mandiri)
+  return info && (info.surat_izin || info.surat_tugas_mandiri || info.surat_tugas_dinas)
 }
 
 // Get surat info for a pengajuan
 function getSuratInfo(pengajuan) {
-  return suratInfoMap.value.get(pengajuan.id) || { surat_izin: null, surat_tugas_mandiri: null }
+  return suratInfoMap.value.get(pengajuan.id) || { surat_izin: null, surat_tugas_mandiri: null, surat_tugas_dinas: null }
 }
 
 // Load surat info for pengajuan
@@ -154,9 +155,19 @@ async function loadSuratInfo() {
           // No surat tugas mandiri
         }
 
+        // Try to get surat tugas dinas
+        let suratTugasDinas = null
+        try {
+          const dinasResponse = await api.get(`/surat-tugas/${pengajuan.id}`)
+          suratTugasDinas = dinasResponse.data.data
+        } catch (e) {
+          // No surat tugas dinas
+        }
+
         suratInfoMap.value.set(pengajuan.id, {
           surat_izin: suratIzin,
-          surat_tugas_mandiri: suratTugasMandiri
+          surat_tugas_mandiri: suratTugasMandiri,
+          surat_tugas_dinas: suratTugasDinas
         })
       } catch (error) {
         console.error(`Failed to load surat info for pengajuan ${pengajuan.id}:`, error)
@@ -171,23 +182,67 @@ async function loadSuratInfo() {
 // Download surat izin
 function downloadSuratIzin(pengajuan) {
   const info = getSuratInfo(pengajuan)
-  if (info.surat_izin) {
-    const token = authStore.token
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
-    const url = `${apiUrl}/admin/surat-izin/${info.surat_izin.id}/download?token=${token}`
-    window.open(url, '_blank')
+  if (!info.surat_izin) {
+    toast.error('Surat Izin Belajar belum tersedia')
+    return
   }
+
+  downloadingSurat.value.set(pengajuan.id, { ...downloadingSurat.value.get(pengajuan.id), izin: true })
+  const token = authStore.token
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+  const url = `${apiUrl}/admin/surat-izin/${info.surat_izin.id}/download?token=${encodeURIComponent(token)}`
+  window.open(url, '_blank')
+  toast.success('Surat Izin Belajar sedang diunduh...')
+
+  setTimeout(() => {
+    downloadingSurat.value.set(pengajuan.id, { ...downloadingSurat.value.get(pengajuan.id), izin: false })
+  }, 1000)
 }
 
 // Download surat tugas mandiri
 function downloadSuratTugasMandiri(pengajuan) {
   const info = getSuratInfo(pengajuan)
-  if (info.surat_tugas_mandiri) {
-    const token = authStore.token
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
-    const url = `${apiUrl}/admin/surat-tugas-mandiri/${info.surat_tugas_mandiri.id}/download?token=${token}`
-    window.open(url, '_blank')
+  if (!info.surat_tugas_mandiri) {
+    toast.error('Surat Tugas Belajar Mandiri belum tersedia')
+    return
   }
+
+  downloadingSurat.value.set(pengajuan.id, { ...downloadingSurat.value.get(pengajuan.id), tugas_mandiri: true })
+  const token = authStore.token
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+  const url = `${apiUrl}/admin/surat-tugas-mandiri/${info.surat_tugas_mandiri.id}/download?token=${encodeURIComponent(token)}`
+  window.open(url, '_blank')
+  toast.success('Surat Tugas Belajar Mandiri sedang diunduh...')
+
+  setTimeout(() => {
+    downloadingSurat.value.set(pengajuan.id, { ...downloadingSurat.value.get(pengajuan.id), tugas_mandiri: false })
+  }, 1000)
+}
+
+// Download surat tugas dinas
+function downloadSuratTugasDinas(pengajuan) {
+  const info = getSuratInfo(pengajuan)
+  if (!info.surat_tugas_dinas) {
+    toast.error('Surat Tugas Belajar dari Kepala Dinas belum tersedia')
+    return
+  }
+
+  downloadingSurat.value.set(pengajuan.id, { ...downloadingSurat.value.get(pengajuan.id), tugas_dinas: true })
+  const token = authStore.token
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+  const url = `${apiUrl}/kepala/surat-tugas/${info.surat_tugas_dinas.id}/pdf?token=${encodeURIComponent(token)}`
+  window.open(url, '_blank')
+  toast.success('Surat Tugas Belajar sedang diunduh...')
+
+  setTimeout(() => {
+    downloadingSurat.value.set(pengajuan.id, { ...downloadingSurat.value.get(pengajuan.id), tugas_dinas: false })
+  }, 1000)
+}
+
+// Helper to check if downloading
+function isDownloading(pengajuanId, type) {
+  const state = downloadingSurat.value.get(pengajuanId)
+  return state ? state[type] : false
 }
 
 // Close menu when clicking outside
@@ -408,45 +463,32 @@ function getMilestoneSteps(pengajuan) {
 
   const steps = []
 
+  // Simplified Flow: 4 Steps - Dikirim → Verifikasi → TTE → Selesai
+
   // Step 1: Dikirim
   steps.push({
     label: 'Dikirim',
-    status: ['pending_atasan', 'pending_admin', 'verified', 'surat_dinas', 'surat_izin', 'disetujui', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' : 'pending',
+    status: ['pending_admin', 'verified', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' : 'pending',
   })
 
   // Step 2: Verifikasi
   steps.push({
     label: 'Verifikasi',
-    status: ['verified', 'surat_dinas', 'surat_izin', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' :
-              ['pending_atasan', 'pending_admin'].includes(status) ? 'current' : 'pending',
+    status: ['verified', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' :
+              ['pending_admin'].includes(status) ? 'current' : 'pending',
   })
 
-  // Step 3: Surat Dinas
-  steps.push({
-    label: 'Surat Dinas',
-    status: ['surat_izin', 'signed', 'selesai', 'completed'].includes(status) ? 'completed' :
-              status === 'verified' ? 'current' : 'pending',
-  })
-
-  // Step 4: Surat Izin
-  steps.push({
-    label: 'Surat Izin',
-    status: ['signed', 'selesai', 'completed'].includes(status) ? 'completed' :
-              status === 'surat_dinas' ? 'current' : 'pending',
-  })
-
-  // Step 5: TTE
+  // Step 3: TTE (Kepala BKPSDM)
   steps.push({
     label: 'TTE',
     status: ['selesai', 'completed'].includes(status) ? 'completed' :
-              status === 'surat_izin' ? 'current' : 'pending',
+              ['signed'].includes(status) ? 'current' : 'pending',
   })
 
-  // Step 6: Selesai
+  // Step 4: Selesai
   steps.push({
     label: 'Selesai',
-    status: status === 'completed' ? 'completed' :
-              status === 'selesai' ? 'current' : 'pending',
+    status: ['selesai', 'completed'].includes(status) ? 'completed' : 'pending',
   })
 
   return steps
@@ -459,36 +501,25 @@ function getStepClass(step) {
 }
 
 function getProgressLineClass(status) {
+  // Simplified Flow: 4 Steps - Dikirim → Verifikasi → TTE → Selesai
   // Draft - no progress
   if (status === 'draft' || status === 'dicabut' || status === 'ditolak') {
     return 'w-0 bg-gray-200'
   }
-  // Pending atasan/admin - 1/5 progress (20%)
-  if (status === 'pending_atasan' || status === 'pending_admin') {
-    return 'w-1/5 bg-blue-500'
+  // Pending Admin - 1/4 progress (25%) - Dikirim completed, Verifikasi current
+  if (status === 'pending_admin') {
+    return 'w-1/4 bg-blue-500'
   }
-  // Verified - 2/5 progress (40%)
+  // Verified - 2/4 progress (50%) - Verifikasi completed, TTE current
   if (status === 'verified') {
-    return 'w-2/5 bg-blue-500'
+    return 'w-2/4 bg-blue-500'
   }
-  // Surat Dinas - 2.5/5 progress (50%)
-  if (status === 'surat_dinas') {
-    return 'w-1/2 bg-blue-500'
+  // Signed - 3/4 progress (75%) - TTE completed, Selesai current
+  if (status === 'signed') {
+    return 'w-3/4 bg-blue-500'
   }
-  // Surat Izin - 3/5 progress (60%)
-  if (status === 'surat_izin') {
-    return 'w-3/5 bg-blue-500'
-  }
-  // Disetujui/Signed - 4/5 progress (80%)
-  if (status === 'disetujui' || status === 'signed') {
-    return 'w-4/5 bg-green-500'
-  }
-  // Selesai - full progress (100%)
-  if (status === 'selesai') {
-    return 'w-full bg-green-500'
-  }
-  // Completed - full progress (100%)
-  if (status === 'completed') {
+  // Selesai/Completed - full progress (100%)
+  if (status === 'selesai' || status === 'completed') {
     return 'w-full bg-green-500'
   }
   // Default
@@ -502,14 +533,12 @@ function getLineClass(index, steps) {
   return 'bg-gray-200'
 }
 
-// Get tooltip info for milestone step
+// Get tooltip info for milestone step (Updated for 4 Steps)
 function getMilestoneTooltip(step, pengajuan) {
   if (step.status === 'completed') {
     const completedInfo = {
       'Dikirim': 'Pengajuan telah dikirim',
       'Verifikasi': 'Dokumen lengkap & telah diverifikasi admin',
-      'Surat Dinas': 'Surat Tugas Belajar telah diterbitkan oleh Kepala Dinas',
-      'Surat Izin': 'Surat Izin Belajar telah diterbitkan oleh Admin BKPSDM',
       'TTE': 'Surat telah ditandatangani secara elektronik',
       'Selesai': 'Proses pengajuan telah selesai'
     }
@@ -523,10 +552,8 @@ function getMilestoneTooltip(step, pengajuan) {
 
   if (step.status === 'current') {
     const currentInfo = {
-      'Dikirim': 'Menunggu verifikasi dari atasan langsung',
+      'Dikirim': 'Menunggu verifikasi dari admin BKPSDM',
       'Verifikasi': 'Sedang diverifikasi dokumen oleh admin BKPSDM',
-      'Surat Dinas': 'Menunggu penerbitan Surat Tugas Belajar oleh Kepala Dinas',
-      'Surat Izin': 'Menunggu penerbitan Surat Izin Belajar oleh Admin BKPSDM',
       'TTE': 'Sedang proses penandatanganan elektronik (TTE)',
       'Selesai': 'Proses hampir selesai'
     }
@@ -542,8 +569,6 @@ function getMilestoneTooltip(step, pengajuan) {
   const pendingInfo = {
     'Dikirim': 'Pengajuan sudah dikirim',
     'Verifikasi': 'Menunggu verifikasi dokumen oleh admin BKPSDM',
-    'Surat Dinas': 'Menunggu penerbitan Surat Tugas Belajar oleh Kepala Dinas',
-    'Surat Izin': 'Menunggu penerbitan Surat Izin Belajar oleh Admin BKPSDM',
     'TTE': 'Menunggu proses Tanda Tangan Elektronik',
     'Selesai': 'Menunggu proses penyelesaian'
   }
@@ -842,7 +867,7 @@ async function handleDelete(id) {
           <div
             v-for="item in recentPengajuan"
             :key="item.id"
-            class="border border-secondary-200 rounded-xl hover:border-primary-300 hover:shadow-sm transition-all overflow-hidden"
+            class="border border-secondary-200 rounded-xl hover:border-primary-300 hover:shadow-sm transition-all relative"
           >
             <!-- Main Row -->
             <div class="p-4">
@@ -882,7 +907,7 @@ async function handleDelete(id) {
                     </button>
                     <div
                       v-if="activeActionMenu === item.id"
-                      class="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-secondary-200 z-20"
+                      class="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-secondary-200 z-50"
                     >
                       <button @click="goToDetail(item.id)" class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2">
                         <i class="ri-eye-line"></i> Lihat
@@ -900,21 +925,37 @@ async function handleDelete(id) {
                         </button>
                         <div
                           v-if="activeSuratMenu === item.id"
-                          class="absolute right-full top-0 w-48 bg-white rounded-lg shadow-lg border border-secondary-200 z-30 mr-1"
+                          class="absolute right-full top-0 w-52 bg-white rounded-lg shadow-lg border border-secondary-200 z-50 mr-1"
                         >
                           <button
                             v-if="getSuratInfo(item).surat_izin"
                             @click="downloadSuratIzin(item)"
-                            class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2"
+                            :disabled="isDownloading(item.id, 'izin')"
+                            class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            <i class="ri-download-line"></i> Surat Izin Belajar
+                            <i v-if="isDownloading(item.id, 'izin')" class="ri-loader-4-line animate-spin"></i>
+                            <i v-else class="ri-download-line"></i>
+                            {{ isDownloading(item.id, 'izin') ? 'Mengunduh...' : 'Surat Izin Belajar (BKPSDM)' }}
                           </button>
                           <button
                             v-if="getSuratInfo(item).surat_tugas_mandiri"
                             @click="downloadSuratTugasMandiri(item)"
-                            class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2"
+                            :disabled="isDownloading(item.id, 'tugas_mandiri')"
+                            class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            <i class="ri-download-line"></i> Surat Tugas Mandiri
+                            <i v-if="isDownloading(item.id, 'tugas_mandiri')" class="ri-loader-4-line animate-spin"></i>
+                            <i v-else class="ri-download-line"></i>
+                            {{ isDownloading(item.id, 'tugas_mandiri') ? 'Mengunduh...' : 'Surat Tugas Mandiri (Admin)' }}
+                          </button>
+                          <button
+                            v-if="getSuratInfo(item).surat_tugas_dinas"
+                            @click="downloadSuratTugasDinas(item)"
+                            :disabled="isDownloading(item.id, 'tugas_dinas')"
+                            class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <i v-if="isDownloading(item.id, 'tugas_dinas')" class="ri-loader-4-line animate-spin"></i>
+                            <i v-else class="ri-download-line"></i>
+                            {{ isDownloading(item.id, 'tugas_dinas') ? 'Mengunduh...' : 'Surat Tugas Dinas (Kepala Dinas)' }}
                           </button>
                         </div>
                       </div>
@@ -960,21 +1001,37 @@ async function handleDelete(id) {
                       </button>
                       <div
                         v-if="activeSuratMenu === item.id"
-                        class="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-secondary-200 z-20"
+                        class="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-secondary-200 z-50"
                       >
                         <button
                           v-if="getSuratInfo(item).surat_izin"
                           @click="downloadSuratIzin(item)"
-                          class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2"
+                          :disabled="isDownloading(item.id, 'izin')"
+                          class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <i class="ri-download-line text-primary-600"></i> Surat Izin Belajar
+                          <i v-if="isDownloading(item.id, 'izin')" class="ri-loader-4-line animate-spin text-primary-600"></i>
+                          <i v-else class="ri-download-line text-primary-600"></i>
+                          <span>{{ isDownloading(item.id, 'izin') ? 'Mengunduh...' : 'Surat Izin Belajar (BKPSDM)' }}</span>
                         </button>
                         <button
                           v-if="getSuratInfo(item).surat_tugas_mandiri"
                           @click="downloadSuratTugasMandiri(item)"
-                          class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2"
+                          :disabled="isDownloading(item.id, 'tugas_mandiri')"
+                          class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <i class="ri-download-line text-primary-600"></i> Surat Tugas Mandiri
+                          <i v-if="isDownloading(item.id, 'tugas_mandiri')" class="ri-loader-4-line animate-spin text-primary-600"></i>
+                          <i v-else class="ri-download-line text-primary-600"></i>
+                          <span>{{ isDownloading(item.id, 'tugas_mandiri') ? 'Mengunduh...' : 'Surat Tugas Mandiri (Admin)' }}</span>
+                        </button>
+                        <button
+                          v-if="getSuratInfo(item).surat_tugas_dinas"
+                          @click="downloadSuratTugasDinas(item)"
+                          :disabled="isDownloading(item.id, 'tugas_dinas')"
+                          class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <i v-if="isDownloading(item.id, 'tugas_dinas')" class="ri-loader-4-line animate-spin text-primary-600"></i>
+                          <i v-else class="ri-download-line text-primary-600"></i>
+                          <span>{{ isDownloading(item.id, 'tugas_dinas') ? 'Mengunduh...' : 'Surat Tugas Dinas (Kepala Dinas)' }}</span>
                         </button>
                       </div>
                     </div>

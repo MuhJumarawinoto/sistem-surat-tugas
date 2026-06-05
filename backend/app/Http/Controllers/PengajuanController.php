@@ -29,28 +29,12 @@ class PengajuanController extends Controller
                 $query->where('status', '!=', 'dicabut');
             }
         } elseif ($user->isAtasan()) {
-            // Atasan: melihat pengajuan sendiri + pengajuan dari unit kerja yang sama
-            $query->where(function ($q) use ($user) {
-                $q->where('user_id', $user->id) // Pengajuan sendiri
-                  ->orWhereHas('user', function ($subQuery) use ($user) {
-                      $subQuery->where('unit_kerja_id', $user->unit_kerja_id);
-                  }); // Pengajuan unit kerja
-            });
+            // Atasan: melihat pengajuan sendiri saja
+            $query->where('user_id', $user->id);
 
             // Exclude 'dicabut' unless explicitly requested
             if (!$includeDeleted) {
                 $query->where('status', '!=', 'dicabut');
-            }
-
-            // Default filter untuk atasan: hanya yang pending (untuk approval)
-            if (!$request->has('status') && !$request->has('mine') && !$includeDeleted) {
-                $query->where('status', 'pending_atasan')
-                      ->where('user_id', '!=', $user->id); // Exclude pengajuan sendiri untuk approval list
-            }
-
-            // Filter 'mine' untuk melihat pengajuan sendiri
-            if ($request->has('mine') && $request->get('mine') === '1') {
-                $query->where('user_id', $user->id);
             }
         } elseif ($user->isKepalaBkpsdm() && !$user->isKepalaUnit()) {
             // Kepala BKPSDM (bukan kepala unit): hanya melihat pengajuan sendiri untuk riwayat
@@ -113,9 +97,6 @@ class PengajuanController extends Controller
         $user = $request->user();
         $nomorPengajuan = $this->generateNomorPengajuan();
 
-        // Set approval_level based on user role
-        $approvalLevel = $user->isAtasan() ? 'atasan' : 'biasa';
-
         $pengajuan = Pengajuan::create([
             'nomor_pengajuan' => $nomorPengajuan,
             'user_id' => $user->id,
@@ -127,7 +108,6 @@ class PengajuanController extends Controller
             'rencana_mulai' => $request->rencana_mulai,
             'rencana_selesai' => $request->rencana_selesai,
             'status' => 'draft',
-            'approval_level' => $approvalLevel,
         ]);
 
         return response()->json($pengajuan->load(['user', 'jenjang']), 201);
@@ -135,22 +115,14 @@ class PengajuanController extends Controller
 
     public function show(string $id)
     {
-        $pengajuan = Pengajuan::with(['user', 'jenjang', 'dokumen', 'approvalHistory.approver', 'approvedByAtasan'])
+        $pengajuan = Pengajuan::with(['user', 'jenjang', 'dokumen', 'approvalHistory.approver'])
             ->findOrFail($id);
 
         $user = request()->user();
 
-        // Pemohon biasa: hanya bisa lihat pengajuan sendiri
-        if ($user->isPemohon() && $pengajuan->user_id !== $user->id) {
+        // Pemohon biasa & Atasan: hanya bisa lihat pengajuan sendiri
+        if (($user->isPemohon() || $user->isAtasan()) && $pengajuan->user_id !== $user->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        // Atasan: bisa lihat pengajuan sendiri OR pengajuan dari unit kerja
-        if ($user->isAtasan() && $pengajuan->user_id !== $user->id) {
-            // Cek apakah pengajuan dari unit kerja yang sama
-            if ($pengajuan->user->unit_kerja_id !== $user->unit_kerja_id) {
-                return response()->json(['message' => 'Unauthorized'], 403);
-            }
         }
 
         return response()->json($pengajuan);
@@ -231,7 +203,7 @@ class PengajuanController extends Controller
         }
 
         // Hanya bisa cancel jika status pending atau verified
-        if (!in_array($pengajuan->status, ['pending_atasan', 'pending_admin', 'verified'])) {
+        if (!in_array($pengajuan->status, ['pending_admin', 'verified'])) {
             return response()->json(['message' => 'Hanya dapat menarik pengajuan dengan status Pending atau Terverifikasi'], 400);
         }
 
@@ -239,8 +211,7 @@ class PengajuanController extends Controller
         $pengajuan->update([
             'status' => 'draft',
             'catatan_tolak' => null,
-            'tanggal_submit_atasan' => null,
-            'tanggal_approve_atasan' => null,
+            'tanggal_submit_admin' => null,
             'tanggal_approve_admin' => null,
         ]);
 

@@ -29,8 +29,8 @@ function getInitials(name) {
         </div>
 
         <div>
-          <h1 class="text-lg font-bold text-secondary-800 tracking-tight">Sistem Surat Belajar Mandiri</h1>
-          <p class="text-xs text-secondary-500">BKPSDM Kab Kabupaten Sukabumi</p>
+          <h1 class="text-lg font-bold text-secondary-800 tracking-tight">SI-TEMA CANTIK</h1>
+          <p class="text-xs text-secondary-500">BKPSDM Kabupaten Sukabumi</p>
         </div>
       </div>
 
