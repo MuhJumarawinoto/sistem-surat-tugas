@@ -448,7 +448,7 @@ watch(() => route.path, (newPath) => {
               <div
                 v-for="item in pengajuanList"
                 :key="item.id"
-                class="border border-secondary-200 rounded-xl hover:border-primary-300 hover:shadow-sm transition-all overflow-hidden"
+                class="border border-secondary-200 rounded-xl hover:border-primary-300 hover:shadow-sm transition-all overflow-visible"
               >
                 <!-- Main Row -->
                 <div class="p-4">

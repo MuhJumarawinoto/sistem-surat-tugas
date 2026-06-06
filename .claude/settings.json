@@ -79,7 +79,11 @@
       "Bash(curl -s \"http://127.0.0.1:8000/api/master/prodi?perguruan_tinggi_id=75\")",
       "Bash(curl -X POST http://127.0.0.1:8000/api/login -H 'Content-Type: application/json' -H 'Accept: application/json' -d '{\"identity\":\"drajat@disdik.go.id\",\"password\":\"password\"}')",
       "Bash(curl -s http://127.0.0.1:8000/api/me -H 'Accept: application/json' -H 'Authorization: Bearer 57|0ULvOxujqqGDIlE6tGWcjf7VjJBiH41MTdR5h5St6c846b53')",
-      "Bash(curl -s http://127.0.0.1:8000/api/me -H 'Accept: application/json')"
+      "Bash(curl -s http://127.0.0.1:8000/api/me -H 'Accept: application/json')",
+      "Read(//tmp/**)",
+      "Bash(awk 'NR>=813 && NR<=1107 {print NR\": \"$0}' src/views/pemohon/DashboardView.vue)",
+      "Bash(awk 'NR>=797 && NR<=1106 { if \\(/<div[^>]/\\) opens++; if \\(/<\\\\/div>/\\) closes++; } END { print \"Opens:\", opens, \"Closes:\", closes, \"Diff:\", closes-opens }' src/views/pemohon/DashboardView.vue)",
+      "Bash(awk 'NR>=797 && NR<=1106 { if \\(/<div /\\) opens++; if \\(/<\\\\/div>/\\) closes++; } END { print \"Opens:\", opens, \"Closes:\", closes, \"Diff:\", closes-opens }' src/views/pemohon/DashboardView.vue)"
     ],
     "additionalDirectories": [
       "C:\\Users\\Bahlil\\Downloads\\Documents\\Sistem-Surat-Belajar-Mandiri\\backend\\storage\\app\\public\\surat-izin-belajar",

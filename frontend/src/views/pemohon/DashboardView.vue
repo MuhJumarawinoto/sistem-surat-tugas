@@ -96,6 +96,23 @@ const suratInfoMap = ref(new Map()) // pengajuan_id -> { surat_izin, surat_tugas
 const loadingSurat = ref(false)
 const downloadingSurat = ref(new Map()) // pengajuan_id -> { izin: false, tugas_mandiri: false, tugas_dinas: false }
 
+// Mobile surat selection modal state
+const showSuratModal = ref(false)
+const selectedPengajuanForSurat = ref(null)
+
+// Open surat modal (mobile)
+function openSuratModal(pengajuan) {
+  closeAllMenus()
+  selectedPengajuanForSurat.value = pengajuan
+  showSuratModal.value = true
+}
+
+// Close surat modal
+function closeSuratModal() {
+  showSuratModal.value = false
+  selectedPengajuanForSurat.value = null
+}
+
 // Toggle action menu
 function toggleActionMenu(id) {
   activeActionMenu.value = activeActionMenu.value === id ? null : id
@@ -104,6 +121,12 @@ function toggleActionMenu(id) {
 // Close action menu
 function closeActionMenu() {
   activeActionMenu.value = null
+}
+
+// Close all menus
+function closeAllMenus() {
+  activeActionMenu.value = null
+  activeSuratMenu.value = null
 }
 
 // Toggle surat menu
@@ -193,6 +216,7 @@ function downloadSuratIzin(pengajuan) {
   const url = `${apiUrl}/admin/surat-izin/${info.surat_izin.id}/download?token=${encodeURIComponent(token)}`
   window.open(url, '_blank')
   toast.success('Surat Izin Belajar sedang diunduh...')
+  closeSuratModal() // Close modal after download
 
   setTimeout(() => {
     downloadingSurat.value.set(pengajuan.id, { ...downloadingSurat.value.get(pengajuan.id), izin: false })
@@ -213,6 +237,7 @@ function downloadSuratTugasMandiri(pengajuan) {
   const url = `${apiUrl}/admin/surat-tugas-mandiri/${info.surat_tugas_mandiri.id}/download?token=${encodeURIComponent(token)}`
   window.open(url, '_blank')
   toast.success('Surat Tugas Belajar Mandiri sedang diunduh...')
+  closeSuratModal() // Close modal after download
 
   setTimeout(() => {
     downloadingSurat.value.set(pengajuan.id, { ...downloadingSurat.value.get(pengajuan.id), tugas_mandiri: false })
@@ -233,6 +258,7 @@ function downloadSuratTugasDinas(pengajuan) {
   const url = `${apiUrl}/kepala/surat-tugas/${info.surat_tugas_dinas.id}/pdf?token=${encodeURIComponent(token)}`
   window.open(url, '_blank')
   toast.success('Surat Tugas Belajar sedang diunduh...')
+  closeSuratModal() // Close modal after download
 
   setTimeout(() => {
     downloadingSurat.value.set(pengajuan.id, { ...downloadingSurat.value.get(pengajuan.id), tugas_dinas: false })
@@ -867,98 +893,35 @@ async function handleDelete(id) {
           <div
             v-for="item in recentPengajuan"
             :key="item.id"
-            class="border border-secondary-200 rounded-xl hover:border-primary-300 hover:shadow-sm transition-all relative"
+            class="border border-secondary-200 rounded-xl hover:border-primary-300 hover:shadow-sm transition-all relative overflow-visible"
           >
             <!-- Main Row -->
             <div class="p-4">
               <div class="flex flex-col lg:flex-row lg:items-center gap-4">
-                <!-- Info -->
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-2 mb-2 flex-wrap">
-                    <span class="font-semibold text-secondary-800">{{ item.nomor_pengajuan || '-' }}</span>
-                    <span :class="['badge', getStatusBadge(item.status), 'flex items-center gap-1']">
-                      <i :class="getStatusIcon(item.status)"></i>
-                      {{ getStatusLabel(item.status) }}
-                    </span>
-                    <!-- Notification Badge -->
-                    <span
-                      v-if="getPengajuanNotificationCount(item.id) > 0"
-                      class="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-xs font-medium"
-                    >
-                      <i class="ri-notification-3-line"></i>
-                      <span>{{ getPengajuanNotificationCount(item.id) }}</span>
-                    </span>
-                  </div>
-                  <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-secondary-600">
-                    <span><i class="ri-graduation-cap-line mr-1"></i>{{ item.nama_prodi }}</span>
-                    <span><i class="ri-building-line mr-1"></i>{{ item.perguruan_tinggi || '-' }}</span>
-                    <span><i class="ri-calendar-line mr-1"></i>{{ new Date(item.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) }}</span>
-                  </div>
-                </div>
-                <!-- Action -->
-                <div class="flex items-center gap-2">
-                  <!-- Mobile dropdown -->
-                  <div class="relative sm:hidden" :id="`action-menu-${item.id}`">
-                    <button
-                      @click.stop="toggleActionMenu(item.id)"
-                      class="btn btn-ghost btn-sm btn-icon"
-                    >
-                      <i class="ri-more-2-fill text-xl"></i>
-                    </button>
-                    <div
-                      v-if="activeActionMenu === item.id"
-                      class="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-secondary-200 z-50"
-                    >
-                      <button @click="goToDetail(item.id)" class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2">
+                <!-- Mobile: Absolute positioned menu button (top-right) -->
+                <div class="absolute top-3 right-3 sm:hidden z-[100]">
+                  <button
+                    @click.stop="toggleActionMenu(item.id)"
+                    class="btn btn-ghost btn-sm btn-icon"
+                  >
+                    <i class="ri-more-2-fill text-xl"></i>
+                  </button>
+                  <!-- Mobile Dropdown Menu -->
+                  <div
+                    v-if="activeActionMenu === item.id"
+                    class="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-xl border border-secondary-200 z-[100]"
+                  >
+                    <button @click="goToDetail(item.id)" class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2">
                         <i class="ri-eye-line"></i> Lihat
                       </button>
-                      <!-- Surat dropdown in mobile -->
-                      <div v-if="hasSurat(item)" class="relative border-t border-secondary-100" :id="`surat-menu-${item.id}`">
-                        <button
-                          @click.stop="toggleSuratMenu(item.id)"
-                          class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center justify-between gap-2"
-                        >
-                          <span class="flex items-center gap-2">
-                            <i class="ri-file-text-line text-primary-600"></i> Surat
-                          </span>
-                          <i class="ri-arrow-down-s-line"></i>
-                        </button>
-                        <div
-                          v-if="activeSuratMenu === item.id"
-                          class="absolute right-full top-0 w-52 bg-white rounded-lg shadow-lg border border-secondary-200 z-50 mr-1"
-                        >
-                          <button
-                            v-if="getSuratInfo(item).surat_izin"
-                            @click="downloadSuratIzin(item)"
-                            :disabled="isDownloading(item.id, 'izin')"
-                            class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <i v-if="isDownloading(item.id, 'izin')" class="ri-loader-4-line animate-spin"></i>
-                            <i v-else class="ri-download-line"></i>
-                            {{ isDownloading(item.id, 'izin') ? 'Mengunduh...' : 'Surat Izin Belajar (BKPSDM)' }}
-                          </button>
-                          <button
-                            v-if="getSuratInfo(item).surat_tugas_mandiri"
-                            @click="downloadSuratTugasMandiri(item)"
-                            :disabled="isDownloading(item.id, 'tugas_mandiri')"
-                            class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <i v-if="isDownloading(item.id, 'tugas_mandiri')" class="ri-loader-4-line animate-spin"></i>
-                            <i v-else class="ri-download-line"></i>
-                            {{ isDownloading(item.id, 'tugas_mandiri') ? 'Mengunduh...' : 'Surat Tugas Mandiri (Admin)' }}
-                          </button>
-                          <button
-                            v-if="getSuratInfo(item).surat_tugas_dinas"
-                            @click="downloadSuratTugasDinas(item)"
-                            :disabled="isDownloading(item.id, 'tugas_dinas')"
-                            class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <i v-if="isDownloading(item.id, 'tugas_dinas')" class="ri-loader-4-line animate-spin"></i>
-                            <i v-else class="ri-download-line"></i>
-                            {{ isDownloading(item.id, 'tugas_dinas') ? 'Mengunduh...' : 'Surat Tugas Dinas (Kepala Dinas)' }}
-                          </button>
-                        </div>
-                      </div>
+                      <!-- Surat button in mobile - opens modal -->
+                      <button
+                        v-if="hasSurat(item)"
+                        @click.stop="openSuratModal(item)"
+                        class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2 border-t border-secondary-100"
+                      >
+                        <i class="ri-file-text-line text-primary-600"></i> Surat
+                      </button>
                       <button
                         v-if="canRestore(item)"
                         @click="handleRestore(item.id)"
@@ -983,7 +946,31 @@ async function handleDelete(id) {
                     </div>
                   </div>
 
-                  <!-- Desktop buttons -->
+                <!-- Info -->
+                <div class="flex-1 min-w-0 pr-10 sm:pr-0">
+                  <div class="flex items-center gap-2 mb-2 flex-wrap">
+                    <span class="font-semibold text-secondary-800">{{ item.nomor_pengajuan || '-' }}</span>
+                    <span :class="['badge', getStatusBadge(item.status), 'flex items-center gap-1']">
+                      <i :class="getStatusIcon(item.status)"></i>
+                      {{ getStatusLabel(item.status) }}
+                    </span>
+                    <!-- Notification Badge -->
+                    <span
+                      v-if="getPengajuanNotificationCount(item.id) > 0"
+                      class="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-xs font-medium"
+                    >
+                      <i class="ri-notification-3-line"></i>
+                      <span>{{ getPengajuanNotificationCount(item.id) }}</span>
+                    </span>
+                  </div>
+                  <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-secondary-600">
+                    <span><i class="ri-graduation-cap-line mr-1"></i>{{ item.nama_prodi }}</span>
+                    <span><i class="ri-building-line mr-1"></i>{{ item.perguruan_tinggi || '-' }}</span>
+                    <span><i class="ri-calendar-line mr-1"></i>{{ new Date(item.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) }}</span>
+                  </div>
+                </div>
+
+                <!-- Desktop buttons -->
                   <div class="hidden sm:flex items-center gap-2">
                     <button @click="goToDetail(item.id)" class="btn btn-primary btn-sm">
                       <i class="ri-eye-line mr-1"></i>
@@ -1001,7 +988,7 @@ async function handleDelete(id) {
                       </button>
                       <div
                         v-if="activeSuratMenu === item.id"
-                        class="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-secondary-200 z-50"
+                        class="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-secondary-200 z-[100]"
                       >
                         <button
                           v-if="getSuratInfo(item).surat_izin"
@@ -1062,7 +1049,6 @@ async function handleDelete(id) {
                   </div>
                 </div>
               </div>
-            </div>
 
             <!-- Milestone Dot-Line -->
             <div class="px-4 pb-4">
@@ -1105,9 +1091,9 @@ async function handleDelete(id) {
       </div>
     </div>
 
-    <!-- Cancel Confirmation Modal -->
-    <Teleport to="body">
-      <Transition name="modal">
+  <!-- Cancel Confirmation Modal -->
+  <Teleport to="body">
+    <Transition name="modal">
         <div
           v-if="showCancelModal"
           class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
@@ -1156,10 +1142,119 @@ async function handleDelete(id) {
           </div>
         </div>
       </Transition>
-    </Teleport>
+  </Teleport>
 
-    <!-- Fixed Milestone Tooltip (Teleport to body for z-index fix) -->
-    <Teleport to="body">
+  <!-- Surat Selection Modal (Mobile) -->
+  <Teleport to="body">
+    <Transition name="modal">
+      <div
+        v-if="showSuratModal"
+        class="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-0 sm:p-4 bg-black/50"
+        @click.self="closeSuratModal"
+      >
+        <div class="bg-white w-full sm:max-w-md sm:rounded-xl rounded-t-2xl shadow-xl max-h-[70vh] overflow-hidden flex flex-col">
+          <!-- Modal Header -->
+          <div class="flex items-center justify-between p-4 border-b">
+            <h3 class="text-lg font-semibold">Pilih Surat untuk Diunduh</h3>
+            <button @click="closeSuratModal" class="btn btn-ghost btn-icon">
+              <i class="ri-close-line text-xl"></i>
+            </button>
+          </div>
+
+          <!-- Modal Body -->
+          <div class="p-4 overflow-y-auto flex-1">
+            <div v-if="selectedPengajuanForSurat" class="space-y-3">
+              <p class="text-sm text-secondary-500 mb-4">
+                Nomor: <span class="font-medium text-secondary-800">{{ selectedPengajuanForSurat.nomor_pengajuan || '-' }}</span>
+              </p>
+
+              <!-- Surat Izin Belajar -->
+              <div
+                v-if="getSuratInfo(selectedPengajuanForSurat).surat_izin"
+                class="border border-secondary-200 rounded-xl overflow-hidden"
+              >
+                <button
+                  @click="downloadSuratIzin(selectedPengajuanForSurat)"
+                  :disabled="isDownloading(selectedPengajuanForSurat.id, 'izin')"
+                  class="w-full px-4 py-3 flex items-center justify-between hover:bg-secondary-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center">
+                      <i class="ri-file-text-line text-primary-600"></i>
+                    </div>
+                    <div class="text-left">
+                      <p class="font-medium text-secondary-800">Surat Izin Belajar (BKPSDM)</p>
+                      <p class="text-xs text-secondary-500">{{ getSuratInfo(selectedPengajuanForSurat).surat_izin.nomor_surat }}</p>
+                    </div>
+                  </div>
+                  <i v-if="isDownloading(selectedPengajuanForSurat.id, 'izin')" class="ri-loader-4-line animate-spin text-xl text-primary-600"></i>
+                  <i v-else class="ri-download-line text-xl text-secondary-400"></i>
+                </button>
+              </div>
+
+              <!-- Surat Tugas Mandiri -->
+              <div
+                v-if="getSuratInfo(selectedPengajuanForSurat).surat_tugas_mandiri"
+                class="border border-secondary-200 rounded-xl overflow-hidden"
+              >
+                <button
+                  @click="downloadSuratTugasMandiri(selectedPengajuanForSurat)"
+                  :disabled="isDownloading(selectedPengajuanForSurat.id, 'tugas_mandiri')"
+                  class="w-full px-4 py-3 flex items-center justify-between hover:bg-secondary-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                      <i class="ri-file-text-line text-blue-600"></i>
+                    </div>
+                    <div class="text-left">
+                      <p class="font-medium text-secondary-800">Surat Tugas Mandiri (Admin)</p>
+                      <p class="text-xs text-secondary-500">{{ getSuratInfo(selectedPengajuanForSurat).surat_tugas_mandiri.nomor_surat }}</p>
+                    </div>
+                  </div>
+                  <i v-if="isDownloading(selectedPengajuanForSurat.id, 'tugas_mandiri')" class="ri-loader-4-line animate-spin text-xl text-primary-600"></i>
+                  <i v-else class="ri-download-line text-xl text-secondary-400"></i>
+                </button>
+              </div>
+
+              <!-- Surat Tugas Dinas -->
+              <div
+                v-if="getSuratInfo(selectedPengajuanForSurat).surat_tugas_dinas"
+                class="border border-secondary-200 rounded-xl overflow-hidden"
+              >
+                <button
+                  @click="downloadSuratTugasDinas(selectedPengajuanForSurat)"
+                  :disabled="isDownloading(selectedPengajuanForSurat.id, 'tugas_dinas')"
+                  class="w-full px-4 py-3 flex items-center justify-between hover:bg-secondary-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                      <i class="ri-file-text-line text-green-600"></i>
+                    </div>
+                    <div class="text-left">
+                      <p class="font-medium text-secondary-800">Surat Tugas Dinas (Kepala Dinas)</p>
+                      <p class="text-xs text-secondary-500">{{ getSuratInfo(selectedPengajuanForSurat).surat_tugas_dinas.nomor_surat }}</p>
+                    </div>
+                  </div>
+                  <i v-if="isDownloading(selectedPengajuanForSurat.id, 'tugas_dinas')" class="ri-loader-4-line animate-spin text-xl text-primary-600"></i>
+                  <i v-else class="ri-download-line text-xl text-secondary-400"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Modal Footer -->
+          <div class="p-4 border-t bg-secondary-50">
+            <button @click="closeSuratModal" class="btn btn-ghost w-full">
+              Tutup
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+
+  <!-- Fixed Milestone Tooltip (Teleport to body for z-index fix) -->
+  <Teleport to="body">
       <Transition name="fade">
         <div
           v-if="hoveredMilestone"
@@ -1189,6 +1284,22 @@ async function handleDelete(id) {
 }
 .modal-enter-from, .modal-leave-to {
   opacity: 0;
+}
+
+/* Mobile slide-up animation for surat modal */
+@media (max-width: 640px) {
+  .modal-enter-active {
+    transition: transform 0.3s ease-out;
+  }
+  .modal-leave-active {
+    transition: transform 0.2s ease-in;
+  }
+  .modal-enter-from {
+    transform: translateY(100%);
+  }
+  .modal-leave-to {
+    transform: translateY(100%);
+  }
 }
 
 .fade-enter-active, .fade-leave-active {

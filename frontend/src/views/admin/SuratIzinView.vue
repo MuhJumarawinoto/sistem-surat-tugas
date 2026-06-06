@@ -134,7 +134,7 @@ onMounted(() => {
         <div
           v-for="surat in suratList"
           :key="surat.id"
-          class="card card-body"
+          class="card card-body !overflow-visible"
         >
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div class="flex-1">
