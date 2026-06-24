@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePengajuanStore } from '@/stores/pengajuan'
 import { useAuthStore } from '@/stores/auth'
@@ -25,6 +25,8 @@ const showModal = ref(false)
 const selectedPengajuan = ref(null)
 const activeDropdown = ref(null)
 const searchQuery = ref('')
+const currentPage = ref(1)
+const itemsPerPage = 3
 
 // Filter untuk riwayat verifikasi (verified, signed, selesai, completed)
 const filteredList = computed(() => {
@@ -57,6 +59,20 @@ const stats = computed(() => {
   }
 })
 
+// Pagination
+const totalPages = computed(() => Math.ceil(filteredList.value.length / itemsPerPage))
+
+const paginatedList = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage
+  const end = start + itemsPerPage
+  return filteredList.value.slice(start, end)
+})
+
+// Reset to page 1 when search changes
+watch(searchQuery, () => {
+  currentPage.value = 1
+})
+
 onMounted(async () => {
   await loadPengajuan()
 })
@@ -80,7 +96,7 @@ async function loadPengajuan() {
     const data = await pengajuanStore.fetchPengajuan()
     pengajuanList.value = data || []
     await loadVerificationInfo()
-    await loadSuratInfo() // Load surat info setelah verification info
+    // Tidak preload surat info - akan di-load saat tombol download diklik (lazy load)
   } catch (error) {
     console.error('Failed to load pengajuan:', error)
   } finally {
@@ -89,47 +105,54 @@ async function loadPengajuan() {
 }
 
 async function loadVerificationInfo() {
-  const promises = filteredList.value.map(async (pengajuan) => {
+  // Hanya load untuk halaman saat ini (paginatedList), bukan semua data
+  const promises = paginatedList.value.map(async (pengajuan) => {
     try {
       const response = await api.get(`/verification/pengajuan/${pengajuan.id}`)
       verificationInfoMap.value.set(pengajuan.id, response.data)
     } catch (error) {
-      console.error(`Failed to load verification info for pengajuan ${pengajuan.id}:`, error)
+      // Silent fail - verification info might not be available
     }
   })
   await Promise.all(promises)
 }
 
-async function loadSuratInfo() {
-  // Load surat izin dan surat tugas info untuk setiap pengajuan
-  const promises = filteredList.value.map(async (pengajuan) => {
-    // Load Surat Izin
-    try {
-      const suratIzinResponse = await api.get(`/pengajuan/${pengajuan.id}/surat-izin`)
-      // API response format: { data: { id, status, ... } }
-      suratIzinMap.value.set(pengajuan.id, suratIzinResponse.data.data || suratIzinResponse.data)
-      console.log(`Surat Izin for pengajuan ${pengajuan.id}:`, suratIzinResponse.data.data || suratIzinResponse.data)
-    } catch (error) {
-      // Surat izin mungkin belum ada, tidak perlu error
-      suratIzinMap.value.set(pengajuan.id, null)
-    }
+// Load surat info on-demand untuk satu pengajuan (dipanggil saat akan download)
+async function loadSuratInfoForPengajuan(pengajuanId) {
+  // Check cache dulu
+  if (suratIzinMap.value.has(pengajuanId) && suratTugasMap.value.has(pengajuanId)) {
+    return
+  }
 
-    // Load Surat Tugas Mandiri
-    try {
-      const suratTugasResponse = await api.get(`/pengajuan/${pengajuan.id}/surat-tugas-mandiri`)
-      // API response format: { data: { id, status, ... } }
-      suratTugasMap.value.set(pengajuan.id, suratTugasResponse.data.data || suratTugasResponse.data)
-      console.log(`Surat Tugas for pengajuan ${pengajuan.id}:`, suratTugasResponse.data.data || suratTugasResponse.data)
-    } catch (error) {
-      // Surat tugas mungkin belum ada, tidak perlu error
-      suratTugasMap.value.set(pengajuan.id, null)
-    }
-  })
-  await Promise.all(promises)
+  // Load Surat Izin
+  try {
+    const suratIzinResponse = await api.get(`/pengajuan/${pengajuanId}/surat-izin`)
+    suratIzinMap.value.set(pengajuanId, suratIzinResponse.data.data || suratIzinResponse.data)
+  } catch (error) {
+    suratIzinMap.value.set(pengajuanId, null)
+  }
+
+  // Load Surat Tugas Mandiri
+  try {
+    const suratTugasResponse = await api.get(`/pengajuan/${pengajuanId}/surat-tugas-mandiri`)
+    suratTugasMap.value.set(pengajuanId, suratTugasResponse.data.data || suratTugasResponse.data)
+  } catch (error) {
+    suratTugasMap.value.set(pengajuanId, null)
+  }
 }
 
-// Download Surat Izin Belajar
+// Reload data saat halaman berubah
+watch(currentPage, async () => {
+  await loadVerificationInfo()
+})
+
+// Download Surat Izin Belajar (Lazy Load)
 async function downloadSuratIzin(pengajuanId) {
+  // Load surat info on-demand jika belum ada di cache
+  if (!suratIzinMap.value.has(pengajuanId)) {
+    await loadSuratInfoForPengajuan(pengajuanId)
+  }
+
   const suratIzin = suratIzinMap.value.get(pengajuanId)
   if (!suratIzin || !suratIzin.id) {
     toast.error('Surat Izin Belajar belum tersedia')
@@ -146,8 +169,13 @@ async function downloadSuratIzin(pengajuanId) {
   toast.success('Surat Izin Belajar sedang diunduh...')
 }
 
-// Download Surat Tugas Belajar Mandiri
+// Download Surat Tugas Belajar Mandiri (Lazy Load)
 async function downloadSuratTugas(pengajuanId) {
+  // Load surat info on-demand jika belum ada di cache
+  if (!suratTugasMap.value.has(pengajuanId)) {
+    await loadSuratInfoForPengajuan(pengajuanId)
+  }
+
   const suratTugas = suratTugasMap.value.get(pengajuanId)
   if (!suratTugas || !suratTugas.id) {
     toast.error('Surat Tugas Belajar belum tersedia')
@@ -164,16 +192,18 @@ async function downloadSuratTugas(pengajuanId) {
   toast.success('Surat Tugas Belajar sedang diunduh...')
 }
 
-// Cek apakah surat izin tersedia
+// Cek apakah surat izin tersedia (berdasarkan status pengajuan, bukan cache)
 function hasSuratIzin(pengajuanId) {
-  const suratIzin = suratIzinMap.value.get(pengajuanId)
-  return suratIzin && suratIzin.id && (suratIzin.status === 'signed' || suratIzin.status === 'completed')
+  const pengajuan = pengajuanList.value.find(p => p.id === pengajuanId)
+  // Surat izin tersedia jika status signed, selesai, atau completed
+  return pengajuan && ['signed', 'selesai', 'completed'].includes(pengajuan.status)
 }
 
-// Cek apakah surat tugas tersedia
+// Cek apakah surat tugas tersedia (berdasarkan status pengajuan, bukan cache)
 function hasSuratTugas(pengajuanId) {
-  const suratTugas = suratTugasMap.value.get(pengajuanId)
-  return suratTugas && suratTugas.id && (suratTugas.status === 'signed' || suratTugas.status === 'completed')
+  const pengajuan = pengajuanList.value.find(p => p.id === pengajuanId)
+  // Surat tugas tersedia jika status selesai atau completed
+  return pengajuan && ['selesai', 'completed'].includes(pengajuan.status)
 }
 
 function getStatusBadgeClass(status) {
@@ -198,7 +228,7 @@ function getStatusLabel(status) {
 
 function getNextAction(status) {
   const actions = {
-    'verified': { label: 'Menunggu TTE', icon: 'ri-edit-sign-line', color: 'blue' },
+    'verified': { label: 'Siap Terbit Surat', icon: 'ri-file-text-line', color: 'blue' },
     'signed': { label: 'Menunggu Surat Tugas', icon: 'ri-file-list-line', color: 'purple' },
     'selesai': { label: 'Selesai', icon: 'ri-checkbox-circle-line', color: 'green' },
     'completed': { label: 'Selesai', icon: 'ri-checkbox-circle-line', color: 'green' }
@@ -206,7 +236,7 @@ function getNextAction(status) {
   return actions[status] || null
 }
 
-// Milestone dot-line functions (4 Steps)
+// Milestone dot-line functions (3 Steps)
 function getMilestoneSteps(pengajuan) {
   const status = pengajuan.status
   const steps = []
@@ -224,26 +254,19 @@ function getMilestoneSteps(pengajuan) {
               ['pending_admin'].includes(status) ? 'current' : 'pending',
   })
 
-  // Step 3: TTE
-  steps.push({
-    label: 'TTE',
-    status: ['selesai', 'completed'].includes(status) ? 'completed' :
-              ['signed'].includes(status) ? 'current' : 'pending',
-  })
-
-  // Step 4: Selesai
+  // Step 3: Selesai
   steps.push({
     label: 'Selesai',
-    status: ['selesai', 'completed'].includes(status) ? 'completed' : 'pending',
+    status: ['selesai', 'completed'].includes(status) ? 'completed' :
+              ['signed'].includes(status) ? 'current' : 'pending',
   })
 
   return steps
 }
 
 function getProgressLineClass(status) {
-  if (status === 'verified') return 'w-2/4 bg-blue-500'
-  if (status === 'signed') return 'w-3/4 bg-blue-500'
-  if (status === 'selesai' || status === 'completed') return 'w-full bg-green-500'
+  if (status === 'verified') return 'w-2/3 bg-blue-500'
+  if (status === 'signed' || status === 'selesai' || status === 'completed') return 'w-full bg-green-500'
   return 'w-0 bg-gray-200'
 }
 
@@ -376,7 +399,7 @@ if (typeof window !== 'undefined') {
     <!-- List -->
     <div v-else class="space-y-3 animate-slide-up">
       <div
-        v-for="item in filteredList"
+        v-for="item in paginatedList"
         :key="item.id"
         class="bg-white rounded-xl border border-secondary-200 shadow-sm hover:shadow-md transition-all"
       >
@@ -544,6 +567,27 @@ if (typeof window !== 'undefined') {
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Pagination -->
+    <div v-if="filteredList.length > 0 && totalPages > 1" class="flex items-center justify-center gap-2 mt-6">
+      <button
+        @click="currentPage--"
+        :disabled="currentPage === 1"
+        class="px-4 py-2 rounded-lg border border-secondary-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-secondary-50 transition-colors"
+      >
+        <i class="ri-arrow-left-s-line"></i>
+      </button>
+      <span class="text-sm text-secondary-600">
+        Halaman {{ currentPage }} dari {{ totalPages }}
+      </span>
+      <button
+        @click="currentPage++"
+        :disabled="currentPage === totalPages"
+        class="px-4 py-2 rounded-lg border border-secondary-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-secondary-50 transition-colors"
+      >
+        <i class="ri-arrow-right-s-line"></i>
+      </button>
     </div>
 
     <SendMessageModal

@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Notification;
 use App\Models\Pengajuan;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -266,6 +268,21 @@ class PengajuanController extends Controller
             'status' => 'pending_admin',
             'tanggal_submit_admin' => now(),
         ]);
+
+        // Notify all admin BKPSDM users
+        $adminUsers = User::whereHas('role', function ($query) {
+            $query->where('slug', 'admin_bkpsdm');
+        })->get();
+
+        foreach ($adminUsers as $admin) {
+            Notification::createForUser(
+                userId: $admin->id,
+                type: 'info',
+                title: 'Pengajuan Baru',
+                message: "Pengajuan baru dari {$pengajuan->user->name} menunggu verifikasi.",
+                pengajuanId: $pengajuan->id
+            );
+        }
 
         return response()->json($pengajuan->load(['user', 'jenjang']));
     }

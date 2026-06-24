@@ -2779,3 +2779,134 @@ php artisan pegawai:import path/to/file.json --mode=sync
 - **Password Default**: All imported pegawai get default password `password123`
 
 ---
+
+## Recent Changes (2026-06-23)
+
+### Notification System for New Pengajuan
+
+**Overview:**
+- Admin BKPSDM now receives notification when pemohon submits new pengajuan
+- Notification appears in bell icon with unread count
+- Notifikasi dibuat otomatis saat status berubah ke `pending_admin`
+
+**Backend Implementation:**
+- **PengajuanController::submit()** - Updated to create notifications
+  - Finds all users with role `admin_bkpsdm`
+  - Creates notification for each admin user
+  - Notification type: `pengajuan_baru`
+  - Message includes pemohon name
+
+**File Changed:**
+- `backend/app/Http/Controllers/PengajuanController.php`
+  - Added imports: `use App\Models\Notification;` and `use App\Models\User;`
+  - Added notification creation logic in `submit()` method
+
+### TTE Nomor Surat Fix
+
+**Issue:**
+Nomor surat TTE menghasilkan angka overflow (`9.2233720368548E+18`) karena `FILTER_SANITIZE_NUMBER_INT` mengambil SEMUA angka dari nomor surat.
+
+**Perbaikan:**
+- **SuratIzinBelajarController::store()** - Fixed sequence number generation
+- Menggunakan `explode()` untuk mengambil sequence number dari format `800.1.3.1/{sequence}/BKPSDM/{year}`
+- Hanya mengambil angka pada posisi ke-2 setelah explode
+
+**Before (Buggy):**
+```php
+$nextNomor = $lastNomor ? ((int) filter_var($lastNomor->nomor_surat, FILTER_SANITIZE_NUMBER_INT) + 1) : 1;
+// Hasil: 8001310012027 → overflow!
+```
+
+**After (Fixed):**
+```php
+$parts = explode('/', $lastNomor->nomor_surat);
+// ['800.1.3.1', '001', 'BKPSDM', '2026']
+if (count($parts) >= 2 && is_numeric($parts[1])) {
+    $nextNomor = (int) $parts[1] + 1;
+} else {
+    $nextNomor = 1;
+}
+```
+
+**Database Cleanup:**
+- Run migration to make `surat_tugas_dinas_id` nullable:
+  `2026_06_02_093035_make_surat_tugas_dinas_id_nullable_in_surat_izin_belajar_table.php`
+- Delete corrupted records with `nomor_surat LIKE '%E+%'`
+- Fix sequence numbers manually
+
+### Kepala Unit Fallback for Surat Tugas Dinas
+
+**Issue:**
+Server error "Kepala Unit not found for this unit kerja" saat membuat Surat Tugas Dinas karena tidak semua unit kerja punya kepala unit.
+
+**Solusi:**
+- **SuratTugasDinasController::store()** - Added fallback to Kepala BKPSDM
+- Jika unit kerja tidak punya kepala unit, gunakan Kepala BKPSDM sebagai default
+- Masuk akal karena Surat Tugas Dinas menggunakan kop BKPSDM
+
+**Implementation:**
+```php
+// Find kepala unit for unit kerja
+$kepalaUnit = User::where('unit_kerja_id', $unitKerjaId)
+    ->where('is_kepala_unit', true)
+    ->first();
+
+// If no kepala unit, use Kepala BKPSDM as fallback
+if (!$kepalaUnit) {
+    $kepalaUnit = User::whereHas('role', function ($query) {
+        $query->where('slug', 'kepala_bkpsdm');
+    })->first();
+}
+```
+
+### Storage Symlink Issue (cPanel Deployment)
+
+**Issue:**
+File upload tidak bisa di-preview di server karena `storage:link` belum dibuat. Beberapa shared hosting tidak mengizinkan symlink.
+
+**Symptoms:**
+- 404 error saat mengakses `/storage/dokumen/4/filename.png`
+- File ada di `storage/app/public/` tapi tidak bisa diakses
+
+**Solutions:**
+
+**Option 1: PHP Script (Tanpa SSH)**
+Buat file `create_storage_link.php` di `public_html/api/`:
+```php
+<?php
+$target = '../storage/app/public';
+$link = __DIR__ . '/public/storage';
+
+if (is_link($link)) {
+    echo "Storage link sudah ada.";
+} else {
+    if (symlink($target, $link)) {
+        echo "✅ Storage link berhasil dibuat!";
+    } else {
+        echo "❌ Gagal. Hosting tidak izinkan symlink.";
+    }
+}
+?>
+```
+
+**Option 2: Manual Copy (Tanpa Symlink)**
+Jika hosting tidak support symlink, copy files dari `storage/app/public` ke `public/storage`:
+```php
+<?php
+// fix_storage.php
+$sourceDir = __DIR__ . '/storage/app/public';
+$targetDir = __DIR__ . '/public/storage';
+
+// Copy semua file...
+?>
+```
+
+**Option 3: Hubungi Support Hosting**
+Minta aktifkan symlink atau jalankan `php artisan storage:link`.
+
+**Files Changed:**
+- `backend/app/Http/Controllers/PengajuanController.php` - Notification fix
+- `backend/app/Http/Controllers/SuratIzinBelajarController.php` - Nomor surat fix
+- `backend/app/Http/Controllers/SuratTugasDinasController.php` - Kepala unit fallback
+
+---

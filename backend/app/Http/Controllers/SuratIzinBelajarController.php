@@ -152,7 +152,19 @@ class SuratIzinBelajarController extends Controller
             // Generate nomor surat izin belajar
             $year = date('Y');
             $lastNomor = SuratIzinBelajar::where('tahun', $year)->orderBy('id', 'desc')->first();
-            $nextNomor = $lastNomor ? ((int) filter_var($lastNomor->nomor_surat, FILTER_SANITIZE_NUMBER_INT) + 1) : 1;
+
+            // Extract sequence number from format: 800.1.3.1/{sequence}/BKPSDM/{year}
+            if ($lastNomor) {
+                $parts = explode('/', $lastNomor->nomor_surat);
+                // Format: ['800.1.3.1', '{sequence}', 'BKPSDM', '{year}']
+                if (count($parts) >= 2 && is_numeric($parts[1])) {
+                    $nextNomor = (int) $parts[1] + 1;
+                } else {
+                    $nextNomor = 1;
+                }
+            } else {
+                $nextNomor = 1;
+            }
             $nomorSurat = "800.1.3.1/{$nextNomor}/BKPSDM/{$year}";
 
             // Generate QR code for verification

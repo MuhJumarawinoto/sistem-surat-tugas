@@ -54,10 +54,10 @@ async function loadPengajuan() {
     // Ambil semua pengajuan yang perlu verifikasi admin
     // Filter akan dilakukan di frontend untuk hanya menampilkan yang belum selesai diverifikasi
     const data = await pengajuanStore.fetchPengajuan()
-    // Filter: Hanya tampilkan yang belum selesai diverifikasi (bukan verified, signed, selesai, completed)
-    // Data yang sudah selesai diverifikasi ada di menu Riwayat Verifikasi
+    // Filter: Hanya tampilkan yang belum selesai diverifikasi (bukan verified, signed, selesai, completed, dicabut)
+    // Data yang sudah selesai/diverifikasi/dicabut ada di menu Riwayat Verifikasi
     pengajuanList.value = (data || []).filter(p =>
-      !['verified', 'signed', 'selesai', 'completed'].includes(p.status)
+      !['verified', 'signed', 'selesai', 'completed', 'dicabut'].includes(p.status)
     )
 
     console.log('Admin pengajuan loaded:', pengajuanList.value.length, 'items')

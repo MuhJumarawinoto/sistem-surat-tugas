@@ -135,8 +135,11 @@ class SuratTugasDinasController extends Controller
             ->where('is_kepala_unit', true)
             ->first();
 
+        // If no kepala unit found, use Kepala BKPSDM as fallback
         if (!$kepalaUnit) {
-            return response()->json(['message' => 'Kepala Unit not found for this unit kerja.'], 400);
+            $kepalaUnit = User::whereHas('role', function ($query) {
+                $query->where('slug', 'kepala_bkpsdm');
+            })->first();
         }
 
         // Check unique nomor surat (per year for BKPSDM)

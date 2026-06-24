@@ -94,6 +94,7 @@ const tooltipPosition = ref({ left: '0px', top: '0px' }) // Fixed tooltip positi
 const activeSuratMenu = ref(null)
 const suratInfoMap = ref(new Map()) // pengajuan_id -> { surat_izin, surat_tugas_mandiri, surat_tugas_dinas }
 const loadingSurat = ref(false)
+const loadingSuratForPengajuan = ref(new Set()) // pengajuan_ids currently loading
 const downloadingSurat = ref(new Map()) // pengajuan_id -> { izin: false, tugas_mandiri: false, tugas_dinas: false }
 
 // Mobile surat selection modal state
@@ -101,8 +102,10 @@ const showSuratModal = ref(false)
 const selectedPengajuanForSurat = ref(null)
 
 // Open surat modal (mobile)
-function openSuratModal(pengajuan) {
+async function openSuratModal(pengajuan) {
   closeAllMenus()
+  // Load surat info before opening modal
+  await loadSuratInfoForPengajuan(pengajuan.id)
   selectedPengajuanForSurat.value = pengajuan
   showSuratModal.value = true
 }
@@ -130,8 +133,16 @@ function closeAllMenus() {
 }
 
 // Toggle surat menu
-function toggleSuratMenu(id) {
-  activeSuratMenu.value = activeSuratMenu.value === id ? null : id
+async function toggleSuratMenu(id) {
+  // If opening the menu (not closing)
+  if (activeSuratMenu.value !== id) {
+    // Load surat info FIRST, then open menu
+    await loadSuratInfoForPengajuan(id)
+    activeSuratMenu.value = id
+  } else {
+    // Just close the menu
+    activeSuratMenu.value = null
+  }
 }
 
 // Close surat menu
@@ -139,10 +150,10 @@ function closeSuratMenu() {
   activeSuratMenu.value = null
 }
 
-// Check if pengajuan has any surat
+// Check if pengajuan MIGHT have any surat (based on status)
 function hasSurat(pengajuan) {
-  const info = suratInfoMap.value.get(pengajuan.id)
-  return info && (info.surat_izin || info.surat_tugas_mandiri || info.surat_tugas_dinas)
+  // Check status directly - don't wait for data to load
+  return ['signed', 'selesai', 'completed'].includes(pengajuan.status)
 }
 
 // Get surat info for a pengajuan
@@ -150,56 +161,63 @@ function getSuratInfo(pengajuan) {
   return suratInfoMap.value.get(pengajuan.id) || { surat_izin: null, surat_tugas_mandiri: null, surat_tugas_dinas: null }
 }
 
-// Load surat info for pengajuan
-async function loadSuratInfo() {
-  loadingSurat.value = true
-  try {
-    const pengajuanWithSurat = pengajuanStore.pengajuanList.filter(p =>
-      ['signed', 'selesai', 'completed', 'surat_izin'].includes(p.status)
-    )
-
-    const promises = pengajuanWithSurat.map(async (pengajuan) => {
-      try {
-        // Try to get surat izin
-        let suratIzin = null
-        try {
-          const izinResponse = await api.get(`/pengajuan/${pengajuan.id}/surat-izin`)
-          suratIzin = izinResponse.data.data
-        } catch (e) {
-          // No surat izin
-        }
-
-        // Try to get surat tugas mandiri
-        let suratTugasMandiri = null
-        try {
-          const tugasResponse = await api.get(`/pengajuan/${pengajuan.id}/surat-tugas-mandiri`)
-          suratTugasMandiri = tugasResponse.data.data
-        } catch (e) {
-          // No surat tugas mandiri
-        }
-
-        // Try to get surat tugas dinas
-        let suratTugasDinas = null
-        try {
-          const dinasResponse = await api.get(`/surat-tugas/${pengajuan.id}`)
-          suratTugasDinas = dinasResponse.data.data
-        } catch (e) {
-          // No surat tugas dinas
-        }
-
-        suratInfoMap.value.set(pengajuan.id, {
-          surat_izin: suratIzin,
-          surat_tugas_mandiri: suratTugasMandiri,
-          surat_tugas_dinas: suratTugasDinas
-        })
-      } catch (error) {
-        console.error(`Failed to load surat info for pengajuan ${pengajuan.id}:`, error)
-      }
-    })
-    await Promise.all(promises)
-  } finally {
-    loadingSurat.value = false
+// Load surat info for a single pengajuan (lazy load)
+async function loadSuratInfoForPengajuan(pengajuanId) {
+  // Skip if already loaded
+  if (suratInfoMap.value.has(pengajuanId)) {
+    return
   }
+  // Skip if already loading
+  if (loadingSuratForPengajuan.value.has(pengajuanId)) {
+    return
+  }
+
+  loadingSuratForPengajuan.value.add(pengajuanId)
+
+  try {
+    // Try to get surat izin
+    let suratIzin = null
+    try {
+      const izinResponse = await api.get(`/pengajuan/${pengajuanId}/surat-izin`)
+      suratIzin = izinResponse.data.data
+    } catch (e) {
+      // No surat izin
+    }
+
+    // Try to get surat tugas mandiri
+    let suratTugasMandiri = null
+    try {
+      const tugasResponse = await api.get(`/pengajuan/${pengajuanId}/surat-tugas-mandiri`)
+      suratTugasMandiri = tugasResponse.data.data
+    } catch (e) {
+      // No surat tugas mandiri
+    }
+
+    // Try to get surat tugas dinas
+    let suratTugasDinas = null
+    try {
+      const dinasResponse = await api.get(`/surat-tugas/${pengajuanId}`)
+      suratTugasDinas = dinasResponse.data.data
+    } catch (e) {
+      // No surat tugas dinas
+    }
+
+    suratInfoMap.value.set(pengajuanId, {
+      surat_izin: suratIzin,
+      surat_tugas_mandiri: suratTugasMandiri,
+      surat_tugas_dinas: suratTugasDinas
+    })
+  } catch (error) {
+    console.error(`Failed to load surat info for pengajuan ${pengajuanId}:`, error)
+  } finally {
+    loadingSuratForPengajuan.value.delete(pengajuanId)
+  }
+}
+
+// Load surat info for all pengajuans (no longer needed - using lazy load)
+async function loadSuratInfo() {
+  // Empty function - lazy loading is now used instead
+  loadingSurat.value = false
 }
 
 // Download surat izin
@@ -269,6 +287,11 @@ function downloadSuratTugasDinas(pengajuan) {
 function isDownloading(pengajuanId, type) {
   const state = downloadingSurat.value.get(pengajuanId)
   return state ? state[type] : false
+}
+
+// Helper to check if loading surat info
+function isLoadingSurat(pengajuanId) {
+  return loadingSuratForPengajuan.value.has(pengajuanId)
 }
 
 // Close menu when clicking outside
@@ -489,7 +512,7 @@ function getMilestoneSteps(pengajuan) {
 
   const steps = []
 
-  // Simplified Flow: 4 Steps - Dikirim → Verifikasi → TTE → Selesai
+  // Simplified Flow: 3 Steps - Dikirim → Verifikasi → Selesai
 
   // Step 1: Dikirim
   steps.push({
@@ -504,17 +527,11 @@ function getMilestoneSteps(pengajuan) {
               ['pending_admin'].includes(status) ? 'current' : 'pending',
   })
 
-  // Step 3: TTE (Kepala BKPSDM)
-  steps.push({
-    label: 'TTE',
-    status: ['selesai', 'completed'].includes(status) ? 'completed' :
-              ['signed'].includes(status) ? 'current' : 'pending',
-  })
-
-  // Step 4: Selesai
+  // Step 3: Selesai
   steps.push({
     label: 'Selesai',
-    status: ['selesai', 'completed'].includes(status) ? 'completed' : 'pending',
+    status: ['selesai', 'completed'].includes(status) ? 'completed' :
+              ['signed'].includes(status) ? 'current' : 'pending',
   })
 
   return steps
@@ -527,25 +544,21 @@ function getStepClass(step) {
 }
 
 function getProgressLineClass(status) {
-  // Simplified Flow: 4 Steps - Dikirim → Verifikasi → TTE → Selesai
+  // Simplified Flow: 3 Steps - Dikirim → Verifikasi → Selesai
   // Draft - no progress
   if (status === 'draft' || status === 'dicabut' || status === 'ditolak') {
     return 'w-0 bg-gray-200'
   }
-  // Pending Admin - 1/4 progress (25%) - Dikirim completed, Verifikasi current
+  // Pending Admin - 1/3 progress (33%) - Dikirim completed, Verifikasi current
   if (status === 'pending_admin') {
-    return 'w-1/4 bg-blue-500'
+    return 'w-1/3 bg-blue-500'
   }
-  // Verified - 2/4 progress (50%) - Verifikasi completed, TTE current
+  // Verified - 2/3 progress (67%) - Verifikasi completed, Selesai current
   if (status === 'verified') {
-    return 'w-2/4 bg-blue-500'
+    return 'w-2/3 bg-blue-500'
   }
-  // Signed - 3/4 progress (75%) - TTE completed, Selesai current
-  if (status === 'signed') {
-    return 'w-3/4 bg-blue-500'
-  }
-  // Selesai/Completed - full progress (100%)
-  if (status === 'selesai' || status === 'completed') {
+  // Signed/Selesai/Completed - full progress (100%)
+  if (status === 'signed' || status === 'selesai' || status === 'completed') {
     return 'w-full bg-green-500'
   }
   // Default
@@ -559,13 +572,12 @@ function getLineClass(index, steps) {
   return 'bg-gray-200'
 }
 
-// Get tooltip info for milestone step (Updated for 4 Steps)
+// Get tooltip info for milestone step (Updated for 3 Steps)
 function getMilestoneTooltip(step, pengajuan) {
   if (step.status === 'completed') {
     const completedInfo = {
       'Dikirim': 'Pengajuan telah dikirim',
       'Verifikasi': 'Dokumen lengkap & telah diverifikasi admin',
-      'TTE': 'Surat telah ditandatangani secara elektronik',
       'Selesai': 'Proses pengajuan telah selesai'
     }
     return {
@@ -580,7 +592,6 @@ function getMilestoneTooltip(step, pengajuan) {
     const currentInfo = {
       'Dikirim': 'Menunggu verifikasi dari admin BKPSDM',
       'Verifikasi': 'Sedang diverifikasi dokumen oleh admin BKPSDM',
-      'TTE': 'Sedang proses penandatanganan elektronik (TTE)',
       'Selesai': 'Proses hampir selesai'
     }
     return {
@@ -595,7 +606,6 @@ function getMilestoneTooltip(step, pengajuan) {
   const pendingInfo = {
     'Dikirim': 'Pengajuan sudah dikirim',
     'Verifikasi': 'Menunggu verifikasi dokumen oleh admin BKPSDM',
-    'TTE': 'Menunggu proses Tanda Tangan Elektronik',
     'Selesai': 'Menunggu proses penyelesaian'
   }
   return {
@@ -990,36 +1000,54 @@ async function handleDelete(id) {
                         v-if="activeSuratMenu === item.id"
                         class="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-secondary-200 z-[100]"
                       >
-                        <button
-                          v-if="getSuratInfo(item).surat_izin"
-                          @click="downloadSuratIzin(item)"
-                          :disabled="isDownloading(item.id, 'izin')"
-                          class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        <!-- Loading state -->
+                        <div
+                          v-if="isLoadingSurat(item.id)"
+                          class="w-full px-4 py-3 flex items-center justify-center gap-2 text-secondary-500"
                         >
-                          <i v-if="isDownloading(item.id, 'izin')" class="ri-loader-4-line animate-spin text-primary-600"></i>
-                          <i v-else class="ri-download-line text-primary-600"></i>
-                          <span>{{ isDownloading(item.id, 'izin') ? 'Mengunduh...' : 'Surat Izin Belajar (BKPSDM)' }}</span>
-                        </button>
-                        <button
-                          v-if="getSuratInfo(item).surat_tugas_mandiri"
-                          @click="downloadSuratTugasMandiri(item)"
-                          :disabled="isDownloading(item.id, 'tugas_mandiri')"
-                          class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <i v-if="isDownloading(item.id, 'tugas_mandiri')" class="ri-loader-4-line animate-spin text-primary-600"></i>
-                          <i v-else class="ri-download-line text-primary-600"></i>
-                          <span>{{ isDownloading(item.id, 'tugas_mandiri') ? 'Mengunduh...' : 'Surat Tugas Mandiri (Admin)' }}</span>
-                        </button>
-                        <button
-                          v-if="getSuratInfo(item).surat_tugas_dinas"
-                          @click="downloadSuratTugasDinas(item)"
-                          :disabled="isDownloading(item.id, 'tugas_dinas')"
-                          class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <i v-if="isDownloading(item.id, 'tugas_dinas')" class="ri-loader-4-line animate-spin text-primary-600"></i>
-                          <i v-else class="ri-download-line text-primary-600"></i>
-                          <span>{{ isDownloading(item.id, 'tugas_dinas') ? 'Mengunduh...' : 'Surat Tugas Dinas (Kepala Dinas)' }}</span>
-                        </button>
+                          <i class="ri-loader-4-line animate-spin text-primary-600"></i>
+                          <span class="text-sm">Memuat surat...</span>
+                        </div>
+                        <!-- Surat options -->
+                        <template v-else>
+                          <button
+                            v-if="getSuratInfo(item).surat_izin"
+                            @click="downloadSuratIzin(item)"
+                            :disabled="isDownloading(item.id, 'izin')"
+                            class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <i v-if="isDownloading(item.id, 'izin')" class="ri-loader-4-line animate-spin text-primary-600"></i>
+                            <i v-else class="ri-download-line text-primary-600"></i>
+                            <span>{{ isDownloading(item.id, 'izin') ? 'Mengunduh...' : 'Surat Izin Belajar (BKPSDM)' }}</span>
+                          </button>
+                          <button
+                            v-if="getSuratInfo(item).surat_tugas_mandiri"
+                            @click="downloadSuratTugasMandiri(item)"
+                            :disabled="isDownloading(item.id, 'tugas_mandiri')"
+                            class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <i v-if="isDownloading(item.id, 'tugas_mandiri')" class="ri-loader-4-line animate-spin text-primary-600"></i>
+                            <i v-else class="ri-download-line text-primary-600"></i>
+                            <span>{{ isDownloading(item.id, 'tugas_mandiri') ? 'Mengunduh...' : 'Surat Tugas Mandiri (Admin)' }}</span>
+                          </button>
+                          <button
+                            v-if="getSuratInfo(item).surat_tugas_dinas"
+                            @click="downloadSuratTugasDinas(item)"
+                            :disabled="isDownloading(item.id, 'tugas_dinas')"
+                            class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <i v-if="isDownloading(item.id, 'tugas_dinas')" class="ri-loader-4-line animate-spin text-primary-600"></i>
+                            <i v-else class="ri-download-line text-primary-600"></i>
+                            <span>{{ isDownloading(item.id, 'tugas_dinas') ? 'Mengunduh...' : 'Surat Tugas Dinas (Kepala Dinas)' }}</span>
+                          </button>
+                          <!-- No surat message -->
+                          <div
+                            v-if="!getSuratInfo(item).surat_izin && !getSuratInfo(item).surat_tugas_mandiri && !getSuratInfo(item).surat_tugas_dinas"
+                            class="w-full px-4 py-3 text-center text-secondary-500 text-sm"
+                          >
+                            Tidak ada surat tersedia
+                          </div>
+                        </template>
                       </div>
                     </div>
                     <button
@@ -1168,7 +1196,18 @@ async function handleDelete(id) {
                 Nomor: <span class="font-medium text-secondary-800">{{ selectedPengajuanForSurat.nomor_pengajuan || '-' }}</span>
               </p>
 
-              <!-- Surat Izin Belajar -->
+              <!-- Loading state -->
+              <div
+                v-if="isLoadingSurat(selectedPengajuanForSurat.id)"
+                class="flex items-center justify-center py-8 gap-2 text-secondary-500"
+              >
+                <i class="ri-loader-4-line animate-spin text-xl text-primary-600"></i>
+                <span>Memuat surat...</span>
+              </div>
+              
+              <!-- Surat options -->
+              <template v-else>
+	                <!-- Surat Izin Belajar -->
               <div
                 v-if="getSuratInfo(selectedPengajuanForSurat).surat_izin"
                 class="border border-secondary-200 rounded-xl overflow-hidden"
@@ -1239,6 +1278,16 @@ async function handleDelete(id) {
                   <i v-else class="ri-download-line text-xl text-secondary-400"></i>
                 </button>
               </div>
+
+	              <!-- No surat message -->
+              <div
+                v-if="!getSuratInfo(selectedPengajuanForSurat).surat_izin && !getSuratInfo(selectedPengajuanForSurat).surat_tugas_mandiri && !getSuratInfo(selectedPengajuanForSurat).surat_tugas_dinas"
+                class="text-center py-8 text-secondary-500"
+              >
+                <i class="ri-file-text-line text-4xl text-secondary-300 mb-2"></i>
+                <p>Tidak ada surat tersedia</p>
+              </div>
+              </template>
             </div>
           </div>
 

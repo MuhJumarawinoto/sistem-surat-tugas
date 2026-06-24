@@ -17,7 +17,7 @@ const props = defineProps({
 const loading = ref(false)
 const pengajuan = ref(null)
 
-// Updated status mapping based on actual database values (Simplified Flow - 4 Steps)
+// Updated status mapping based on actual database values (Simplified Flow - 3 Steps)
 const steps = computed(() => {
   if (!pengajuan.value) return []
 
@@ -39,13 +39,6 @@ const steps = computed(() => {
       status: getStepStatus(status, 'verifikasi')
     },
     {
-      id: 'tte',
-      label: 'TTE',
-      icon: 'ri-edit-sign-line',
-      description: 'Kepala BKPSDM menandatangani surat',
-      status: getStepStatus(status, 'tte')
-    },
-    {
       id: 'selesai',
       label: 'Selesai',
       icon: 'ri-checkbox-circle-fill',
@@ -65,13 +58,13 @@ function getStatusDescription(pengajuanStatus, stepId) {
   return ''
 }
 
-// Determine step status based on pengajuan status (Simplified Flow - 4 Steps)
+// Determine step status based on pengajuan status (Simplified Flow - 3 Steps)
 function getStepStatus(pengajuanStatus, stepId) {
   // Rejected status
   if (pengajuanStatus === 'ditolak') return 'rejected'
 
   // Step status logic
-  const stepOrder = ['kirim', 'verifikasi', 'tte', 'selesai']
+  const stepOrder = ['kirim', 'verifikasi', 'selesai']
 
   // Map pengajuan status to step index
   let currentStepIndex = -1
@@ -83,9 +76,9 @@ function getStepStatus(pengajuanStatus, stepId) {
   } else if (pengajuanStatus === 'verified') {
     currentStepIndex = 1 // At 'verifikasi' step
   } else if (pengajuanStatus === 'signed') {
-    currentStepIndex = 2 // At 'tte' step
+    currentStepIndex = 2 // At 'selesai' step - surat sudah ditandatangani
   } else if (pengajuanStatus === 'selesai' || pengajuanStatus === 'completed') {
-    currentStepIndex = 3 // At 'selesai' step
+    currentStepIndex = 2 // At 'selesai' step
   }
 
   const stepIndex = stepOrder.indexOf(stepId)
@@ -100,13 +93,12 @@ function getStepStatus(pengajuanStatus, stepId) {
 }
 
 const progressPercentage = computed(() => {
-  // Simplified Flow: 4 Steps - Dikirim → Verifikasi → TTE → Selesai
+  // Simplified Flow: 3 Steps - Dikirim → Verifikasi → Selesai
   const status = pengajuan.value?.status
   if (status === 'ditolak' || status === 'draft') return 0
-  if (status === 'pending_admin') return 25  // 1/4 - Dikirim completed, Verifikasi current
-  if (status === 'verified') return 50      // 2/4 - Verifikasi completed, TTE current
-  if (status === 'signed') return 75       // 3/4 - TTE completed, Selesai current
-  if (status === 'selesai' || status === 'completed') return 100  // 4/4 - Selesai
+  if (status === 'pending_admin') return 33  // 1/3 - Dikirim completed, Verifikasi current
+  if (status === 'verified') return 67      // 2/3 - Verifikasi completed, Selesai current
+  if (status === 'signed' || status === 'selesai' || status === 'completed') return 100  // 3/3 - Selesai
   return 0
 })
 
@@ -151,7 +143,7 @@ function getStatusLabel(status) {
     'verified': 'Terverifikasi',
     'surat_dinas': 'Surat Tugas Dinas',
     'surat_izin': 'Surat Izin Belajar',
-    'signed': 'Ditandatangani',
+    'signed': 'Surat Terbit',
     'selesai': 'Selesai',
     'completed': 'Selesai',
     'ditolak': 'Ditolak',

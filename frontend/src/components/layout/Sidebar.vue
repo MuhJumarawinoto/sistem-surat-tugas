@@ -63,7 +63,7 @@ const menuGroups = computed(() => {
     groups.push({
       title: 'Surat',
       items: [
-        { path: '/admin/surat-izin', label: 'Surat Izin Belajar', icon: 'ri-file-text-line' },
+        // { path: '/admin/surat-izin', label: 'Surat Izin Belajar', icon: 'ri-file-text-line' }, // Hidden - Surat Izin auto-created with TTE
         { path: '/admin/surat-tugas', label: 'Surat Tugas Belajar', icon: 'ri-file-list-line' },
       ],
     })

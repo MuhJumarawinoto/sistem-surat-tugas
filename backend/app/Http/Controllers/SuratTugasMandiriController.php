@@ -4,14 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\Notification;
 use App\Models\Pengajuan;
-use App\Models\SuratIzinBelajar;
-use App\Models\SuratTugasDinas;
 use App\Models\SuratTugasMandiri;
 use App\Services\QrCodeService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class SuratTugasMandiriController extends Controller
 {
@@ -29,7 +28,7 @@ class SuratTugasMandiriController extends Controller
     {
         $user = $request->user();
 
-        if (!$user->isAdminBkpsdm()) {
+        if (! $user->isAdminBkpsdm()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -56,7 +55,7 @@ class SuratTugasMandiriController extends Controller
     {
         $user = $request->user();
 
-        if (!$user->isAdminBkpsdm()) {
+        if (! $user->isAdminBkpsdm()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -81,7 +80,7 @@ class SuratTugasMandiriController extends Controller
             ->where('pengajuan_id', $pengajuanId)
             ->first();
 
-        if (!$surat) {
+        if (! $surat) {
             return response()->json(['message' => 'Surat not found'], 404);
         }
 
@@ -123,7 +122,7 @@ class SuratTugasMandiriController extends Controller
     {
         $user = $request->user();
 
-        if (!$user->isAdminBkpsdm()) {
+        if (! $user->isAdminBkpsdm()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -144,7 +143,7 @@ class SuratTugasMandiriController extends Controller
         }
 
         // Check if surat izin belajar exists
-        if (!$pengajuan->suratIzinBelajar) {
+        if (! $pengajuan->suratIzinBelajar) {
             return response()->json(['message' => 'Surat Izin Belajar must be created first'], 400);
         }
 
@@ -177,7 +176,8 @@ class SuratTugasMandiriController extends Controller
             return response()->json($surat->load(['pengajuan.user', 'suratIzinBelajar']), 201);
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['message' => 'Failed to create surat: ' . $e->getMessage()], 500);
+
+            return response()->json(['message' => 'Failed to create surat: '.$e->getMessage()], 500);
         }
     }
 
@@ -188,7 +188,7 @@ class SuratTugasMandiriController extends Controller
     {
         $user = $request->user();
 
-        if (!$user->isAdminBkpsdm()) {
+        if (! $user->isAdminBkpsdm()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -217,7 +217,7 @@ class SuratTugasMandiriController extends Controller
     {
         $user = $request->user();
 
-        if (!$user->isAdminBkpsdm()) {
+        if (! $user->isAdminBkpsdm()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -239,7 +239,7 @@ class SuratTugasMandiriController extends Controller
     {
         $user = $request->user();
 
-        if (!$user->isAdminBkpsdm()) {
+        if (! $user->isAdminBkpsdm()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -271,8 +271,8 @@ class SuratTugasMandiriController extends Controller
         // Check token from query parameter (for direct download link)
         if ($request->has('token')) {
             $token = $request->query('token');
-            $personalAccessToken = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
-            if (!$personalAccessToken) {
+            $personalAccessToken = PersonalAccessToken::findToken($token);
+            if (! $personalAccessToken) {
                 return response()->json(['message' => 'Invalid token'], 401);
             }
             $user = $personalAccessToken->tokenable;
@@ -328,7 +328,7 @@ class SuratTugasMandiriController extends Controller
     {
         $user = $request->user();
 
-        if (!$user->isKepalaBkpsdm()) {
+        if (! $user->isKepalaBkpsdm()) {
             return response()->json(['message' => 'Only Kepala BKPSDM can sign'], 403);
         }
 
@@ -339,7 +339,7 @@ class SuratTugasMandiriController extends Controller
             'suratTugasDinas',
         ])->findOrFail($id);
 
-        if (!$surat->canBeSigned()) {
+        if (! $surat->canBeSigned()) {
             return response()->json(['message' => 'Surat has already been signed or cannot be signed.'], 400);
         }
 
@@ -405,7 +405,8 @@ class SuratTugasMandiriController extends Controller
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['message' => 'Failed to sign surat: ' . $e->getMessage()], 500);
+
+            return response()->json(['message' => 'Failed to sign surat: '.$e->getMessage()], 500);
         }
     }
 
@@ -418,21 +419,21 @@ class SuratTugasMandiriController extends Controller
             // Check token from query parameter (for direct download link)
             if ($request->has('token')) {
                 $token = $request->query('token', '');
-                $personalAccessToken = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
-                if (!$personalAccessToken) {
+                $personalAccessToken = PersonalAccessToken::findToken($token);
+                if (! $personalAccessToken) {
                     return response()->json(['message' => 'Invalid token'], 401);
                 }
                 $user = $personalAccessToken->tokenable;
             } else {
                 $user = $request->user();
-                if (!$user) {
+                if (! $user) {
                     return response()->json(['message' => 'Unauthorized'], 401);
                 }
             }
 
             $surat = SuratTugasMandiri::with('pengajuan')->findOrFail($id);
 
-            if (!$surat->isSigned()) {
+            if (! $surat->isSigned()) {
                 return response()->json(['message' => 'Surat has not been signed yet.'], 400);
             }
 
@@ -441,19 +442,48 @@ class SuratTugasMandiriController extends Controller
                 return response()->json(['message' => 'Unauthorized'], 403);
             }
 
-            $filePath = storage_path('app/public/' . $surat->file_path);
+            $filePath = storage_path('app/public/'.$surat->file_path);
 
-            if (!file_exists($filePath)) {
-                return response()->json(['message' => 'File not found at: ' . $surat->file_path], 404);
+            // Generate PDF on-demand if file doesn't exist
+            if (! file_exists($filePath) || ! $surat->file_path) {
+                // Generate QR code
+                $qrCodeData = json_encode([
+                    'type' => 'surat_tugas_mandiri',
+                    'id' => $surat->id,
+                    'nomor' => $surat->nomor_surat,
+                    'signed_at' => $surat->signed_at ? $surat->signed_at->toIso8601String() : now()->toIso8601String(),
+                ]);
+                $qrCodePath = $this->qrCodeService->generateAndSave($qrCodeData, "tbm-{$surat->id}");
+
+                // Generate PDF
+                $logoPath = Storage::disk('public')->path('logo-kab-sukabumi.png');
+                $logoBsrePath = Storage::disk('public')->path('logo-bsre.png');
+
+                $surat->load(['pengajuan.user.unitKerja', 'pengajuan.jenjang', 'suratIzinBelajar', 'suratTugasDinas.unitKerja', 'suratTugasDinas.kepalaDinas']);
+
+                $pdf = Pdf::loadView('pdf.surat-tugas-mandiri', [
+                    'surat' => $surat,
+                    'qrCodePath' => $qrCodePath,
+                    'logo_path' => $logoPath,
+                    'logo_bsre_path' => $logoBsrePath,
+                ]);
+
+                // Save PDF and update file_path
+                $filename = "surat-tugas-mandiri-{$surat->id}-{$surat->tahun}.pdf";
+                $filePath = 'surat-tugas-mandiri/'.$filename;
+                Storage::disk('public')->put($filePath, $pdf->output());
+                $surat->update(['file_path' => $filePath]);
+                $filePath = storage_path('app/public/'.$filePath);
             }
 
             return response()->download($filePath, "Surat_Tugas_Belajar_Mandiri_{$surat->tahun}.pdf");
         } catch (\Exception $e) {
-            \Log::error('SuratTugasMandiri download error: ' . $e->getMessage(), [
+            \Log::error('SuratTugasMandiri download error: '.$e->getMessage(), [
                 'id' => $id,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            return response()->json(['message' => 'Download failed: ' . $e->getMessage()], 500);
+
+            return response()->json(['message' => 'Download failed: '.$e->getMessage()], 500);
         }
     }
 
@@ -500,13 +530,13 @@ class SuratTugasMandiriController extends Controller
             }
         }
 
-        if (!$surat) {
+        if (! $surat) {
             return response()->json([
                 'message' => 'Surat tidak ditemukan atau tidak valid',
             ], 404);
         }
 
-        if (!$surat->isSigned()) {
+        if (! $surat->isSigned()) {
             return response()->json([
                 'message' => 'Surat belum ditandatangani',
                 'data' => [

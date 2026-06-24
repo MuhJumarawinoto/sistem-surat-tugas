@@ -5,7 +5,13 @@
     <title>Surat Izin Belajar Mandiri</title>
     <style>
         @page {
-            margin: 15mm 15mm 15mm 15mm;
+            /* margin: 15mm 15mm 15mm 15mm;
+            size: A4 portrait;
+             */
+            margin-top: 0;
+            margin-bottom: 0;
+            margin-left: 0;
+            margin-right: 10;
             size: A4 portrait;
         }
 
