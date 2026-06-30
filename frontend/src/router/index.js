@@ -166,7 +166,7 @@ const routes = [
     path: '/kepala/surat-tugas',
     name: 'kepala.surat-tugas',
     component: () => import('@/views/admin/SuratTugasDinasView.vue'),
-    meta: { requiresAuth: true, roles: ['kepala'] },
+    meta: { requiresAuth: true, roles: ['kepala', 'atasan'] },
   },
 
   // Manajemen Pegawai
@@ -174,6 +174,14 @@ const routes = [
     path: '/admin/pegawai',
     name: 'admin.pegawai',
     component: () => import('@/views/admin/PegawaiView.vue'),
+    meta: { requiresAuth: true, roles: ['admin_bkpsdm'] },
+  },
+
+  // Jenis Dokumen Management
+  {
+    path: '/admin/jenis-dokumen',
+    name: 'admin.jenis-dokumen',
+    component: () => import('@/views/admin/JenisDokumenView.vue'),
     meta: { requiresAuth: true, roles: ['admin_bkpsdm'] },
   },
 

@@ -76,6 +76,7 @@ const menuGroups = computed(() => {
     groups.push({
       title: 'Master Data',
       items: [
+        { path: '/admin/jenis-dokumen', label: 'Jenis Dokumen', icon: 'ri-file-list-3-line' },
         { path: '/admin/pddikti-sync', label: 'Sync PDDikti', icon: 'ri-refresh-line' },
       ],
     })

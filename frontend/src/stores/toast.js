@@ -5,13 +5,14 @@ export const useToastStore = defineStore('toast', () => {
   const toasts = ref([])
   let toastIdCounter = 0
 
-  function show(message, type = 'info', duration = 3000) {
+  function show(message, type = 'info', duration = 3000, action = null) {
     const id = ++toastIdCounter
     const toast = {
       id,
       message,
       type,
-      duration
+      duration,
+      action // action object: { label: string, onClick: function }
     }
     toasts.value.push(toast)
 
@@ -31,20 +32,20 @@ export const useToastStore = defineStore('toast', () => {
     }
   }
 
-  function success(message, duration) {
-    return show(message, 'success', duration)
+  function success(message, duration, action) {
+    return show(message, 'success', duration, action)
   }
 
-  function error(message, duration) {
-    return show(message, 'error', duration)
+  function error(message, duration, action) {
+    return show(message, 'error', duration, action)
   }
 
-  function warning(message, duration) {
-    return show(message, 'warning', duration)
+  function warning(message, duration, action) {
+    return show(message, 'warning', duration, action)
   }
 
-  function info(message, duration) {
-    return show(message, 'info', duration)
+  function info(message, duration, action) {
+    return show(message, 'info', duration, action)
   }
 
   function clear() {

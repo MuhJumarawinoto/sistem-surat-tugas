@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useMasterStore } from '@/stores/master'
 import { usePengajuanStore } from '@/stores/pengajuan'
 import { useToastStore } from '@/stores/toast'
+import { useAuthStore } from '@/stores/auth'
 import api from '@/services/api'
 import MainLayout from '@/components/layout/MainLayout.vue'
 import ImageModal from '@/components/ImageModal.vue'
@@ -17,6 +18,7 @@ const router = useRouter()
 const masterStore = useMasterStore()
 const pengajuanStore = usePengajuanStore()
 const toast = useToastStore()
+const authStore = useAuthStore()
 
 // Debounce utility
 function debounce(fn, delay) {
@@ -27,9 +29,9 @@ function debounce(fn, delay) {
   }
 }
 
-// Page header subtitle with nomor pengajuan
+// Page header subtitle
 const headerSubtitle = computed(() => {
-  return nomorPengajuan.value ? `Nomor: ${nomorPengajuan.value}` : 'Isi formulir untuk mengajukan izin belajar mandiri'
+  return 'Isi formulir untuk mengajukan izin belajar mandiri'
 })
 
 // Show education fields only after jenjang is selected
@@ -45,6 +47,7 @@ const selectedJenjangName = computed(() => {
 })
 
 const form = ref({
+  nomor_pengajuan: '',
   jenjang_id: '',
   nama_prodi: '',
   perguruan_tinggi_id: '',
@@ -88,91 +91,84 @@ const loadingProdi = ref(false)
 const ptDropdownMessage = ref('')
 const prodiDropdownMessage = ref('')
 
-const documents = ref({
-  sk_pangkat: null,
-  sk_cpns: null,
-  skp: null,
-  surat_lulus: null,
-  jadwal: null,
-  akreditasi: null,
-  surat_mandiri: null,
-  surat_ijazah: null,
-  surat_sehat: null,
-})
+const documents = ref({})
 
 const loading = ref(false)
 const saving = ref(false)
-const nomorPengajuan = ref('')
 const loadingDropdown = ref(false)
+
+// Kepala Unit: Staff Selection
+const isKepalaUnit = computed(() => authStore.user?.is_kepala_unit)
+const availableStaff = ref([])
+const loadingStaff = ref(false)
+const selectedStaffId = ref(null)
 
 const showImageModal = ref(false)
 const currentImageSrc = ref('')
 const currentImageAlt = ref('')
 
-const jenisDokumenList = [
-  {
-    key: 'sk_pangkat',
-    label: 'SK Pangkat Terakhir legalisir',
-    requirements: ['SK Pangkat/Golongan terakhir yang sudah legalisir', 'Masih berlaku (minimal 1 tahun ke depan)', 'Scan dokumen asli dengan jelas'],
-    notes: 'Legalisir bisa oleh pejabat pembina kepegawaian atau notaris'
-  },
-  {
-    key: 'sk_cpns',
-    label: 'SK CPNS legalisir',
-    requirements: ['SK CPNS pertama kali diangkat', 'Scan dokumen asli dengan jelas', 'Terlihat nomor SK dan tanggal'],
-    notes: 'Jika SK hilang, bisa diganti surat keterangan dari BKPSDM'
-  },
-  {
-    key: 'skp',
-    label: 'SKP 2 tahun terakhir',
-    requirements: ['SKP 2 tahun terakhir (tahun berjalan dan tahun sebelumnya)', 'Nilai SKP minimal baik', 'Legalisir oleh atasan langsung'],
-    notes: 'Upload dalam satu file PDF jika memungkinkan'
-  },
-  {
-    key: 'surat_lulus',
-    label: 'Surat Keterangan Lulus/Diterima dari PT',
-    requirements: ['Surat Keterangan Lulus (SKL) atau Surat Diterima', 'Dikeluarkan oleh Perguruan Tinggi resmi', 'Tertera nama prodi dan jenjang'],
-    notes: 'Bisa berupa SKL sementara atau surat diterima kuliah'
-  },
-  {
-    key: 'jadwal',
-    label: 'Jadwal Perkuliahan',
-    requirements: ['Jadwal kuliah semester yang akan diikuti', 'Dikeluarkan oleh fakultas/prodi', 'Terlihat hari, jam, dan nama mata kuliah'],
-    notes: 'Jika belum ada, bisa upload screenshot dari portal akademik'
-  },
-  {
-    key: 'akreditasi',
-    label: 'Sertifikat Akreditasi Prodi (min C)',
-    requirements: ['Sertifikat akreditasi program studi', 'Minimal akreditasi C', 'Masih berlaku atau terbaru'],
-    notes: 'Bisa dicek di banpt.or.id dan screenshot jika tidak ada sertifikat'
-  },
-  {
-    key: 'surat_mandiri',
-    label: 'Surat Pernyataan Biaya Mandiri',
-    requirements: ['Surat pernyataan bermaterai 10.000', 'Menyatakan biaya kuliah mandiri', 'Ditandatangani dan bermaterai'],
-    notes: 'Template surat bisa didownload di portal'
-  },
-  {
-    key: 'surat_ijazah',
-    label: 'Surat Pernyataan Tidak Menuntut Ijazah',
-    requirements: ['Surat pernyataan bermaterai 10.000', 'Menyatakan tidak menuntut penyerahan ijazah asli', 'Ditandatangani dan bermaterai'],
-    notes: 'Template surat bisa didownload di portal'
-  },
-  {
-    key: 'surat_sehat',
-    label: 'Surat Keterangan Sehat',
-    requirements: ['Surat keterangan sehat dari dokter/Puskesmas/RS', 'Masih berlaku (maks 6 bulan)', 'Menyatakan sehat untuk melanjutkan studi'],
-    notes: 'Bisa dari dokter pribadi atau fasilitas kesehatan pemerintah'
-  },
-]
+// Computed property untuk jenis dokumen dari master store
+const jenisDokumenList = computed(() => {
+  return masterStore.jenisDokumen.map(doc => ({
+    key: doc.kode,
+    label: doc.nama,
+    requirements: doc.persyaratan || [],
+    notes: doc.catatan || '',
+    is_wajib: doc.is_wajib,
+    urutan: doc.urutan
+  }))
+})
+
+// Initialize documents object when jenisDokumenList changes
+watch(jenisDokumenList, (newList) => {
+  // Build documents object based on jenis dokumen
+  const newDocs = {}
+  newList.forEach(doc => {
+    // Preserve existing file if already uploaded
+    if (documents.value[doc.key]) {
+      newDocs[doc.key] = documents.value[doc.key]
+    } else {
+      newDocs[doc.key] = null
+    }
+  })
+  documents.value = newDocs
+}, { immediate: true })
 
 onMounted(async () => {
   await masterStore.fetchAll()
-  nomorPengajuan.value = await pengajuanStore.getNomorPengajuan()
+  form.value.nomor_pengajuan = await pengajuanStore.getNomorPengajuan()
+
+  // Load staff if kepala unit
+  if (isKepalaUnit.value && authStore.user?.unit_kerja_id) {
+    await loadUnitStaff()
+  }
 
   // Close dropdowns when clicking outside - use a more specific check
   document.addEventListener('click', handleClickOutside)
 })
+
+async function loadUnitStaff() {
+  if (!authStore.user?.unit_kerja_id) return
+
+  loadingStaff.value = true
+  try {
+    const response = await api.get('/pegawai', {
+      params: {
+        unit_kerja_id: authStore.user.unit_kerja_id,
+        is_active: true,
+        per_page: 100
+      }
+    })
+    availableStaff.value = response.data.data
+    // Default to self
+    selectedStaffId.value = authStore.user.id
+  } catch (error) {
+    console.error('Failed to load staff:', error)
+    toast.error('Gagal memuat data pegawai')
+  } finally {
+    loadingStaff.value = false
+  }
+}
 
 function handleClickOutside(event) {
   // Check if click is outside any dropdown container
@@ -409,13 +405,19 @@ function removeFile(docKey) {
 async function saveDraftOnly() {
   saving.value = true
   try {
-    const response = await pengajuanStore.createPengajuan(form.value)
-    const pengajuanId = response.id
+    // Prepare form data with user_id if kepala unit
+    const submitData = {
+      ...form.value,
+      user_id: isKepalaUnit.value ? selectedStaffId.value : undefined
+    }
+
+    const response = await pengajuanStore.createPengajuan(submitData)
+    const pengajuanId = response.data?.id || response.id
 
     let uploadedCount = 0
     let failedDocs = []
 
-    for (const doc of jenisDokumenList) {
+    for (const doc of jenisDokumenList.value) {
       const file = documents.value[doc.key]
       if (file) {
         if (!(file instanceof File)) {
@@ -470,7 +472,7 @@ const showIncompleteConfirm = ref(false)
 const incompleteDocsList = ref([])
 
 function checkIncompleteDocs() {
-  const missingDocs = jenisDokumenList.filter(doc => !documents.value[doc.key])
+  const missingDocs = jenisDokumenList.value.filter(doc => !documents.value[doc.key])
 
   if (missingDocs.length > 0) {
     incompleteDocsList.value = missingDocs
@@ -482,7 +484,7 @@ function checkIncompleteDocs() {
 
 async function saveWithDocuments() {
   // Check for incomplete documents
-  const missingDocs = jenisDokumenList.filter(doc => !documents.value[doc.key])
+  const missingDocs = jenisDokumenList.value.filter(doc => !documents.value[doc.key])
 
   if (missingDocs.length > 0) {
     incompleteDocsList.value = missingDocs
@@ -498,10 +500,16 @@ async function proceedWithSubmission() {
   saving.value = true
 
   try {
-    const response = await pengajuanStore.createPengajuan(form.value)
-    const pengajuanId = response.id
+    // Prepare form data with user_id if kepala unit
+    const submitData = {
+      ...form.value,
+      user_id: isKepalaUnit.value ? selectedStaffId.value : undefined
+    }
 
-    for (const doc of jenisDokumenList) {
+    const response = await pengajuanStore.createPengajuan(submitData)
+    const pengajuanId = response.data?.id || response.id
+
+    for (const doc of jenisDokumenList.value) {
       const file = documents.value[doc.key]
       if (file) {
         if (!(file instanceof File)) {
@@ -518,10 +526,11 @@ async function proceedWithSubmission() {
       }
     }
 
-    const uploadedDocCount = jenisDokumenList.filter(doc => documents.value[doc.key]).length
+    const uploadedDocCount = jenisDokumenList.value.filter(doc => documents.value[doc.key]).length
+    const totalRequired = jenisDokumenList.value.length
 
-    if (uploadedDocCount < 9) {
-      toast.warning(`Pengajuan dikirim dengan ${uploadedDocCount}/9 dokumen. Silakan lengkapi dokumen lainnya melalui menu Riwayat.`, 8000)
+    if (uploadedDocCount < totalRequired) {
+      toast.warning(`Pengajuan dikirim dengan ${uploadedDocCount}/${totalRequired} dokumen. Silakan lengkapi dokumen lainnya melalui menu Riwayat.`, 8000)
     } else {
       toast.success('Pengajuan berhasil dikirim dengan semua dokumen lengkap!')
     }
@@ -573,6 +582,62 @@ const uploadedCount = computed(() => {
       title="Buat Pengajuan Baru"
       :subtitle="headerSubtitle"
     />
+
+    <!-- Informasi Pengajuan -->
+    <div class="card animate-slide-up mb-6">
+      <div class="card-header">
+        <h3 class="card-title flex items-center gap-2">
+          <i class="ri-file-info-line text-lg text-primary-600"></i>
+          Informasi Pengajuan
+        </h3>
+      </div>
+      <div class="card-body">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Pilih Pegawai (Kepala Unit only) -->
+          <div v-if="isKepalaUnit">
+            <label class="input-label">Pegawai yang akan diajukan izin belajar</label>
+            <div class="relative">
+              <select v-model="selectedStaffId" required class="select-field appearance-none pr-10" :disabled="loadingStaff">
+                <option value="">Pilih pegawai...</option>
+                <option v-for="staff in availableStaff" :key="staff.id" :value="staff.id">
+                  {{ staff.nip }} - {{ staff.name }}
+                </option>
+              </select>
+              <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <LoadingSpinner v-if="loadingStaff" size="sm" />
+                <i v-else class="ri-arrow-down-s-line text-secondary-400"></i>
+              </div>
+            </div>
+            <p v-if="selectedStaffId" class="text-xs text-success-600 mt-1">
+              <i class="ri-check-line"></i>
+              Dokumen lampiran akan di-upload untuk pegawai yang dipilih.
+            </p>
+          </div>
+
+          <!-- Nomor Pengajuan -->
+          <div :class="isKepalaUnit ? '' : 'md:col-span-2'">
+            <label class="input-label">Nomor Pengajuan</label>
+            <div class="relative">
+              <input
+                v-model="form.nomor_pengajuan"
+                type="text"
+                required
+                readonly
+                class="input-field bg-secondary-100 cursor-not-allowed"
+                placeholder="Nomor pengajuan akan di-generate otomatis..."
+              />
+              <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <i class="ri-lock-line text-secondary-400"></i>
+              </div>
+            </div>
+            <p class="text-xs text-secondary-500 mt-1">
+              <i class="ri-information-line text-primary-500"></i>
+              Nomor pengajuan di-generate otomatis oleh sistem.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <form @submit.prevent class="space-y-6">
       <!-- Two Column Layout -->
@@ -862,9 +927,9 @@ const uploadedCount = computed(() => {
                 <i class="ri-file-upload-line text-lg text-primary-600"></i>
                 Upload Dokumen
               </h3>
-              <span class="badge badge-primary">{{ uploadedCount }}/9</span>
+              <span class="badge badge-primary">{{ uploadedCount }}/{{ jenisDokumenList.length }}</span>
             </div>
-            <p class="text-sm text-secondary-500 mt-1">Max 5MB per file. PDF, JPG, PNG.</p>
+            <p class="text-sm text-secondary-500 mt-1">Max 1MB per file. PDF, JPG, PNG.</p>
           </div>
           <div class="card-body">
             <!-- Minimalis List Layout -->
@@ -923,10 +988,10 @@ const uploadedCount = computed(() => {
             <div class="mt-4 pt-3 border-t border-secondary-200">
               <div class="flex items-center justify-between text-xs text-secondary-600 mb-1">
                 <span>Progress Dokumen</span>
-                <span class="font-semibold" :class="uploadedCount === 9 ? 'text-success' : 'text-primary-600'">{{ uploadedCount }} dari 9 lengkap</span>
+                <span class="font-semibold" :class="uploadedCount === jenisDokumenList.length ? 'text-success' : 'text-primary-600'">{{ uploadedCount }} dari {{ jenisDokumenList.length }} lengkap</span>
               </div>
               <div class="w-full bg-secondary-200 rounded-full h-2">
-                <div class="h-2 rounded-full transition-all duration-300" :class="uploadedCount === 9 ? 'bg-success' : 'bg-primary-600'" :style="{ width: (uploadedCount / 9 * 100) + '%' }"></div>
+                <div class="h-2 rounded-full transition-all duration-300" :class="uploadedCount === jenisDokumenList.length ? 'bg-success' : 'bg-primary-600'" :style="{ width: (uploadedCount / jenisDokumenList.length * 100) + '%' }"></div>
               </div>
             </div>
           </div>
@@ -977,7 +1042,7 @@ const uploadedCount = computed(() => {
                 </div>
                 <div class="flex-1">
                   <h3 class="text-sm font-bold text-secondary-800">Dokumen Belum Lengkap</h3>
-                  <p class="text-xs text-secondary-500">{{ incompleteDocsList.length }} dari 9 dokumen belum diupload</p>
+                  <p class="text-xs text-secondary-500">{{ incompleteDocsList.length }} dari {{ jenisDokumenList.length }} dokumen belum diupload</p>
                 </div>
               </div>
             </div>

@@ -108,17 +108,7 @@ const filteredProdi = ref([])
 const selectedPT = ref(null)
 
 const existingDocs = ref([])
-const newDocuments = ref({
-  sk_pangkat: null,
-  sk_cpns: null,
-  skp: null,
-  surat_lulus: null,
-  jadwal: null,
-  akreditasi: null,
-  surat_mandiri: null,
-  surat_ijazah: null,
-  surat_sehat: null,
-})
+const newDocuments = ref({})
 
 const showImageModal = ref(false)
 const currentImageSrc = ref('')
@@ -127,62 +117,31 @@ const currentImageAlt = ref('')
 const loading = ref(false)
 const saving = ref(false)
 
-const jenisDokumenList = [
-  {
-    key: 'sk_pangkat',
-    label: 'SK Pangkat Terakhir legalisir',
-    requirements: ['SK Pangkat/Golongan terakhir yang sudah legalisir', 'Masih berlaku (minimal 1 tahun ke depan)', 'Scan dokumen asli dengan jelas'],
-    notes: 'Legalisir bisa oleh pejabat pembina kepegawaian atau notaris'
-  },
-  {
-    key: 'sk_cpns',
-    label: 'SK CPNS legalisir',
-    requirements: ['SK CPNS pertama kali diangkat', 'Scan dokumen asli dengan jelas', 'Terlihat nomor SK dan tanggal'],
-    notes: 'Jika SK hilang, bisa diganti surat keterangan dari BKPSDM'
-  },
-  {
-    key: 'skp',
-    label: 'SKP 2 tahun terakhir',
-    requirements: ['SKP 2 tahun terakhir (tahun berjalan dan tahun sebelumnya)', 'Nilai SKP minimal baik', 'Legalisir oleh atasan langsung'],
-    notes: 'Upload dalam satu file PDF jika memungkinkan'
-  },
-  {
-    key: 'surat_lulus',
-    label: 'Surat Keterangan Lulus/Diterima dari PT',
-    requirements: ['Surat Keterangan Lulus (SKL) atau Surat Diterima', 'Dikeluarkan oleh Perguruan Tinggi resmi', 'Tertera nama prodi dan jenjang'],
-    notes: 'Bisa berupa SKL sementara atau surat diterima kuliah'
-  },
-  {
-    key: 'jadwal',
-    label: 'Jadwal Perkuliahan',
-    requirements: ['Jadwal kuliah semester yang akan diikuti', 'Dikeluarkan oleh fakultas/prodi', 'Terlihat hari, jam, dan nama mata kuliah'],
-    notes: 'Jika belum ada, bisa upload screenshot dari portal akademik'
-  },
-  {
-    key: 'akreditasi',
-    label: 'Sertifikat Akreditasi Prodi (min C)',
-    requirements: ['Sertifikat akreditasi program studi', 'Minimal akreditasi C', 'Masih berlaku atau terbaru'],
-    notes: 'Bisa dicek di banpt.or.id dan screenshot jika tidak ada sertifikat'
-  },
-  {
-    key: 'surat_mandiri',
-    label: 'Surat Pernyataan Biaya Mandiri',
-    requirements: ['Surat pernyataan bermaterai 10.000', 'Menyatakan biaya kuliah mandiri', 'Ditandatangani dan bermaterai'],
-    notes: 'Template surat bisa didownload di portal'
-  },
-  {
-    key: 'surat_ijazah',
-    label: 'Surat Pernyataan Tidak Menuntut Ijazah',
-    requirements: ['Surat pernyataan bermaterai 10.000', 'Menyatakan tidak menuntut penyerahan ijazah asli', 'Ditandatangani dan bermaterai'],
-    notes: 'Template surat bisa didownload di portal'
-  },
-  {
-    key: 'surat_sehat',
-    label: 'Surat Keterangan Sehat',
-    requirements: ['Surat keterangan sehat dari dokter/Puskesmas/RS', 'Masih berlaku (maks 6 bulan)', 'Menyatakan sehat untuk melanjutkan studi'],
-    notes: 'Bisa dari dokter pribadi atau fasilitas kesehatan pemerintah'
-  },
-]
+// Computed property untuk jenis dokumen dari master store
+const jenisDokumenList = computed(() => {
+  return masterStore.jenisDokumen.map(doc => ({
+    key: doc.kode,
+    label: doc.nama,
+    requirements: doc.persyaratan || [],
+    notes: doc.catatan || '',
+    is_wajib: doc.is_wajib,
+    urutan: doc.urutan
+  }))
+})
+
+// Initialize newDocuments object when jenisDokumenList changes
+watch(jenisDokumenList, (newList) => {
+  const newDocs = {}
+  newList.forEach(doc => {
+    // Preserve existing file if already uploaded
+    if (newDocuments.value[doc.key]) {
+      newDocs[doc.key] = newDocuments.value[doc.key]
+    } else {
+      newDocs[doc.key] = null
+    }
+  })
+  newDocuments.value = newDocs
+}, { immediate: true })
 
 const docMap = computed(() => {
   const map = {}
@@ -234,7 +193,7 @@ async function updatePengajuan() {
     let uploadedCount = 0
     let failedDocs = []
 
-    for (const doc of jenisDokumenList) {
+    for (const doc of jenisDokumenList.value) {
       const file = newDocuments.value[doc.key]
       if (file) {
         if (!(file instanceof File)) {
@@ -545,7 +504,7 @@ onUnmounted(() => {
                     <i class="ri-file-upload-line text-primary-600"></i>
                     Upload/Ubah Dokumen
                   </h3>
-                  <span class="badge badge-primary">{{ totalDocs }}/9</span>
+                  <span class="badge badge-primary">{{ totalDocs }}/{{ jenisDokumenList.length }}</span>
                 </div>
                 <p class="text-sm text-secondary-500 mt-1">Opsional. Pilih dokumen yang ingin diganti.</p>
               </div>

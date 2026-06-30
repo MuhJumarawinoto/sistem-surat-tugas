@@ -13,6 +13,7 @@ const toastStore = useToastStore()
       :show="true"
       :message="toast.message"
       :type="toast.type"
+      :action="toast.action"
       @close="toastStore.remove(toast.id)"
     />
   </div>

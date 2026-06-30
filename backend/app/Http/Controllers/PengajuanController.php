@@ -6,7 +6,6 @@ use App\Models\Notification;
 use App\Models\Pengajuan;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class PengajuanController extends Controller
 {
@@ -15,50 +14,52 @@ class PengajuanController extends Controller
         $user = $request->user();
         $query = Pengajuan::with([
             'user:id,name,nip,jabatan,unit_kerja_id',
+            'createdBy:id,name,nip,jabatan',
             'jenjang:id,nama,kode,urutan',
             'dokumen:id,pengajuan_id,jenis_dokumen,file_path,status_verifikasi',
         ]);
 
         // Check if client wants to include deleted (dicabut) pengajuan
-        $includeDeleted = $request->has('include_deleted') && $request->get('include_deleted') === '1';
+        $includeDeleted = $request->has('include_deleted') && $request->input('include_deleted') === '1';
 
         if ($user->isPemohon()) {
             // Pemohon biasa: hanya melihat pengajuan sendiri
             $query->where('user_id', $user->id);
 
             // Exclude 'dicabut' unless explicitly requested
-            if (!$includeDeleted) {
+            if (! $includeDeleted) {
                 $query->where('status', '!=', 'dicabut');
             }
-        } elseif ($user->isAtasan()) {
-            // Atasan: melihat pengajuan sendiri saja
-            $query->where('user_id', $user->id);
-
-            // Exclude 'dicabut' unless explicitly requested
-            if (!$includeDeleted) {
-                $query->where('status', '!=', 'dicabut');
-            }
-        } elseif ($user->isKepalaBkpsdm() && !$user->isKepalaUnit()) {
-            // Kepala BKPSDM (bukan kepala unit): hanya melihat pengajuan sendiri untuk riwayat
-            $query->where('user_id', $user->id);
-            // Include 'dicabut' for riwayat
         } elseif ($user->isKepalaUnit()) {
-            // Kepala Dinas/Unit: melihat pengajuan pegawai di unit kerja + pengajuan sendiri
+            // Kepala Dinas/Unit: melihat pengajuan pegawai di unit kerja + pengajuan sendiri + yang dibuat untuk orang lain
             $query->where(function ($q) use ($user) {
                 $q->where('user_id', $user->id) // Pengajuan sendiri
-                  ->orWhereHas('user', function ($subQuery) use ($user) {
-                      $subQuery->where('unit_kerja_id', $user->unit_kerja_id);
-                  }); // Pengajuan pegawai di unit kerja yang sama
+                    ->orWhere('created_by', $user->id) // Pengajuan yang dibuat untuk orang lain
+                    ->orWhereHas('user', function ($subQuery) use ($user) {
+                        $subQuery->where('unit_kerja_id', $user->unit_kerja_id);
+                    }); // Pengajuan pegawai di unit kerja yang sama
             });
 
             // Exclude 'dicabut' unless explicitly requested
-            if (!$includeDeleted) {
+            if (! $includeDeleted) {
+                $query->where('status', '!=', 'dicabut');
+            }
+        } elseif ($user->isKepalaBkpsdm() && ! $user->isKepalaUnit()) {
+            // Kepala BKPSDM (bukan kepala unit): hanya melihat pengajuan sendiri untuk riwayat
+            $query->where('user_id', $user->id);
+            // Include 'dicabut' for riwayat
+        } elseif ($user->isAtasan()) {
+            // Atasan biasa (bukan kepala unit): melihat pengajuan sendiri saja
+            $query->where('user_id', $user->id);
+
+            // Exclude 'dicabut' unless explicitly requested
+            if (! $includeDeleted) {
                 $query->where('status', '!=', 'dicabut');
             }
         } elseif ($user->isAdminBkpsdm()) {
             // Admin melihat semua pengajuan (all statuses)
             // Default filter: show pending first, then others
-            if (!$request->has('status')) {
+            if (! $request->has('status')) {
                 // Use case-when instead of FIELD for better compatibility
                 $query->orderByRaw("
                     CASE status
@@ -86,7 +87,11 @@ class PengajuanController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
+        $user = $request->user();
+
+        // Base validation rules
+        $rules = [
+            'nomor_pengajuan' => 'nullable|string|max:255',
             'jenjang_id' => 'required|exists:jenjang_pendidikan,id',
             'nama_prodi' => 'required|string|max:255',
             'perguruan_tinggi' => 'required|string|max:255',
@@ -94,14 +99,37 @@ class PengajuanController extends Controller
             'lokasi_pt' => 'required|string|max:255',
             'rencana_mulai' => 'required|date',
             'rencana_selesai' => 'required|date|after:rencana_mulai',
-        ]);
+        ];
 
-        $user = $request->user();
-        $nomorPengajuan = $this->generateNomorPengajuan();
+        // For kepala unit, require user_id
+        if ($user->isKepalaUnit()) {
+            $rules['user_id'] = 'required|exists:users,id';
+        }
+
+        $request->validate($rules);
+
+        // Determine target user_id
+        $targetUserId = $user->isKepalaUnit() ? $request->user_id : $user->id;
+
+        // Security check for kepala unit creating for others
+        if ($user->isKepalaUnit() && $targetUserId !== $user->id) {
+            $targetUser = User::findOrFail($targetUserId);
+            if ($targetUser->unit_kerja_id !== $user->unit_kerja_id) {
+                return response()->json([
+                    'message' => 'Hanya dapat membuat pengajuan untuk pegawai di unit kerja yang sama.',
+                ], 403);
+            }
+        }
+
+        // Use provided nomor_pengajuan or generate one
+        $nomorPengajuan = $request->filled('nomor_pengajuan')
+            ? $request->nomor_pengajuan
+            : $this->generateNomorPengajuan();
 
         $pengajuan = Pengajuan::create([
             'nomor_pengajuan' => $nomorPengajuan,
-            'user_id' => $user->id,
+            'user_id' => $targetUserId,
+            'created_by' => $user->isKepalaUnit() && $targetUserId !== $user->id ? $user->id : null,
             'jenjang_id' => $request->jenjang_id,
             'nama_prodi' => $request->nama_prodi,
             'perguruan_tinggi' => $request->perguruan_tinggi,
@@ -112,18 +140,57 @@ class PengajuanController extends Controller
             'status' => 'draft',
         ]);
 
-        return response()->json($pengajuan->load(['user', 'jenjang']), 201);
+        // Notify target staff if created by kepala unit
+        if ($pengajuan->isCreatedByKepalaUnit()) {
+            Notification::createForUser(
+                userId: $pengajuan->user_id,
+                type: 'info',
+                title: 'Pengajuan Baru Dibuat',
+                message: "Pengajuan izin belajar untuk {$pengajuan->nama_prodi} dibuat oleh {$user->name}. Silakan review dan lengkapi jika diperlukan.",
+                pengajuanId: $pengajuan->id
+            );
+        }
+
+        return response()->json([
+            'data' => $pengajuan->load(['user', 'createdBy', 'jenjang']),
+        ], 201);
     }
 
     public function show(string $id)
     {
-        $pengajuan = Pengajuan::with(['user', 'jenjang', 'dokumen', 'approvalHistory.approver'])
+        $pengajuan = Pengajuan::with(['user.unitKerja', 'createdBy', 'jenjang', 'dokumen', 'approvalHistory.approver'])
             ->findOrFail($id);
 
         $user = request()->user();
 
+        // Admin can view all
+        if ($user->isAdminBkpsdm()) {
+            return response()->json($pengajuan);
+        }
+
+        // Kepala unit can view:
+        // - Own pengajuan (user_id === user.id)
+        // - Created by self (created_by === user.id)
+        // - Staff in same unit (user.unit_kerja_id === pengajuan.user.unit_kerja_id)
+        if ($user->isKepalaUnit()) {
+            $canView = $pengajuan->user_id === $user->id
+                || $pengajuan->created_by === $user->id
+                || $pengajuan->user->unit_kerja_id === $user->unit_kerja_id;
+
+            if (! $canView) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
+
+            return response()->json($pengajuan);
+        }
+
         // Pemohon biasa & Atasan: hanya bisa lihat pengajuan sendiri
         if (($user->isPemohon() || $user->isAtasan()) && $pengajuan->user_id !== $user->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // Kepala BKPSDM (non-unit kepala): hanya pengajuan sendiri
+        if ($user->isKepalaBkpsdm() && $pengajuan->user_id !== $user->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -133,15 +200,14 @@ class PengajuanController extends Controller
     public function update(Request $request, string $id)
     {
         $pengajuan = Pengajuan::findOrFail($id);
-
         $user = $request->user();
 
-        // Pemohon biasa dan Atasan: hanya bisa edit pengajuan sendiri
-        if (($user->isPemohon() || $user->isAtasan()) && $pengajuan->user_id !== $user->id) {
+        // Use authorization method
+        if (! $pengajuan->canBeEditedBy($user)) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        if (!$pengajuan->isDraft() && !$pengajuan->isDitolak()) {
+        if (! $pengajuan->isDraft() && ! $pengajuan->isDitolak()) {
             return response()->json(['message' => 'Cannot update submitted pengajuan'], 400);
         }
 
@@ -165,29 +231,28 @@ class PengajuanController extends Controller
             'rencana_selesai' => $request->rencana_selesai,
         ]);
 
-        return response()->json($pengajuan->load(['user', 'jenjang']));
+        return response()->json($pengajuan->load(['user', 'createdBy', 'jenjang']));
     }
 
     public function destroy(string $id)
     {
         $pengajuan = Pengajuan::findOrFail($id);
-
         $user = request()->user();
 
-        // Pemohon biasa dan Atasan: hanya bisa delete pengajuan sendiri
-        if (($user->isPemohon() || $user->isAtasan()) && $pengajuan->user_id !== $user->id) {
+        // Use authorization method
+        if (! $pengajuan->canBeEditedBy($user)) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         // Bisa delete draft atau yang sudah dicabut (untuk masuk riwayat)
-        if (!$pengajuan->isDraft() && $pengajuan->status !== 'dicabut') {
+        if (! $pengajuan->isDraft() && $pengajuan->status !== 'dicabut') {
             return response()->json(['message' => 'Hanya dapat menghapus pengajuan draft atau yang sudah dicabut'], 400);
         }
 
         // Soft delete: change status to 'dicabut' instead of deleting record
         $pengajuan->update([
             'status' => 'dicabut',
-            'catatan_tolak' => 'Pengajuan dihapus oleh pemohon',
+            'catatan_tolak' => 'Pengajuan dihapus',
         ]);
 
         return response()->json(['message' => 'Pengajuan dihapus dan masuk ke riwayat']);
@@ -196,16 +261,15 @@ class PengajuanController extends Controller
     public function cancel(Request $request, string $id)
     {
         $pengajuan = Pengajuan::findOrFail($id);
-
         $user = $request->user();
 
-        // Pemohon biasa dan Atasan: hanya bisa cancel pengajuan sendiri
-        if (($user->isPemohon() || $user->isAtasan()) && $pengajuan->user_id !== $user->id) {
+        // Use authorization method (owner or creator can cancel)
+        if (! $pengajuan->canBeEditedBy($user)) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         // Hanya bisa cancel jika status pending atau verified
-        if (!in_array($pengajuan->status, ['pending_admin', 'verified'])) {
+        if (! in_array($pengajuan->status, ['pending_admin', 'verified'])) {
             return response()->json(['message' => 'Hanya dapat menarik pengajuan dengan status Pending atau Terverifikasi'], 400);
         }
 
@@ -217,17 +281,16 @@ class PengajuanController extends Controller
             'tanggal_approve_admin' => null,
         ]);
 
-        return response()->json($pengajuan->load(['user', 'jenjang']));
+        return response()->json($pengajuan->load(['user', 'createdBy', 'jenjang']));
     }
 
     public function restore(Request $request, string $id)
     {
         $pengajuan = Pengajuan::findOrFail($id);
-
         $user = $request->user();
 
-        // Pemohon biasa dan Atasan: hanya bisa restore pengajuan sendiri
-        if (($user->isPemohon() || $user->isAtasan()) && $pengajuan->user_id !== $user->id) {
+        // Use authorization method (owner or creator can restore)
+        if (! $pengajuan->canBeEditedBy($user)) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -242,21 +305,26 @@ class PengajuanController extends Controller
             'catatan_tolak' => null,
         ]);
 
-        return response()->json($pengajuan->load(['user', 'jenjang']));
+        return response()->json($pengajuan->load(['user', 'createdBy', 'jenjang']));
     }
 
     public function submit(Request $request, string $id)
     {
         $pengajuan = Pengajuan::findOrFail($id);
-
         $user = $request->user();
 
-        // Pemohon biasa dan Atasan: hanya bisa submit pengajuan sendiri
-        if (($user->isPemohon() || $user->isAtasan()) && $pengajuan->user_id !== $user->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        // Authorization: Admin can submit any pengajuan
+        // Kepala unit can submit pengajuan they created (created_by === user.id)
+        // Pemohon can submit their own pengajuan (user_id === user.id)
+        $canSubmit = $user->isAdminBkpsdm()
+            || ($user->isKepalaUnit() && $pengajuan->created_by === $user->id)
+            || $pengajuan->user_id === $user->id;
+
+        if (! $canSubmit) {
+            return response()->json(['message' => 'Unauthorized. Anda tidak memiliki akses untuk menyetujui pengajuan ini.'], 403);
         }
 
-        if (!$pengajuan->isDraft()) {
+        if (! $pengajuan->isDraft()) {
             return response()->json(['message' => 'Pengajuan already submitted'], 400);
         }
 
@@ -284,7 +352,7 @@ class PengajuanController extends Controller
             );
         }
 
-        return response()->json($pengajuan->load(['user', 'jenjang']));
+        return response()->json($pengajuan->load(['user', 'createdBy', 'jenjang']));
     }
 
     public function getNomor()
@@ -304,6 +372,6 @@ class PengajuanController extends Controller
 
         $sequence = $lastNomor ? (int) substr($lastNomor->nomor_pengajuan, -4) + 1 : 1;
 
-        return 'IBL/' . $year . '/' . str_pad($sequence, 4, '0', STR_PAD_LEFT);
+        return 'IBL/'.$year.'/'.str_pad($sequence, 4, '0', STR_PAD_LEFT);
     }
 }

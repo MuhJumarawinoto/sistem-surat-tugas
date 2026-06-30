@@ -18,6 +18,23 @@ const showCreateModal = ref(false)
 const selectedPengajuan = ref(null)
 const submitting = ref(false)
 
+// Pagination state
+const pengajuanPagination = ref({
+  data: [],
+  currentPage: 1,
+  perPage: 3,
+  totalPages: 1,
+  total: 0
+})
+
+const suratPagination = ref({
+  data: [],
+  currentPage: 1,
+  perPage: 3,
+  totalPages: 1,
+  total: 0
+})
+
 // Form state
 const form = ref({
   pengajuan_id: null,
@@ -32,8 +49,8 @@ const form = ref({
 
 // Stats
 const stats = computed(() => ({
-  pending: pengajuanList.value.length,
-  total: suratList.value.length
+  pending: pengajuanPagination.value.total,
+  total: suratPagination.value.total
 }))
 
 // Get current month name in Indonesian
@@ -46,10 +63,22 @@ function getCurrentMonth() {
 async function loadPendingPengajuan() {
   loading.value = true
   try {
-    const response = await api.get('/kepala/surat-tugas/pending')
-    pengajuanList.value = response.data.data
+    const response = await api.get('/kepala/surat-tugas/pending', {
+      params: {
+        page: pengajuanPagination.value.currentPage,
+        per_page: pengajuanPagination.value.perPage
+      }
+    })
+    // Backend uses custom format: { data: [...], meta: { current_page, last_page, per_page, total } }
+    pengajuanPagination.value.data = response.data.data || []
+    pengajuanPagination.value.total = response.data.meta?.total || 0
+    pengajuanPagination.value.totalPages = response.data.meta?.last_page || 1
+    pengajuanPagination.value.currentPage = response.data.meta?.current_page || 1
   } catch (error) {
     console.error('Failed to load pending pengajuan:', error)
+    pengajuanPagination.value.data = []
+    pengajuanPagination.value.total = 0
+    pengajuanPagination.value.totalPages = 1
   } finally {
     loading.value = false
   }
@@ -59,13 +88,110 @@ async function loadPendingPengajuan() {
 async function loadSuratList() {
   loading.value = true
   try {
-    const response = await api.get('/kepala/surat-tugas')
-    suratList.value = response.data.data
+    const response = await api.get('/kepala/surat-tugas', {
+      params: {
+        page: suratPagination.value.currentPage,
+        per_page: suratPagination.value.perPage
+      }
+    })
+    // Backend uses custom format: { data: [...], meta: { current_page, last_page, per_page, total } }
+    suratPagination.value.data = response.data.data || []
+    suratPagination.value.total = response.data.meta?.total || 0
+    suratPagination.value.totalPages = response.data.meta?.last_page || 1
+    suratPagination.value.currentPage = response.data.meta?.current_page || 1
   } catch (error) {
     console.error('Failed to load surat list:', error)
+    suratPagination.value.data = []
+    suratPagination.value.total = 0
+    suratPagination.value.totalPages = 1
   } finally {
     loading.value = false
   }
+}
+
+// Pagination functions
+function pengajuanPrevPage() {
+  if (pengajuanPagination.value.currentPage > 1) {
+    pengajuanPagination.value.currentPage--
+    loadPendingPengajuan()
+  }
+}
+
+function pengajuanNextPage() {
+  if (pengajuanPagination.value.currentPage < pengajuanPagination.value.totalPages) {
+    pengajuanPagination.value.currentPage++
+    loadPendingPengajuan()
+  }
+}
+
+function suratPrevPage() {
+  if (suratPagination.value.currentPage > 1) {
+    suratPagination.value.currentPage--
+    loadSuratList()
+  }
+}
+
+function suratNextPage() {
+  if (suratPagination.value.currentPage < suratPagination.value.totalPages) {
+    suratPagination.value.currentPage++
+    loadSuratList()
+  }
+}
+
+function getPengajuanPageRange() {
+  const current = pengajuanPagination.value.currentPage
+  const total = pengajuanPagination.value.totalPages
+  const delta = 1
+  const pages = []
+
+  if (total <= 5) {
+    for (let i = 1; i <= total; i++) {
+      pages.push(i)
+    }
+  } else {
+    pages.push(1)
+    if (current > delta + 2) {
+      pages.push('...')
+    }
+    const start = Math.max(2, current - delta)
+    const end = Math.min(total - 1, current + delta)
+    for (let i = start; i <= end; i++) {
+      pages.push(i)
+    }
+    if (current < total - delta - 1) {
+      pages.push('...')
+    }
+    pages.push(total)
+  }
+  return pages
+}
+
+function getSuratPageRange() {
+  const current = suratPagination.value.currentPage
+  const total = suratPagination.value.totalPages
+  const delta = 1
+  const pages = []
+
+  if (total <= 5) {
+    for (let i = 1; i <= total; i++) {
+      pages.push(i)
+    }
+  } else {
+    pages.push(1)
+    if (current > delta + 2) {
+      pages.push('...')
+    }
+    const start = Math.max(2, current - delta)
+    const end = Math.min(total - 1, current + delta)
+    for (let i = start; i <= end; i++) {
+      pages.push(i)
+    }
+    if (current < total - delta - 1) {
+      pages.push('...')
+    }
+    pages.push(total)
+  }
+  return pages
 }
 
 // Open create modal
@@ -106,7 +232,9 @@ async function submitForm() {
   try {
     await api.post('/kepala/surat-tugas', form.value)
     closeModal()
-    // Refresh both lists
+    // Reset pagination to page 1 and refresh both lists
+    pengajuanPagination.value.currentPage = 1
+    suratPagination.value.currentPage = 1
     await Promise.all([loadPendingPengajuan(), loadSuratList()])
     showToast('Surat tugas dinas berhasil dibuat', 'success')
   } catch (error) {
@@ -173,9 +301,12 @@ async function downloadPdf(id) {
 // Tab change
 function onTabChange(tab) {
   activeTab.value = tab
+  // Reset pagination when switching tabs
   if (tab === 'pending') {
+    pengajuanPagination.value.currentPage = 1
     loadPendingPengajuan()
   } else {
+    suratPagination.value.currentPage = 1
     loadSuratList()
   }
 }
@@ -247,7 +378,7 @@ onMounted(() => {
 
     <div v-else-if="activeTab === 'pending'" class="space-y-4">
       <!-- Empty State -->
-      <div v-if="pengajuanList.length === 0" class="card card-body text-center py-12">
+      <div v-if="pengajuanPagination.data.length === 0" class="card card-body text-center py-12">
         <i class="ri-check-double-line text-4xl text-secondary-300 mb-4"></i>
         <h3 class="text-lg font-semibold text-secondary-700 mb-2">Tidak Ada Pengajuan Pending</h3>
         <p class="text-secondary-500">Semua pengajuan sudah memiliki surat tugas dinas.</p>
@@ -256,7 +387,7 @@ onMounted(() => {
       <!-- Pending List -->
       <div v-else class="space-y-4">
         <div
-          v-for="pengajuan in pengajuanList"
+          v-for="pengajuan in pengajuanPagination.data"
           :key="pengajuan.id"
           class="card card-body"
         >
@@ -283,11 +414,47 @@ onMounted(() => {
           </div>
         </div>
       </div>
+
+      <!-- Pagination for Pending -->
+      <div v-if="pengajuanPagination.totalPages > 1" class="flex items-center justify-between mt-4 pt-4 border-t border-secondary-200">
+        <div class="text-sm text-secondary-500">
+          Menampilkan {{ (pengajuanPagination.currentPage - 1) * pengajuanPagination.perPage + 1 }} - {{ Math.min(pengajuanPagination.currentPage * pengajuanPagination.perPage, pengajuanPagination.total) }} dari {{ pengajuanPagination.total }} pengajuan
+        </div>
+        <div class="flex items-center gap-1">
+          <button
+            @click="pengajuanPrevPage"
+            :disabled="pengajuanPagination.currentPage === 1"
+            class="btn btn-ghost btn-sm"
+          >
+            <i class="ri-arrow-left-s-line"></i>
+          </button>
+          <template v-for="page in getPengajuanPageRange()" :key="page">
+            <span v-if="page === '...'" class="px-2 text-secondary-400">...</span>
+            <button
+              v-else
+              @click="pengajuanPagination.currentPage = page; loadPendingPengajuan()"
+              :class="[
+                'btn btn-sm',
+                pengajuanPagination.currentPage === page ? 'btn-primary' : 'btn-ghost'
+              ]"
+            >
+              {{ page }}
+            </button>
+          </template>
+          <button
+            @click="pengajuanNextPage"
+            :disabled="pengajuanPagination.currentPage === pengajuanPagination.totalPages"
+            class="btn btn-ghost btn-sm"
+          >
+            <i class="ri-arrow-right-s-line"></i>
+          </button>
+        </div>
+      </div>
     </div>
 
     <div v-else class="space-y-4">
       <!-- Empty State -->
-      <div v-if="suratList.length === 0" class="card card-body text-center py-12">
+      <div v-if="suratPagination.data.length === 0" class="card card-body text-center py-12">
         <i class="ri-file-text-line text-4xl text-secondary-300 mb-4"></i>
         <h3 class="text-lg font-semibold text-secondary-700 mb-2">Belum Ada Surat Tugas</h3>
         <p class="text-secondary-500">Silakan buat surat tugas untuk pengajuan yang sudah verified.</p>
@@ -296,7 +463,7 @@ onMounted(() => {
       <!-- Surat List -->
       <div v-else class="space-y-4">
         <div
-          v-for="surat in suratList"
+          v-for="surat in suratPagination.data"
           :key="surat.id"
           class="card card-body"
         >
@@ -331,6 +498,42 @@ onMounted(() => {
               </button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Pagination for Surat List -->
+      <div v-if="suratPagination.totalPages > 1" class="flex items-center justify-between mt-4 pt-4 border-t border-secondary-200">
+        <div class="text-sm text-secondary-500">
+          Menampilkan {{ (suratPagination.currentPage - 1) * suratPagination.perPage + 1 }} - {{ Math.min(suratPagination.currentPage * suratPagination.perPage, suratPagination.total) }} dari {{ suratPagination.total }} surat
+        </div>
+        <div class="flex items-center gap-1">
+          <button
+            @click="suratPrevPage"
+            :disabled="suratPagination.currentPage === 1"
+            class="btn btn-ghost btn-sm"
+          >
+            <i class="ri-arrow-left-s-line"></i>
+          </button>
+          <template v-for="page in getSuratPageRange()" :key="page">
+            <span v-if="page === '...'" class="px-2 text-secondary-400">...</span>
+            <button
+              v-else
+              @click="suratPagination.currentPage = page; loadSuratList()"
+              :class="[
+                'btn btn-sm',
+                suratPagination.currentPage === page ? 'btn-primary' : 'btn-ghost'
+              ]"
+            >
+              {{ page }}
+            </button>
+          </template>
+          <button
+            @click="suratNextPage"
+            :disabled="suratPagination.currentPage === suratPagination.totalPages"
+            class="btn btn-ghost btn-sm"
+          >
+            <i class="ri-arrow-right-s-line"></i>
+          </button>
         </div>
       </div>
     </div>

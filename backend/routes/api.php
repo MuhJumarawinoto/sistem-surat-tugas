@@ -1,22 +1,22 @@
 <?php
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\AuthController;
-use App\Http\Controllers\PengajuanController;
-use App\Http\Controllers\DokumenController;
 use App\Http\Controllers\ApprovalController;
-use App\Http\Controllers\SuratTugasController;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\DokumenController;
+use App\Http\Controllers\JenisDokumenController;
 use App\Http\Controllers\MasterController;
 use App\Http\Controllers\NotificationController;
-use App\Http\Controllers\PegawaiController;
-use App\Http\Controllers\PegawaiSyncController;
 use App\Http\Controllers\PDDiktiController;
 use App\Http\Controllers\PDDiktiSyncController;
-use App\Http\Controllers\VerificationController;
-use App\Http\Controllers\SuratTugasDinasController;
+use App\Http\Controllers\PegawaiController;
+use App\Http\Controllers\PegawaiSyncController;
+use App\Http\Controllers\PengajuanController;
 use App\Http\Controllers\SuratIzinBelajarController;
+use App\Http\Controllers\SuratTugasController;
+use App\Http\Controllers\SuratTugasDinasController;
 use App\Http\Controllers\SuratTugasMandiriController;
+use App\Http\Controllers\VerificationController;
+use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 
@@ -129,6 +129,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{id}', [PDDiktiSyncController::class, 'show']);
         Route::get('/{id}/prodis', [PDDiktiSyncController::class, 'prodis']);
         Route::delete('/{id}', [PDDiktiSyncController::class, 'destroy']);
+    });
+
+    // Jenis Dokumen Management (Admin only)
+    Route::prefix('admin/jenis-dokumen')->middleware('admin')->group(function () {
+        Route::get('/', [JenisDokumenController::class, 'index']);
+        Route::post('/', [JenisDokumenController::class, 'store']);
+        Route::get('/{id}', [JenisDokumenController::class, 'show']);
+        Route::put('/{id}', [JenisDokumenController::class, 'update']);
+        Route::delete('/{id}', [JenisDokumenController::class, 'destroy']);
     });
 
     // Cache Management (Admin only)

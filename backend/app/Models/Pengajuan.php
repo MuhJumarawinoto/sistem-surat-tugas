@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 #[Fillable([
     'nomor_pengajuan',
     'user_id',
+    'created_by',
     'jenjang_id',
     'nama_prodi',
     'perguruan_tinggi',
@@ -51,6 +52,11 @@ class Pengajuan extends Model
     public function approvedByAtasan(): BelongsTo
     {
         return $this->belongsTo(User::class, 'approved_by_atasan');
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 
     public function jenjang(): BelongsTo
@@ -160,12 +166,12 @@ class Pengajuan extends Model
 
     public function needsSuratTugasDinas(): bool
     {
-        return $this->isVerified() && !$this->hasSuratTugasDinas();
+        return $this->isVerified() && ! $this->hasSuratTugasDinas();
     }
 
     public function needsSuratIzinBelajar(): bool
     {
-        return $this->hasSuratTugasDinas() && !$this->hasSuratIzinBelajar();
+        return $this->hasSuratTugasDinas() && ! $this->hasSuratIzinBelajar();
     }
 
     public function isAtasanApplicant(): bool
@@ -195,5 +201,26 @@ class Pengajuan extends Model
         $uploadedTypes = $this->dokumen->pluck('jenis_dokumen')->toArray();
 
         return empty(array_diff($requiredDocuments, $uploadedTypes));
+    }
+
+    public function isCreatedByKepalaUnit(): bool
+    {
+        return $this->created_by !== null && $this->created_by !== $this->user_id;
+    }
+
+    public function canBeEditedBy(User $user): bool
+    {
+        // Admin can always edit
+        if ($user->isAdminBkpsdm()) {
+            return true;
+        }
+
+        // Can only edit draft or rejected applications
+        if (! in_array($this->status, ['draft', 'ditolak'])) {
+            return false;
+        }
+
+        // Owner (user_id) or creator (created_by) can edit
+        return $this->user_id === $user->id || $this->created_by === $user->id;
     }
 }

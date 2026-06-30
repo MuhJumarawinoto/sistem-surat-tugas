@@ -39,8 +39,25 @@ class DokumenPengajuan extends Model
         return $this->belongsTo(User::class, 'verified_by');
     }
 
+    /**
+     * Relasi ke JenisDokumen berdasarkan kode
+     */
+    public function jenisDokumenRelasi(): BelongsTo
+    {
+        return $this->belongsTo(JenisDokumen::class, 'jenis_dokumen', 'kode');
+    }
+
+    /**
+     * Get label jenis dokumen dari relasi atau fallback ke hardcoded
+     */
     public function getJenisDokumenLabelAttribute(): string
     {
+        // Gunakan relasi jika ada
+        if ($this->jenisDokumenRelasi) {
+            return $this->jenisDokumenRelasi->nama;
+        }
+
+        // Fallback untuk data lama atau jika relasi tidak ditemukan
         return match ($this->jenis_dokumen) {
             'sk_pangkat' => 'SK Pangkat Terakhir',
             'sk_cpns' => 'SK CPNS',

@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
             UnitKerjaSeeder::class,
             JenjangPendidikanSeeder::class,
             UserSeeder::class,
+            KepalaUnitSeeder::class,
         ]);
     }
 }

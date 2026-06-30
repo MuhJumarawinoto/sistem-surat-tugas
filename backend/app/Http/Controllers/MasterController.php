@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\JenisDokumen;
 use App\Models\JenjangPendidikan;
-use App\Models\UnitKerja;
 use App\Models\PerguruanTinggi;
 use App\Models\Prodi;
+use App\Models\UnitKerja;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
@@ -46,6 +47,7 @@ class MasterController extends Controller
         Cache::forget('master:jenjang');
         Cache::forget('master:unit_kerja');
         Cache::forget('master:akreditasi');
+        Cache::forget('master:jenis_dokumen');
 
         return response()->json(['message' => 'Master data cache cleared']);
     }
@@ -64,19 +66,32 @@ class MasterController extends Controller
         return response()->json($status);
     }
 
+    /**
+     * Get active jenis dokumen (public endpoint)
+     */
     public function jenisDokumen()
     {
-        $jenisDokumen = [
-            ['value' => 'sk_pangkat', 'label' => 'SK Pangkat Terakhir', 'required' => true],
-            ['value' => 'sk_cpns', 'label' => 'SK CPNS', 'required' => true],
-            ['value' => 'skp', 'label' => 'SKP 2 Tahun Terakhir', 'required' => true],
-            ['value' => 'surat_lulus', 'label' => 'Surat Keterangan Lulus/Diterima', 'required' => true],
-            ['value' => 'jadwal', 'label' => 'Jadwal Perkuliahan', 'required' => true],
-            ['value' => 'akreditasi', 'label' => 'Sertifikat Akreditasi Prodi', 'required' => true],
-            ['value' => 'surat_mandiri', 'label' => 'Surat Pernyataan Biaya Mandiri', 'required' => true],
-            ['value' => 'surat_ijazah', 'label' => 'Surat Pernyataan Tidak Menuntut Ijazah', 'required' => true],
-            ['value' => 'surat_sehat', 'label' => 'Surat Keterangan Sehat', 'required' => true],
-        ];
+        $jenisDokumen = Cache::remember('master:jenis_dokumen', self::CACHE_TTL, function () {
+            return JenisDokumen::active()
+                ->get(['id', 'kode', 'nama', 'deskripsi', 'is_wajib', 'urutan', 'persyaratan', 'catatan'])
+                ->map(function ($item) {
+                    return [
+                        'id' => $item->id,
+                        'value' => $item->kode,
+                        'label' => $item->nama,
+                        'kode' => $item->kode,
+                        'nama' => $item->nama,
+                        'deskripsi' => $item->deskripsi,
+                        'required' => $item->is_wajib,
+                        'urutan' => $item->urutan,
+                        'persyaratan' => $item->persyaratan,
+                        'catatan' => $item->catatan,
+                    ];
+                })
+                ->sortBy('urutan')
+                ->values()
+                ->toArray();
+        });
 
         return response()->json($jenisDokumen);
     }
@@ -105,12 +120,12 @@ class MasterController extends Controller
 
     public function perguruanTinggi(Request $request)
     {
-        $keyword = $request->get('keyword');
+        $keyword = $request->input('keyword');
 
         $query = PerguruanTinggi::orderBy('nama_pt');
 
         if ($keyword) {
-            $query->where('nama_pt', 'like', '%' . $keyword . '%');
+            $query->where('nama_pt', 'like', '%'.$keyword.'%');
         }
 
         $pt = $query->limit(100)->get(['id', 'kode_pt', 'nama_pt', 'provinsi', 'kab_kota', 'akreditasi']);
@@ -120,8 +135,8 @@ class MasterController extends Controller
 
     public function prodi(Request $request)
     {
-        $ptId = $request->get('perguruan_tinggi_id');
-        $keyword = $request->get('keyword');
+        $ptId = $request->input('perguruan_tinggi_id');
+        $keyword = $request->input('keyword');
 
         $query = Prodi::with('perguruanTinggi:id,nama_pt');
 
@@ -130,11 +145,101 @@ class MasterController extends Controller
         }
 
         if ($keyword) {
-            $query->where('nama_prodi', 'like', '%' . $keyword . '%');
+            $query->where('nama_prodi', 'like', '%'.$keyword.'%');
         }
 
         $prodi = $query->orderBy('nama_prodi')->limit(100)->get();
 
         return response()->json($prodi);
+    }
+
+    // ==================== ADMIN CRUD METHODS ====================
+
+    /**
+     * Get all jenis dokumen (admin only - includes inactive)
+     */
+    public function adminJenisDokumenIndex()
+    {
+        $jenisDokumen = JenisDokumen::allWithInactive()->get();
+
+        return response()->json($jenisDokumen);
+    }
+
+    /**
+     * Get single jenis dokumen (admin only)
+     */
+    public function showJenisDokumen(string $id)
+    {
+        $jenisDokumen = JenisDokumen::findOrFail($id);
+
+        return response()->json($jenisDokumen);
+    }
+
+    /**
+     * Create new jenis dokumen (admin only)
+     */
+    public function storeJenisDokumen(Request $request)
+    {
+        $validated = $request->validate([
+            'kode' => 'required|string|unique:jenis_dokumen,kode',
+            'nama' => 'required|string|max:255',
+            'deskripsi' => 'nullable|string',
+            'is_wajib' => 'boolean',
+            'urutan' => 'integer|min:0',
+            'persyaratan' => 'nullable|array',
+            'persyaratan.*' => 'string',
+            'catatan' => 'nullable|string',
+            'is_active' => 'boolean',
+        ]);
+
+        $jenisDokumen = JenisDokumen::create($validated);
+
+        // Clear cache
+        Cache::forget('master:jenis_dokumen');
+
+        return response()->json($jenisDokumen, 201);
+    }
+
+    /**
+     * Update jenis dokumen (admin only)
+     */
+    public function updateJenisDokumen(Request $request, string $id)
+    {
+        $jenisDokumen = JenisDokumen::findOrFail($id);
+
+        $validated = $request->validate([
+            'kode' => 'required|string|unique:jenis_dokumen,kode,'.$id,
+            'nama' => 'required|string|max:255',
+            'deskripsi' => 'nullable|string',
+            'is_wajib' => 'boolean',
+            'urutan' => 'integer|min:0',
+            'persyaratan' => 'nullable|array',
+            'persyaratan.*' => 'string',
+            'catatan' => 'nullable|string',
+            'is_active' => 'boolean',
+        ]);
+
+        $jenisDokumen->update($validated);
+
+        // Clear cache
+        Cache::forget('master:jenis_dokumen');
+
+        return response()->json($jenisDokumen);
+    }
+
+    /**
+     * Delete jenis dokumen (admin only - soft delete)
+     */
+    public function destroyJenisDokumen(string $id)
+    {
+        $jenisDokumen = JenisDokumen::findOrFail($id);
+
+        // Soft delete - set is_active to false
+        $jenisDokumen->update(['is_active' => false]);
+
+        // Clear cache
+        Cache::forget('master:jenis_dokumen');
+
+        return response()->json(['message' => 'Jenis dokumen dinonaktifkan']);
     }
 }

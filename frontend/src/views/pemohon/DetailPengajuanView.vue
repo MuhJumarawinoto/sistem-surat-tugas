@@ -2,6 +2,7 @@
 import { ref, onMounted, computed, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePengajuanStore } from '@/stores/pengajuan'
+import { useMasterStore } from '@/stores/master'
 import api from '@/services/api'
 import MainLayout from '@/components/layout/MainLayout.vue'
 import ImageModal from '@/components/ImageModal.vue'
@@ -16,6 +17,7 @@ import PengajuanMilestone from '@/components/PengajuanMilestone.vue'
 const route = useRoute()
 const router = useRouter()
 const pengajuanStore = usePengajuanStore()
+const masterStore = useMasterStore()
 
 const backendUrl = import.meta.env.VITE_API_URL
   ? import.meta.env.VITE_API_URL.replace('/api', '')
@@ -43,6 +45,11 @@ const showHighlight = ref(true)
 
 // Clear highlight after animation
 onMounted(async () => {
+  // Load jenis dokumen if not already loaded
+  if (masterStore.jenisDokumen.length === 0) {
+    await masterStore.fetchJenisDokumen()
+  }
+
   await loadPengajuan()
 
   if (highlightType.value) {
@@ -167,65 +174,20 @@ watch(() => pengajuan.value?.status, (newStatus) => {
   }
 }, { immediate: true })
 
-const jenisDokumenList = [
-  {
-    key: 'sk_pangkat',
-    label: 'SK Pangkat Terakhir legalisir',
-    requirements: ['SK Pangkat/Golongan terakhir yang sudah legalisir', 'Masih berlaku (minimal 1 tahun ke depan)', 'Scan dokumen asli dengan jelas'],
-    notes: 'Legalisir bisa oleh pejabat pembina kepegawaian atau notaris'
-  },
-  {
-    key: 'sk_cpns',
-    label: 'SK CPNS legalisir',
-    requirements: ['SK CPNS pertama kali diangkat', 'Scan dokumen asli dengan jelas', 'Terlihat nomor SK dan tanggal'],
-    notes: 'Jika SK hilang, bisa diganti surat keterangan dari BKPSDM'
-  },
-  {
-    key: 'skp',
-    label: 'SKP 2 tahun terakhir',
-    requirements: ['SKP 2 tahun terakhir (tahun berjalan dan tahun sebelumnya)', 'Nilai SKP minimal baik', 'Legalisir oleh atasan langsung'],
-    notes: 'Upload dalam satu file PDF jika memungkinkan'
-  },
-  {
-    key: 'surat_lulus',
-    label: 'Surat Keterangan Lulus/Diterima dari PT',
-    requirements: ['Surat Keterangan Lulus (SKL) atau Surat Diterima', 'Dikeluarkan oleh Perguruan Tinggi resmi', 'Tertera nama prodi dan jenjang'],
-    notes: 'Bisa berupa SKL sementara atau surat diterima kuliah'
-  },
-  {
-    key: 'jadwal',
-    label: 'Jadwal Perkuliahan',
-    requirements: ['Jadwal kuliah semester yang akan diikuti', 'Dikeluarkan oleh fakultas/prodi', 'Terlihat hari, jam, dan nama mata kuliah'],
-    notes: 'Jika belum ada, bisa upload screenshot dari portal akademik'
-  },
-  {
-    key: 'akreditasi',
-    label: 'Sertifikat Akreditasi Prodi (min C)',
-    requirements: ['Sertifikat akreditasi program studi', 'Minimal akreditasi C', 'Masih berlaku atau terbaru'],
-    notes: 'Bisa dicek di banpt.or.id dan screenshot jika tidak ada sertifikat'
-  },
-  {
-    key: 'surat_mandiri',
-    label: 'Surat Pernyataan Biaya Mandiri',
-    requirements: ['Surat pernyataan bermaterai 10.000', 'Menyatakan biaya kuliah mandiri', 'Ditandatangani dan bermaterai'],
-    notes: 'Template surat bisa didownload di portal'
-  },
-  {
-    key: 'surat_ijazah',
-    label: 'Surat Pernyataan Tidak Menuntut Ijazah',
-    requirements: ['Surat pernyataan bermaterai 10.000', 'Menyatakan tidak menuntut penyerahan ijazah asli', 'Ditandatangani dan bermaterai'],
-    notes: 'Template surat bisa didownload di portal'
-  },
-  {
-    key: 'surat_sehat',
-    label: 'Surat Keterangan Sehat',
-    requirements: ['Surat keterangan sehat dari dokter/Puskesmas/RS', 'Masih berlaku (maks 6 bulan)', 'Menyatakan sehat untuk melanjutkan studi'],
-    notes: 'Bisa dari dokter pribadi atau fasilitas kesehatan pemerintah'
-  },
-]
+// Computed property untuk jenis dokumen dari master store
+const jenisDokumenList = computed(() => {
+  return masterStore.jenisDokumen.map(doc => ({
+    key: doc.kode,
+    label: doc.nama,
+    requirements: doc.persyaratan || [],
+    notes: doc.catatan || '',
+    is_wajib: doc.is_wajib,
+    urutan: doc.urutan
+  }))
+})
 
 const selectedDocInfo = computed(() => {
-  return jenisDokumenList.find(d => d.key === additionalDocType.value)
+  return jenisDokumenList.value.find(d => d.key === additionalDocType.value)
 })
 
 async function loadPengajuan() {
@@ -256,21 +218,21 @@ async function submitPengajuan() {
 
   const submitOption = confirm(
     `Pilih opsi pengiriman:\n\n` +
-    `OK = Kirim dengan data lengkap (${complete ? '✓ 9 dokumen lengkap' : '✗ ' + (9 - missing) + '/9 dokumen'})\n` +
+    `OK = Kirim dengan data lengkap (${complete ? '✓ ' + jenisDokumenList.value.length + ' dokumen lengkap' : '✗ ' + (jenisDokumenList.value.length - missing) + '/' + jenisDokumenList.value.length + ' dokumen'})\n` +
     `Cancel = Lengkapi data terlebih dahulu\n\n` +
     `${!complete ? '⚠️ Masih ada ' + missing + ' dokumen yang belum diupload.' : ''}`
   )
 
   if (!submitOption) {
     if (!complete) {
-      alert('Silakan upload semua dokumen terlebih dahulu (9 dokumen wajib).')
+      alert('Silakan upload semua dokumen terlebih dahulu (' + jenisDokumenList.value.length + ' dokumen wajib).')
     }
     return
   }
 
   if (!complete) {
     const proceed = confirm(
-      `Anda akan mengirim pengajuan dengan data tidak lengkap (${9 - missing}/9 dokumen).\n\n` +
+      `Anda akan mengirim pengajuan dengan data tidak lengkap (${jenisDokumenList.value.length - missing}/${jenisDokumenList.value.length} dokumen).\n\n` +
       `Pengajuan dengan dokumen tidak lengkap mungkin akan ditolak oleh atasan atau admin.\n\n` +
       `Lanjutkan kirim?`
     )
@@ -530,6 +492,21 @@ function getStatusIcon(status) {
         :actions="headerActions"
       />
 
+      <!-- Created By Banner (for kepala unit created pengajuan) -->
+      <div v-if="pengajuan.created_by && pengajuan.created_by !== pengajuan.user_id" class="bg-info-50 border border-info-200 rounded-xl p-4 mb-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-info-100 flex items-center justify-center flex-shrink-0">
+            <i class="ri-information-line text-info-600 text-lg"></i>
+          </div>
+          <div class="flex-1">
+            <p class="text-sm font-medium text-info-800">Pengajuan dibuat oleh kepala unit</p>
+            <p class="text-xs text-info-600">
+              {{ pengajuan.created_by?.name || '-' }} ({{ pengajuan.created_by?.nip || '-' }})
+            </p>
+          </div>
+        </div>
+      </div>
+
       <!-- Progress Milestone -->
           <div class="card">
             <div class="card-header">
@@ -641,7 +618,7 @@ function getStatusIcon(status) {
                     <i class="ri-file-text-line text-primary-600"></i>
                     Dokumen
                   </h3>
-                  <span class="badge badge-primary">{{ pengajuan.dokumen?.length || 0 }}/9</span>
+                  <span class="badge badge-primary">{{ pengajuan.dokumen?.length || 0 }}/{{ jenisDokumenList.length }}</span>
                 </div>
               </div>
               <div class="card-body">
@@ -736,7 +713,7 @@ function getStatusIcon(status) {
                   <div class="flex items-start gap-2">
                     <i class="ri-alert-line text-amber-600 mt-0.5"></i>
                     <p class="text-sm text-amber-800">
-                      Dokumen belum lengkap ({{ 9 - missingDocumentsCount }}/9)
+                      Dokumen belum lengkap ({{ jenisDokumenList.length - missingDocumentsCount }}/{{ jenisDokumenList.length }})
                     </p>
                   </div>
                 </div>

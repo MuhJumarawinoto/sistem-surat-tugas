@@ -293,6 +293,22 @@ function closeAllMenus() {
   activeDropdown.value = null
 }
 
+// Delete pengajuan (admin only)
+async function deletePengajuan(id, nomor) {
+  if (!confirm(`Hapus pengajuan "${nomor}"? Data yang dihapus tidak dapat dikembalikan.`)) {
+    return
+  }
+
+  try {
+    await api.delete(`/admin/pengajuan/${id}`)
+    toast.success('Pengajuan berhasil dihapus')
+    await loadPengajuan()
+  } catch (error) {
+    console.error('Failed to delete pengajuan:', error)
+    toast.error(error.response?.data?.message || 'Gagal menghapus pengajuan')
+  }
+}
+
 // Close dropdown when clicking outside
 if (typeof window !== 'undefined') {
   window.addEventListener('click', () => {
@@ -445,16 +461,6 @@ if (typeof window !== 'undefined') {
                 <i class="ri-eye-line"></i>
                 <span class="ml-1">Detail</span>
               </button>
-              <!-- Download Surat Izin -->
-              <button
-                v-if="hasSuratIzin(item.id)"
-                @click="downloadSuratIzin(item.id)"
-                class="btn btn-sm btn-primary"
-                title="Download Surat Izin Belajar"
-              >
-                <i class="ri-file-download-line"></i>
-                <span class="ml-1">Surat Izin</span>
-              </button>
               <!-- Download Surat Tugas -->
               <button
                 v-if="hasSuratTugas(item.id)"
@@ -471,6 +477,14 @@ if (typeof window !== 'undefined') {
                 title="Kirim Pesan"
               >
                 <i class="ri-message-3-line"></i>
+              </button>
+              <!-- Delete Button -->
+              <button
+                @click="deletePengajuan(item.id, item.nomor_pengajuan)"
+                class="btn btn-sm bg-red-600 hover:bg-red-700 text-white border-red-700"
+                title="Hapus Pengajuan"
+              >
+                <i class="ri-delete-bin-line"></i>
               </button>
             </div>
 
@@ -495,14 +509,6 @@ if (typeof window !== 'undefined') {
                   <span>Detail</span>
                 </button>
                 <button
-                  v-if="hasSuratIzin(item.id)"
-                  @click="downloadSuratIzin(item.id); closeAllMenus()"
-                  class="w-full px-4 py-2 text-left text-sm hover:bg-secondary-50 flex items-center gap-2"
-                >
-                  <i class="ri-file-download-line text-primary-600"></i>
-                  <span>Surat Izin Belajar</span>
-                </button>
-                <button
                   v-if="hasSuratTugas(item.id)"
                   @click="downloadSuratTugas(item.id); closeAllMenus()"
                   class="w-full px-4 py-2 text-left text-sm hover:bg-secondary-50 flex items-center gap-2"
@@ -516,6 +522,14 @@ if (typeof window !== 'undefined') {
                 >
                   <i class="ri-message-3-line text-secondary-600"></i>
                   <span>Kirim Pesan</span>
+                </button>
+                <div class="border-t border-secondary-100 my-1"></div>
+                <button
+                  @click="deletePengajuan(item.id, item.nomor_pengajuan); closeAllMenus()"
+                  class="w-full px-4 py-2 text-left text-sm hover:bg-red-50 flex items-center gap-2 text-red-600"
+                >
+                  <i class="ri-delete-bin-line"></i>
+                  <span>Hapus Pengajuan</span>
                 </button>
               </div>
             </div>

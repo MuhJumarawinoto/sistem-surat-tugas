@@ -80,7 +80,7 @@ const showTooltip = ref(false)
             <span class="font-medium">Format:</span> PDF, JPG, JPEG, PNG
           </p>
           <p class="text-xs text-gray-500">
-            <span class="font-medium">Ukuran Maks:</span> 5MB per file
+            <span class="font-medium">Ukuran Maks:</span> 1MB per file
           </p>
           <p class="text-xs text-orange-600 font-medium">
             Maksimal 1 file untuk setiap jenis dokumen

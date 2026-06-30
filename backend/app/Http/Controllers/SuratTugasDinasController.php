@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\SuratTugasDinas;
 use App\Models\Pengajuan;
+use App\Models\SuratTugasDinas;
 use App\Models\User;
 use App\Services\QrCodeService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Barryvdh\DomPDF\Facade\Pdf;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class SuratTugasDinasController extends Controller
 {
@@ -19,16 +20,18 @@ class SuratTugasDinasController extends Controller
     {
         $this->qrCodeService = $qrCodeService;
     }
+
     /**
      * List surat tugas dinas.
-     * New simplified flow: Admin BKPSDM manages all surat tugas dinas
+     * Admin BKPSDM: see all surat
+     * Kepala Unit: see only surat from their unit kerja
      */
     public function index(Request $request)
     {
         $user = auth()->user();
 
-        if (!$user->isAdminBkpsdm() && !$user->isKepalaBkpsdm()) {
-            return response()->json(['message' => 'Unauthorized. Admin and Kepala BKPSDM only.'], 403);
+        if (! $user->isAdminBkpsdm() && ! $user->isKepalaBkpsdm() && ! $user->isKepalaUnit()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $query = SuratTugasDinas::with([
@@ -36,8 +39,13 @@ class SuratTugasDinasController extends Controller
             'pengajuan.jenjang',
             'pengajuan.suratIzinBelajar',
             'unitKerja',
-            'kepalaDinas'
+            'kepalaDinas',
         ]);
+
+        // Kepala Unit: filter by unit kerja
+        if ($user->isKepalaUnit()) {
+            $query->where('unit_kerja_id', $user->unit_kerja_id);
+        }
 
         // Filter by status
         if ($request->has('status')) {
@@ -64,19 +72,27 @@ class SuratTugasDinasController extends Controller
 
     /**
      * Get pending pengajuan (signed but no surat tugas dinas yet).
-     * New simplified flow: signed → Admin creates Surat Tugas Dinas with same TTE
+     * Admin BKPSDM: see all pending pengajuan
+     * Kepala Unit: see only pending pengajuan from their unit kerja
      */
     public function pending(Request $request)
     {
         $user = auth()->user();
 
-        if (!$user->isAdminBkpsdm()) {
-            return response()->json(['message' => 'Unauthorized. Admin BKPSDM only.'], 403);
+        if (! $user->isAdminBkpsdm() && ! $user->isKepalaUnit()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $query = Pengajuan::with(['user', 'jenjang', 'suratIzinBelajar', 'user.unitKerja'])
             ->where('status', 'signed')
             ->whereDoesntHave('suratTugasDinas');
+
+        // Kepala Unit: filter by unit kerja
+        if ($user->isKepalaUnit()) {
+            $query->whereHas('user', function ($q) use ($user) {
+                $q->where('unit_kerja_id', $user->unit_kerja_id);
+            });
+        }
 
         $pengajuan = $query->orderBy('updated_at', 'desc')->paginate($request->per_page ?? 10);
 
@@ -93,15 +109,16 @@ class SuratTugasDinasController extends Controller
 
     /**
      * Store new surat tugas dinas.
-     * New simplified flow: Admin creates Surat Tugas Dinas with same TTE from Surat Izin Belajar
+     * Admin BKPSDM: can create surat for any unit kerja
+     * Kepala Unit: can only create surat for their own unit kerja
      */
     public function store(Request $request)
     {
         $user = auth()->user();
 
-        // Only Admin BKPSDM can create surat tugas dinas in new flow
-        if (!$user->isAdminBkpsdm()) {
-            return response()->json(['message' => 'Unauthorized. Only Admin BKPSDM can create surat tugas dinas.'], 403);
+        // Check authorization
+        if (! $user->isAdminBkpsdm() && ! $user->isKepalaUnit()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $request->validate([
@@ -118,8 +135,13 @@ class SuratTugasDinasController extends Controller
         $pengajuan = Pengajuan::with(['suratIzinBelajar', 'user'])->findOrFail($request->pengajuan_id);
 
         // Check if pengajuan is signed (has Surat Izin Belajar)
-        if ($pengajuan->status !== 'signed' || !$pengajuan->suratIzinBelajar) {
+        if ($pengajuan->status !== 'signed' || ! $pengajuan->suratIzinBelajar) {
             return response()->json(['message' => 'Pengajuan must have signed Surat Izin Belajar first.'], 400);
+        }
+
+        // Kepala Unit: check if pengajuan is from their unit kerja
+        if ($user->isKepalaUnit() && $pengajuan->user->unit_kerja_id !== $user->unit_kerja_id) {
+            return response()->json(['message' => 'Unauthorized. Pengajuan is not from your unit kerja.'], 403);
         }
 
         // Check if surat tugas dinas already exists
@@ -136,7 +158,7 @@ class SuratTugasDinasController extends Controller
             ->first();
 
         // If no kepala unit found, use Kepala BKPSDM as fallback
-        if (!$kepalaUnit) {
+        if (! $kepalaUnit) {
             $kepalaUnit = User::whereHas('role', function ($query) {
                 $query->where('slug', 'kepala_bkpsdm');
             })->first();
@@ -179,7 +201,8 @@ class SuratTugasDinasController extends Controller
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['message' => 'Failed to create surat tugas dinas: ' . $e->getMessage()], 500);
+
+            return response()->json(['message' => 'Failed to create surat tugas dinas: '.$e->getMessage()], 500);
         }
     }
 
@@ -196,7 +219,7 @@ class SuratTugasDinasController extends Controller
             'pengajuan.dokumen',
             'pengajuan.suratIzinBelajar',
             'unitKerja',
-            'kepalaDinas'
+            'kepalaDinas',
         ])->findOrFail($id);
 
         // Check permission
@@ -216,24 +239,24 @@ class SuratTugasDinasController extends Controller
         // Check token from query parameter (for direct access)
         if ($request->has('token')) {
             $token = $request->query('token');
-            $personalAccessToken = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
+            $personalAccessToken = PersonalAccessToken::findToken($token);
             if ($personalAccessToken) {
                 $user = $personalAccessToken->tokenable;
             } else {
                 $user = null;
             }
 
-            if (!$user) {
+            if (! $user) {
                 return response()->json(['message' => 'Unauthorized'], 401);
             }
         } else {
             $user = auth()->user();
-            if (!$user) {
+            if (! $user) {
                 return response()->json(['message' => 'Unauthorized'], 401);
             }
         }
 
-        if (!$user->isAdminBkpsdm() && !$user->isKepalaBkpsdm()) {
+        if (! $user->isAdminBkpsdm() && ! $user->isKepalaBkpsdm()) {
             return response()->json(['message' => 'Unauthorized. Admin and Kepala BKPSDM only.'], 403);
         }
 
@@ -242,7 +265,7 @@ class SuratTugasDinasController extends Controller
             'pengajuan.jenjang',
             'pengajuan.suratIzinBelajar',
             'unitKerja',
-            'kepalaDinas'
+            'kepalaDinas',
         ])->findOrFail($id);
 
         // Generate QR code for preview
@@ -253,21 +276,21 @@ class SuratTugasDinasController extends Controller
             'created_at' => $surat->created_at->toIso8601String(),
         ]);
         $qrCodePath = $this->qrCodeService->generateAndSave($qrCodeData, "tugas-{$surat->id}");
-        $qrCodeBase64 = 'data:image/png;base64,' . base64_encode(Storage::disk('public')->get($qrCodePath));
+        $qrCodeBase64 = 'data:image/png;base64,'.base64_encode(Storage::disk('public')->get($qrCodePath));
 
         // Logo
         $logoPath = 'logo-kab-sukabumi.png';
         $logoContent = Storage::disk('public')->exists($logoPath)
             ? Storage::disk('public')->get($logoPath)
-            : Storage::disk('public')->get('surat-tugas-dinas/' . $logoPath);
-        $logoBase64 = 'data:image/png;base64,' . base64_encode($logoContent);
+            : Storage::disk('public')->get('surat-tugas-dinas/'.$logoPath);
+        $logoBase64 = 'data:image/png;base64,'.base64_encode($logoContent);
 
         // Background Image
         $bgPath = 'bg-pdf.png';
         $bgBase64 = null;
         if (Storage::disk('public')->exists($bgPath)) {
             $bgContent = Storage::disk('public')->get($bgPath);
-            $bgBase64 = 'data:image/png;base64,' . base64_encode($bgContent);
+            $bgBase64 = 'data:image/png;base64,'.base64_encode($bgContent);
         }
 
         return view('pdf.surat-tugas-dinas', [
@@ -293,7 +316,7 @@ class SuratTugasDinasController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        if (!$surat->canBeEdited()) {
+        if (! $surat->canBeEdited()) {
             return response()->json(['message' => 'Only draft surat can be edited.'], 400);
         }
 
@@ -337,7 +360,7 @@ class SuratTugasDinasController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        if (!$surat->canBeDeleted()) {
+        if (! $surat->canBeDeleted()) {
             return response()->json(['message' => 'Only draft surat can be deleted.'], 400);
         }
 
@@ -359,19 +382,19 @@ class SuratTugasDinasController extends Controller
         if ($request->has('token')) {
             $token = $request->query('token');
             // Try Sanctum token first
-            $personalAccessToken = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
+            $personalAccessToken = PersonalAccessToken::findToken($token);
             if ($personalAccessToken) {
                 $user = $personalAccessToken->tokenable;
             } else {
                 $user = null;
             }
 
-            if (!$user) {
+            if (! $user) {
                 return response()->json(['message' => 'Unauthorized'], 401);
             }
         } else {
             $user = auth()->user();
-            if (!$user) {
+            if (! $user) {
                 return response()->json(['message' => 'Unauthorized'], 401);
             }
         }
@@ -381,7 +404,7 @@ class SuratTugasDinasController extends Controller
             'pengajuan.jenjang',
             'pengajuan.suratIzinBelajar',
             'unitKerja',
-            'kepalaDinas'
+            'kepalaDinas',
         ])->findOrFail($id);
 
         // Check permission:
@@ -390,15 +413,15 @@ class SuratTugasDinasController extends Controller
         // - User can download their own surat
         $canDownload = $user->isAdminBkpsdm() || $user->isKepalaBkpsdm();
 
-        if (!$canDownload && $user->isKepalaUnit()) {
+        if (! $canDownload && $user->isKepalaUnit()) {
             $canDownload = $surat->unit_kerja_id === $user->unit_kerja_id;
         }
 
-        if (!$canDownload && $surat->pengajuan->user_id === $user->id) {
+        if (! $canDownload && $surat->pengajuan->user_id === $user->id) {
             $canDownload = true;
         }
 
-        if (!$canDownload) {
+        if (! $canDownload) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -412,21 +435,21 @@ class SuratTugasDinasController extends Controller
         $qrCodePath = $this->qrCodeService->generateAndSave($qrCodeData, "tugas-{$surat->id}");
 
         // Convert QR code to base64 for PDF embedding
-        $qrCodeBase64 = 'data:image/png;base64,' . base64_encode(Storage::disk('public')->get($qrCodePath));
+        $qrCodeBase64 = 'data:image/png;base64,'.base64_encode(Storage::disk('public')->get($qrCodePath));
 
         // Logo path - use storage disk instead of public path
         $logoPath = 'logo-kab-sukabumi.png';
         $logoContent = Storage::disk('public')->exists($logoPath)
             ? Storage::disk('public')->get($logoPath)
-            : Storage::disk('public')->get('surat-tugas-dinas/' . $logoPath);
-        $logoBase64 = 'data:image/png;base64,' . base64_encode($logoContent);
+            : Storage::disk('public')->get('surat-tugas-dinas/'.$logoPath);
+        $logoBase64 = 'data:image/png;base64,'.base64_encode($logoContent);
 
         // Background Image
         $bgPath = 'bg-pdf.png';
         $bgBase64 = null;
         if (Storage::disk('public')->exists($bgPath)) {
             $bgContent = Storage::disk('public')->get($bgPath);
-            $bgBase64 = 'data:image/png;base64,' . base64_encode($bgContent);
+            $bgBase64 = 'data:image/png;base64,'.base64_encode($bgContent);
         }
 
         $pdf = Pdf::loadView('pdf.surat-tugas-dinas', [
@@ -458,14 +481,23 @@ class SuratTugasDinasController extends Controller
 
         $pengajuan = Pengajuan::findOrFail($pengajuanId);
 
-        // Check permission - admin can see all, user can only see own
-        if (!$user->isAdminBkpsdm() && $pengajuan->user_id !== $user->id) {
+        // Check permission:
+        // 1. Admin BKPSDM can see all
+        // 2. User can see own pengajuan
+        // 3. Kepala Unit can see pengajuan from their unit kerja (including those they created for others)
+        // 4. User can see pengajuan created by them (created_by)
+        $canAccess = $user->isAdminBkpsdm()
+            || $pengajuan->user_id === $user->id
+            || ($user->isKepalaUnit() && $pengajuan->user->unit_kerja_id === $user->unit_kerja_id)
+            || $pengajuan->created_by === $user->id;
+
+        if (! $canAccess) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $surat = $pengajuan->suratTugasDinas;
 
-        if (!$surat) {
+        if (! $surat) {
             return response()->json(['message' => 'Surat tugas dinas not found'], 404);
         }
 
@@ -519,7 +551,7 @@ class SuratTugasDinasController extends Controller
             }
         }
 
-        if (!$surat) {
+        if (! $surat) {
             return response()->json(['message' => 'Surat not found or invalid.'], 404);
         }
 

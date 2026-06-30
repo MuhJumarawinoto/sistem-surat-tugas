@@ -28,7 +28,7 @@ const pengajuanList = ref([])
 const allPengajuanList = ref([]) // Store all data for client-side filtering
 const loading = ref(false)
 const currentPage = ref(1)
-const perPage = ref(10)
+const perPage = ref(3)
 const total = ref(0)
 const totalPages = ref(1)
 const lastPage = ref(1)
@@ -38,8 +38,9 @@ const filterStatus = ref('')
 const statusOptions = [
   { value: '', label: 'Semua Status' },
   { value: 'dicabut', label: 'Dihapus' },
-  { value: 'terverifikasi', label: 'Terverifikasi' },
+  { value: 'signed', label: 'Ditandatangani' },
   { value: 'selesai', label: 'Selesai' },
+  { value: 'completed', label: 'Selesai (Completed)' },
   { value: 'ditolak', label: 'Ditolak' },
 ]
 
@@ -187,9 +188,9 @@ async function loadPengajuan() {
     })
 
     // rawData is already the array of pengajuan (response.data.data from store)
-    // Filter: hanya yang selesai (terverifikasi, selesai, ditolak, dicabut)
+    // Filter: hanya yang selesai (signed, selesai, ditolak, dicabut)
     const filteredData = (rawData || []).filter(p =>
-      ['dicabut', 'terverifikasi', 'selesai', 'ditolak'].includes(p.status)
+      ['dicabut', 'signed', 'selesai', 'completed', 'ditolak'].includes(p.status)
     )
 
     allPengajuanList.value = filteredData
@@ -382,6 +383,12 @@ watch(searchQuery, () => {
   applyFilter()
 })
 
+// Watch for filter status changes
+watch(filterStatus, () => {
+  currentPage.value = 1
+  applyFilter()
+})
+
 // Refresh data when entering this route (e.g., after cancel from dashboard)
 watch(() => route.path, (newPath) => {
   if (newPath === '/pengajuan/riwayat' || newPath === '/riwayat') {
@@ -464,8 +471,15 @@ watch(() => route.path, (newPath) => {
                         <span class="text-xs text-secondary-500 bg-secondary-100 px-2 py-0.5 rounded">
                           {{ item.jenjang?.nama }}
                         </span>
+                        <!-- Badge Diwakilkan -->
+                        <span v-if="item.created_by" class="badge badge-info flex items-center gap-1" title="Pengajuan dibuat oleh kepala unit">
+                          <i class="ri-user-shared-line"></i>
+                          Diwakilkan
+                        </span>
                       </div>
                       <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-secondary-600">
+                        <span><i class="ri-user-line mr-1"></i>{{ item.user?.name || '-' }}</span>
+                        <span v-if="item.user?.nip"><i class="ri-id-card-line mr-1"></i>{{ item.user?.nip }}</span>
                         <span><i class="ri-graduation-cap-line mr-1"></i>{{ item.nama_prodi }}</span>
                         <span><i class="ri-building-line mr-1"></i>{{ item.perguruan_tinggi }}</span>
                         <span><i class="ri-calendar-line mr-1"></i>{{ new Date(item.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) }}</span>
@@ -575,6 +589,32 @@ watch(() => route.path, (newPath) => {
                   <span :class="['badge badge-lg', getStatusBadge(selectedPengajuan.status)]">
                     <i :class="getStatusIcon(selectedPengajuan.status)"></i>
                   </span>
+                </div>
+
+                <!-- Diwakilkan Oleh -->
+                <div v-if="selectedPengajuan.created_by" class="flex items-center gap-3 p-4 rounded-lg bg-blue-50 border border-blue-200">
+                  <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                    <i class="ri-user-shared-line text-xl text-blue-600"></i>
+                  </div>
+                  <div class="flex-1">
+                    <p class="text-xs text-blue-600 font-medium uppercase">Diwakilkan Oleh</p>
+                    <p class="font-semibold text-blue-800">{{ selectedPengajuan.created_by?.name || '-' }}</p>
+                    <p v-if="selectedPengajuan.created_by?.nip" class="text-xs text-blue-600">NIP: {{ selectedPengajuan.created_by?.nip }}</p>
+                    <p v-if="selectedPengajuan.created_by?.jabatan" class="text-xs text-blue-600">{{ selectedPengajuan.created_by?.jabatan }}</p>
+                  </div>
+                </div>
+
+                <!-- Info Pegawai -->
+                <div class="flex items-center gap-3 p-4 rounded-lg bg-secondary-50">
+                  <div class="w-10 h-10 rounded-full bg-secondary-100 flex items-center justify-center flex-shrink-0">
+                    <i class="ri-user-line text-xl text-secondary-600"></i>
+                  </div>
+                  <div class="flex-1">
+                    <p class="text-xs text-secondary-500 font-medium uppercase">Pegawai</p>
+                    <p class="font-semibold text-secondary-800">{{ selectedPengajuan.user?.name || '-' }}</p>
+                    <p v-if="selectedPengajuan.user?.nip" class="text-xs text-secondary-600">NIP: {{ selectedPengajuan.user?.nip }}</p>
+                    <p v-if="selectedPengajuan.user?.jabatan" class="text-xs text-secondary-600">{{ selectedPengajuan.user?.jabatan }}</p>
+                  </div>
                 </div>
 
                 <!-- Progress Milestone -->

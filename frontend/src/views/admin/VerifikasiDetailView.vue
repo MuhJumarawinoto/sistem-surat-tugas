@@ -133,7 +133,7 @@ async function updateDocumentVerification(docId) {
 }
 
 async function handleApprove() {
-  if (!confirm('Verifikasi dan lanjutkan pengajuan ini? Status akan berubah menjadi "Terverifikasi" dan menunggu Surat Tugas Belajar dari Kepala Dinas.')) return
+  if (!confirm('Setujui pengajuan ini? Surat Izin Belajar, Surat Tugas Mandiri, dan Surat Tugas Dinas akan dibuat secara otomatis.')) return
 
   submitting.value = true
   try {
@@ -408,7 +408,7 @@ function getDocumentCheckStatus(docTypeKey) {
 
     <div v-else-if="pengajuan" class="space-y-5">
       <!-- Verification Chain -->
-      <div v-if="verificationInfo?.verification_chain" class="card">
+      <div v-if="false && verificationInfo?.verification_chain" class="card">
         <div class="card-header">
           <h4 class="card-title">
             <i class="ri-flow-chart mr-1"></i> Alur Verifikasi
@@ -483,7 +483,7 @@ function getDocumentCheckStatus(docTypeKey) {
             <div class="space-y-3">
               <div>
                 <p class="text-xs text-secondary-500">Jenjang</p>
-                <p class="font-medium">{{ pengajuan.jenjang?.nama_jenjang || '-' }}</p>
+                <p class="font-medium">{{ pengajuan.jenjang?.nama || '-' }}</p>
               </div>
               <div>
                 <p class="text-xs text-secondary-500">Program Studi</p>
@@ -588,19 +588,7 @@ function getDocumentCheckStatus(docTypeKey) {
         </div>
       </div>
 
-      <!-- Final Signer Info -->
-      <div v-if="verificationInfo?.final_signer" class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-            <i class="ri-quill-pen-line text-blue-600"></i>
-          </div>
-          <div>
-            <p class="text-xs text-blue-600">Penandatangan Surat</p>
-            <p class="font-semibold text-blue-900">{{ verificationInfo.final_signer.nama }}</p>
-            <p class="text-sm text-blue-700">{{ verificationInfo.final_signer.jabatan }}</p>
-          </div>
-        </div>
-      </div>
+      
     </div>
   </MainLayout>
 

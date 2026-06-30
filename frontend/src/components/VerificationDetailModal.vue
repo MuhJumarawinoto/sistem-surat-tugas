@@ -1,8 +1,13 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import api from '@/services/api'
+import { useToastStore } from '@/stores/toast'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import DocumentPreviewModal from '@/components/DocumentPreviewModal.vue'
+
+const router = useRouter()
+const toastStore = useToastStore()
 
 const props = defineProps({
   show: Boolean,
@@ -45,7 +50,7 @@ const hasIncompleteDocuments = computed(() => {
 })
 
 const canApprove = computed(() => {
-  return pengajuan.value?.status === 'pending_admin' && isAllDocumentsVerified.value
+  return (pengajuan.value?.status === 'pending_admin' || pengajuan.value?.status === 'verified') && isAllDocumentsVerified.value
 })
 
 watch(() => props.show, async (newVal) => {
@@ -53,6 +58,23 @@ watch(() => props.show, async (newVal) => {
     await loadData()
   } else {
     resetState()
+  }
+})
+
+// Watch for when all documents are verified and show toast notification
+watch(isAllDocumentsVerified, (isVerified) => {
+  if (isVerified && pengajuan.value?.status === 'pending_admin') {
+    // Show toast notification with action button
+    toastStore.success(
+      'Semua dokumen telah diverifikasi lengkap. Apakah ingin lanjut buat surat tugas?',
+      0, // No auto-dismiss
+      {
+        label: 'Ya, Lanjut ke Surat Tugas',
+        onClick: () => {
+          router.push('/admin/surat-tugas')
+        }
+      }
+    )
   }
 })
 
@@ -473,7 +495,7 @@ function getDocumentStatusClass(status) {
               </button>
 
               <button
-                v-if="pengajuan?.status === 'pending_admin'"
+                v-if="pengajuan?.status === 'pending_admin' || pengajuan?.status === 'verified'"
                 @click="handleApprove"
                 class="btn btn-primary"
                 :disabled="submitting || !canApprove"

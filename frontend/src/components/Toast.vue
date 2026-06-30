@@ -18,6 +18,10 @@ const props = defineProps({
   duration: {
     type: Number,
     default: 3000
+  },
+  action: {
+    type: Object,
+    default: null
   }
 })
 
@@ -52,6 +56,13 @@ const toastStyles = computed(() => {
 const progressWidth = computed(() => {
   return '100%'
 })
+
+function handleActionClick() {
+  if (props.action?.onClick) {
+    props.action.onClick()
+  }
+  emit('close')
+}
 </script>
 
 <template>
@@ -78,6 +89,13 @@ const progressWidth = computed(() => {
           <!-- Content -->
           <div class="flex-1 min-w-0">
             <p class="text-sm font-semibold text-secondary-800">{{ message }}</p>
+            <button
+              v-if="action"
+              @click="handleActionClick"
+              class="mt-2 text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors"
+            >
+              {{ action.label }}
+            </button>
           </div>
 
           <!-- Close Button -->

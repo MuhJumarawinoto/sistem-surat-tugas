@@ -421,7 +421,7 @@ Error:
 
 - PDF generation requires `wkhtmltopdf` installed
 - File uploads limited to 5MB per file
-- 9 required documents for complete pengajuan
+- **Jumlah dokumen wajib bersifat dinamis** - dikonfigurasi melalui Admin → Manajemen Jenis Dokumen
 - Bun.js has compatibility issues with Git Bash on Windows - use PowerShell or node directly
 - PHP `mysqli` extension may be duplicated in Laragon php.ini - remove duplicate entry
 - PHP `pdo_firebird` and `pdo_oci` extensions don't exist on Windows - comment out in php.ini
@@ -627,17 +627,24 @@ actions: {
 }
 ```
 
-## Required Documents (9 Types)
+## Required Documents
 
-1. **Surat Permohonan** - Formal application letter
-2. **SK CPNS** - Civil servant appointment decree
-3. **SK PNS** - Civil servant decree
-4. **SK Pangkat Terakhir** - Latest rank promotion decree
-5. **SK Jabatan Terakhir** - Latest position decree
-6. **Penilaian Kinerja (2 tahun)** - Performance evaluations (2 years)
-7. **Rekomendasi Atasan** - Supervisor recommendation
-8. **Statement Tidak Sedang Menjalankan Hukuman** - No disciplinary action statement
-9. **Surat Pernyataan** - Personal declaration letter
+**Note:** Jumlah dan jenis dokumen bersifat dinamis, dapat dikonfigur melalui menu **Admin → Manajemen Jenis Dokumen**.
+
+**Default (5 dokumen):**
+1. **Ijazah** - Ijazah terakhir legalisir
+2. **SKTM** - Surat keterangan Tidak Mampu
+3. **SK Terakhir** - SK Pangkat atau SK Jabatan terakhir
+4. **Pengajuan Surat Belajar** - Surat pengajuan izin belajar
+5. **SKP 2 Tahun Terakhir** - SKP 2 tahun terakhir
+
+**Dokumen Tambahan (opsional, dapat ditambahkan oleh admin):**
+- Surat Keterangan Lulus/Diterima dari PT
+- Jadwal Perkuliahan
+- Sertifikat Akreditasi Prodi (min C)
+- Surat Pernyataan Biaya Mandiri
+- Surat Pernyataan Tidak Menuntut Ijazah
+- Surat Keterangan Sehat
 
 ## Pengajuan Status Flow (Simplified)
 
@@ -2908,5 +2915,126 @@ Minta aktifkan symlink atau jalankan `php artisan storage:link`.
 - `backend/app/Http/Controllers/PengajuanController.php` - Notification fix
 - `backend/app/Http/Controllers/SuratIzinBelajarController.php` - Nomor surat fix
 - `backend/app/Http/Controllers/SuratTugasDinasController.php` - Kepala unit fallback
+
+---
+
+## Recent Changes (2026-06-29)
+
+### Admin Verification Approval Error Fix
+
+**Issue:**
+Admin verification "Verifikasi & Lanjutkan" button fails with error "Gagal memverifikasi pengajuan" and console shows "Failed to approve:".
+
+**Root Cause:**
+The `ApprovalController::approveAdmin()` method requires a Kepala BKPSDM user to sign the surat (Surat Izin Belajar, Surat Tugas Mandiri, Surat Tugas Dinas). The user with role `kepala_bkpsdm` was missing from the database.
+
+**Error in ApprovalController:**
+```php
+// Get Kepala BKPSDM for signature
+$kepalaBkpsdm = User::whereHas('role', function ($query) {
+    $query->where('slug', 'kepala_bkpsdm');
+})->first();
+
+if (! $kepalaBkpsdm) {
+    throw new \Exception('Kepala BKPSDM tidak ditemukan');
+}
+```
+
+**Fix:**
+Created the Kepala BKPSDM user via tinker:
+```php
+User::create([
+    'name' => 'Kepala BKPSDM',
+    'email' => 'kepala@bkpsdm.go.id',
+    'password' => Hash::make('password'),
+    'nip' => '197506152005011002',
+    'role_id' => 4,
+    'unit_kerja_id' => 1,
+    'pangkat_gol' => 'Pembina Utama - IV/e',
+    'jabatan' => 'Kepala BKPSDM',
+    'is_active' => true,
+]);
+```
+
+**Login Credentials:**
+- Email: `kepala@bkpsdm.go.id`
+- Password: `password`
+
+**Note:** The UserSeeder already defines this user, but it wasn't executed due to duplicate entry errors. The seeder may need to be updated with `updateOrCreate()` instead of `create()` for better idempotency.
+
+---
+
+## Recent Changes (2026-06-30)
+
+### Dynamic Jenis Dokumen Count
+
+**Overview:**
+- Fixed hardcoded "9" document count in frontend to use dynamic count from API
+- Frontend now adapts to actual number of active jenis dokumen configured in database
+- Document progress badges, modals, and validation messages all use dynamic count
+
+**Files Updated:**
+- `PengajuanBaruView.vue` - Updated document count displays (badge, progress bar, modal)
+- `EditPengajuanView.vue` - Updated document count badge
+- `DetailPengajuanView.vue` - Updated document count badges and confirmation messages
+
+**Changes:**
+```vue
+<!-- Before -->
+<span class="badge">{{ uploadedCount }}/9</span>
+
+<!-- After -->
+<span class="badge">{{ uploadedCount }}/{{ jenisDokumenList.length }}</span>
+```
+
+### Jenis Dokumen Modal X Button
+
+**Overview:**
+- Added X button to Jenis Dokumen modal in admin page
+- Modal now only closes when clicking X, Batal, or Simpan buttons
+- Clicking backdrop (outside modal) no longer closes it
+
+**File Updated:**
+- `JenisDokumenView.vue` - Updated modal with:
+  - More prominent X button with red hover effect
+  - `@click.stop` on backdrop to prevent event propagation
+  - Comment explaining modal behavior
+
+### Database Tables for Pengajuan Data
+
+**Tabel Utama (WAJIB dihapus untuk menghapus data pengajuan):**
+
+| Tabel | Keterangan |
+|-------|-------------|
+| `pengajuan` | Data utama pengajuan (nomor, jenjang, prodi, status, dll) |
+| `dokumen_pengajuan` | File dokumen yang diupload (terhubung via `pengajuan_id`) |
+
+**Tabel Terkait (Opsional - jika ingin bersih-bersih):**
+
+| Tabel | Keterangan | Relasi |
+|-------|-------------|--------|
+| `surat_tugas_dinas` | Surat Tugas dari Kepala Dinas | `pengajuan_id` |
+| `surat_izin_belajar` | Surat Izin Belajar dari Kepala BKPSDM | `pengajuan_id` |
+| `surat_tugas_mandiri` | Surat Tugas Mandiri dari Admin BKPSDM | `pengajuan_id` |
+
+**Cara Hapus Manual di Database:**
+
+```sql
+-- Hapus per ID (lebih aman - urutan penting karena foreign key)
+DELETE FROM dokumen_pengajuan WHERE pengajuan_id = 123;
+DELETE FROM surat_tugas_dinas WHERE pengajuan_id = 123;
+DELETE FROM surat_izin_belajar WHERE pengajuan_id = 123;
+DELETE FROM surat_tugas_mandiri WHERE pengajuan_id = 123;
+DELETE FROM pengajuan WHERE id = 123;
+
+-- Hapus semua data
+DELETE FROM dokumen_pengajuan;
+DELETE FROM surat_tugas_dinas;
+DELETE FROM surat_izin_belajar;
+DELETE FROM surat_tugas_mandiri;
+DELETE FROM pengajuan;
+```
+
+**Catatan:** Jika ada foreign key constraint, urutan penghapusan harus dari tabel child (dokumen, surat) dulu, baru kemudian tabel parent (pengajuan).
 
 ---

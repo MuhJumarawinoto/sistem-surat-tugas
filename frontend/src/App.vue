@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
+import ToastContainer from '@/components/ToastContainer.vue'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -28,5 +29,6 @@ onUnmounted(() => {
 <template>
   <div id="app" class="min-h-screen bg-gray-100">
     <router-view />
+    <ToastContainer />
   </div>
 </template>

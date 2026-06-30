@@ -26,7 +26,7 @@ const stats = computed(() => {
   return {
     total: pengajuanList.value.length,
     pendingAdmin: pengajuanList.value.filter(p => p.status === 'pending_admin').length,
-    draft: pengajuanList.value.filter(p => p.status === 'draft').length,
+    verified: pengajuanList.value.filter(p => p.status === 'verified').length,
     ditolak: pengajuanList.value.filter(p => p.status === 'ditolak').length,
   }
 })
@@ -54,10 +54,12 @@ async function loadPengajuan() {
     // Ambil semua pengajuan yang perlu verifikasi admin
     // Filter akan dilakukan di frontend untuk hanya menampilkan yang belum selesai diverifikasi
     const data = await pengajuanStore.fetchPengajuan()
-    // Filter: Hanya tampilkan yang belum selesai diverifikasi (bukan verified, signed, selesai, completed, dicabut)
-    // Data yang sudah selesai/diverifikasi/dicabut ada di menu Riwayat Verifikasi
+    // Filter: Hanya tampilkan yang belum selesai (bukan signed, selesai, completed, dicabut)
+    // Status verified masih ditampilkan karena admin perlu klik "Setujui & Lanjutkan" untuk buat surat
+    // Data yang sudah signed/completed ada di menu Riwayat Verifikasi
+    // Draft tidak ditampilkan karena belum dikirim oleh pemohon
     pengajuanList.value = (data || []).filter(p =>
-      !['verified', 'signed', 'selesai', 'completed', 'dicabut'].includes(p.status)
+      !['signed', 'selesai', 'completed', 'dicabut', 'draft'].includes(p.status)
     )
 
     console.log('Admin pengajuan loaded:', pengajuanList.value.length, 'items')
@@ -311,10 +313,10 @@ if (typeof window !== 'undefined') {
         <span class="text-sm text-blue-600">Verifikasi:</span>
         <span class="font-semibold text-lg text-blue-700">{{ stats.pendingAdmin }}</span>
       </div>
-      <div class="flex items-center gap-2.5 px-4 py-2.5 bg-gray-50 rounded-lg border border-gray-200">
-        <i class="ri-draft-line text-gray-500"></i>
-        <span class="text-sm text-gray-600">Draft:</span>
-        <span class="font-semibold text-lg text-gray-700">{{ stats.draft }}</span>
+      <div class="flex items-center gap-2.5 px-4 py-2.5 bg-green-50 rounded-lg border border-green-200">
+        <i class="ri-checkbox-circle-line text-green-500"></i>
+        <span class="text-sm text-green-600">Terverifikasi:</span>
+        <span class="font-semibold text-lg text-green-700">{{ stats.verified }}</span>
       </div>
       <div class="flex items-center gap-2.5 px-4 py-2.5 bg-red-50 rounded-lg border border-red-200">
         <i class="ri-close-circle-line text-red-500"></i>

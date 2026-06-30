@@ -972,8 +972,14 @@ async function handleDelete(id) {
                       <i class="ri-notification-3-line"></i>
                       <span>{{ getPengajuanNotificationCount(item.id) }}</span>
                     </span>
+                    <!-- Badge Diwakilkan -->
+                    <span v-if="item.created_by" class="badge badge-info flex items-center gap-1" title="Pengajuan dibuat oleh kepala unit">
+                      <i class="ri-user-shared-line"></i>
+                      Diwakilkan
+                    </span>
                   </div>
                   <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-secondary-600">
+                    <span><i class="ri-user-line mr-1"></i>{{ item.user?.name || '-' }}</span>
                     <span><i class="ri-graduation-cap-line mr-1"></i>{{ item.nama_prodi }}</span>
                     <span><i class="ri-building-line mr-1"></i>{{ item.perguruan_tinggi || '-' }}</span>
                     <span><i class="ri-calendar-line mr-1"></i>{{ new Date(item.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) }}</span>
@@ -1010,16 +1016,6 @@ async function handleDelete(id) {
                         </div>
                         <!-- Surat options -->
                         <template v-else>
-                          <button
-                            v-if="getSuratInfo(item).surat_izin"
-                            @click="downloadSuratIzin(item)"
-                            :disabled="isDownloading(item.id, 'izin')"
-                            class="w-full text-left px-4 py-2 hover:bg-secondary-50 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            <i v-if="isDownloading(item.id, 'izin')" class="ri-loader-4-line animate-spin text-primary-600"></i>
-                            <i v-else class="ri-download-line text-primary-600"></i>
-                            <span>{{ isDownloading(item.id, 'izin') ? 'Mengunduh...' : 'Surat Izin Belajar (BKPSDM)' }}</span>
-                          </button>
                           <button
                             v-if="getSuratInfo(item).surat_tugas_mandiri"
                             @click="downloadSuratTugasMandiri(item)"
