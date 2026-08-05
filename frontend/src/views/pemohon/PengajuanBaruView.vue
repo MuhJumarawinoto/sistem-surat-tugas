@@ -96,6 +96,7 @@ const documents = ref({})
 const loading = ref(false)
 const saving = ref(false)
 const loadingDropdown = ref(false)
+const refreshingDokumen = ref(false)
 
 // Kepala Unit: Staff Selection
 const isKepalaUnit = computed(() => authStore.user?.is_kepala_unit)
@@ -135,7 +136,13 @@ watch(jenisDokumenList, (newList) => {
 }, { immediate: true })
 
 onMounted(async () => {
+  // Fetch all master data (jenjang, unit kerja, dll) from cache
   await masterStore.fetchAll()
+
+  // Force refresh jenis dokumen to get latest data (bypass cache)
+  // This ensures newly added document types appear immediately
+  await masterStore.fetchJenisDokumen(true)
+
   form.value.nomor_pengajuan = await pengajuanStore.getNomorPengajuan()
 
   // Load staff if kepala unit
@@ -159,12 +166,24 @@ async function loadUnitStaff() {
         per_page: 100
       }
     })
-    availableStaff.value = response.data.data
-    // Default to self
-    selectedStaffId.value = authStore.user.id
+
+    // Handle both paginated and non-paginated responses
+    const staffData = response.data?.data || response.data || []
+    availableStaff.value = Array.isArray(staffData) ? staffData : []
+
+    console.log('Loaded staff:', availableStaff.value.length, 'pegawai')
+
+    // Default to self (if self is in the list)
+    const selfInList = availableStaff.value.find(s => s.id === authStore.user.id)
+    if (selfInList) {
+      selectedStaffId.value = authStore.user.id
+    } else if (availableStaff.value.length > 0) {
+      // If self not in list, select first staff
+      selectedStaffId.value = availableStaff.value[0].id
+    }
   } catch (error) {
     console.error('Failed to load staff:', error)
-    toast.error('Gagal memuat data pegawai')
+    toast.error('Gagal memuat data pegawai: ' + (error.response?.data?.message || error.message))
   } finally {
     loadingStaff.value = false
   }
@@ -209,6 +228,19 @@ async function handleDropdownFocus(type) {
   }
 }
 
+async function refreshJenisDokumen() {
+  refreshingDokumen.value = true
+  try {
+    await masterStore.fetchJenisDokumen(true)
+    toast.success('Daftar dokumen berhasil diperbarui')
+  } catch (error) {
+    console.error('Failed to refresh jenis dokumen:', error)
+    toast.error('Gagal memperbarui daftar dokumen')
+  } finally {
+    refreshingDokumen.value = false
+  }
+}
+
 // Perguruan Tinggi Dropdown
 const debouncedSearchPT = ref(null)
 
@@ -244,11 +276,27 @@ async function searchPerguruanTinggi(keyword) {
 // Create debounced version (500ms delay)
 const debouncedSearchPerguruanTinggi = debounce(searchPerguruanTinggi, 500)
 
-function selectPerguruanTinggi(pt) {
+async function selectPerguruanTinggi(pt) {
   selectedPT.value = pt
   form.value.perguruan_tinggi_id = pt.id
   form.value.perguruan_tinggi = pt.nama_pt
-  form.value.lokasi_pt = pt.kab_kota && pt.provinsi ? `${pt.kab_kota}, ${pt.provinsi}` : ''
+
+  // Fetch detail to get location (kab_kota & provinsi)
+  if (pt.id && !pt.kab_kota) {
+    try {
+      const response = await api.get(`/pddikti/universitas/${pt.id}/detail`)
+      const ptDetail = response.data.data
+      form.value.lokasi_pt = ptDetail.kab_kota && ptDetail.provinsi
+        ? `${ptDetail.kab_kota}, ${ptDetail.provinsi}`
+        : ''
+    } catch (error) {
+      console.error('Failed to fetch PT detail:', error)
+      form.value.lokasi_pt = pt.kab_kota && pt.provinsi ? `${pt.kab_kota}, ${pt.provinsi}` : ''
+    }
+  } else {
+    form.value.lokasi_pt = pt.kab_kota && pt.provinsi ? `${pt.kab_kota}, ${pt.provinsi}` : ''
+  }
+
   showPTDropdown.value = false
   ptSearchKeyword.value = ''
   // Reset prodi when PT changes
@@ -297,13 +345,24 @@ async function loadProdiForPT(ptId) {
   prodiDropdownMessage.value = 'Memuat program studi...'
   showProdiDropdown.value = true
   try {
-    const results = await masterStore.fetchProdi(ptId, '')
+    let results = []
+
+    // Try PDDikti API first (for PT selected from PDDikti search)
+    try {
+      const pddiktiResponse = await api.get(`/pddikti/universitas/${ptId}/prodi`)
+      results = pddiktiResponse.data.data || []
+    } catch (pddiktiError) {
+      console.log('PDDikti API failed, trying local database...', pddiktiError)
+      // Fall back to local database
+      results = await masterStore.fetchProdi(ptId, '')
+    }
+
     // Filter by jenjang
     const filtered = filterProdiByJenjang(results)
     filteredProdi.value = filtered
 
     if (filtered.length === 0) {
-      prodiDropdownMessage.value = `Tidak ada program studi jenjang ${selectedJenjangName.value} untuk perguruan tinggi ini.`
+      prodiDropdownMessage.value = `Tidak ada program studi jenjang ${selectedJenjangName.value} untuk perguruan tinggi ini. Coba gunakan input manual untuk program studi.`
     } else {
       prodiDropdownMessage.value = `Ditemukan ${filtered.length} program studi jenjang ${selectedJenjangName.value} di ${selectedPT.value?.nama_pt}`
     }
@@ -323,7 +382,27 @@ async function searchProdi(keyword) {
     prodiDropdownMessage.value = ''
     try {
       const ptId = selectedPT.value ? selectedPT.value.id : null
-      const results = await masterStore.fetchProdi(ptId, keyword)
+      let results = []
+
+      // Try PDDikti API first (if PT is selected and from PDDikti)
+      if (ptId) {
+        try {
+          // If PT is selected, filter its prodi by keyword
+          const allProdi = await api.get(`/pddikti/universitas/${ptId}/prodi`)
+          const allProdiData = allProdi.data.data || []
+          results = allProdiData.filter(p =>
+            (p.nama_prodi || '').toLowerCase().includes(keyword.toLowerCase())
+          )
+        } catch (pddiktiError) {
+          console.log('PDDikti API failed, trying local database...', pddiktiError)
+          // Fall back to local database
+          results = await masterStore.fetchProdi(ptId, keyword)
+        }
+      } else {
+        // No PT selected, use local database
+        results = await masterStore.fetchProdi(null, keyword)
+      }
+
       // Filter by jenjang
       const filtered = filterProdiByJenjang(results)
       filteredProdi.value = filtered
@@ -331,7 +410,7 @@ async function searchProdi(keyword) {
       if (filtered.length === 0) {
         const jenjangText = selectedJenjangName.value ? ` jenjang ${selectedJenjangName.value}` : ''
         prodiDropdownMessage.value = ptId
-          ? `Tidak ada program studi${jenjangText} untuk perguruan tinggi ini. Coba kata kunci lain.`
+          ? `Tidak ada program studi${jenjangText} untuk perguruan tinggi ini. Coba kata kunci lain atau gunakan input manual.`
           : 'Tidak ditemukan. Pilih perguruan tinggi terlebih dahulu untuk hasil yang lebih spesifik.'
       } else {
         prodiDropdownMessage.value = `Ditemukan ${filtered.length} program studi jenjang ${selectedJenjangName.value}`
@@ -595,10 +674,26 @@ const uploadedCount = computed(() => {
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <!-- Pilih Pegawai (Kepala Unit only) -->
           <div v-if="isKepalaUnit">
-            <label class="input-label">Pegawai yang akan diajukan izin belajar</label>
+            <label class="input-label flex items-center gap-2">
+              Pegawai yang akan diajukan izin belajar
+              <button
+                v-if="!loadingStaff"
+                @click="loadUnitStaff"
+                type="button"
+                class="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                title="Muat ulang data pegawai"
+              >
+                <i class="ri-refresh-line"></i>
+              </button>
+              <span v-if="!loadingStaff && availableStaff.length > 0" class="text-xs text-secondary-500">
+                ({{ availableStaff.length }} pegawai)
+              </span>
+            </label>
             <div class="relative">
               <select v-model="selectedStaffId" required class="select-field appearance-none pr-10" :disabled="loadingStaff">
                 <option value="">Pilih pegawai...</option>
+                <option v-if="loadingStaff" disabled>Loading...</option>
+                <option v-else-if="availableStaff.length === 0" disabled>Tidak ada data</option>
                 <option v-for="staff in availableStaff" :key="staff.id" :value="staff.id">
                   {{ staff.nip }} - {{ staff.name }}
                 </option>
@@ -608,7 +703,12 @@ const uploadedCount = computed(() => {
                 <i v-else class="ri-arrow-down-s-line text-secondary-400"></i>
               </div>
             </div>
-            <p v-if="selectedStaffId" class="text-xs text-success-600 mt-1">
+            <!-- Status Messages -->
+            <p v-if="!loadingStaff && availableStaff.length === 0" class="text-xs text-warning-600 mt-1">
+              <i class="ri-error-warning-line"></i>
+              Tidak ada pegawai ditemukan di unit kerja Anda. Klik icon refresh untuk memuat ulang.
+            </p>
+            <p v-else-if="!loadingStaff && selectedStaffId" class="text-xs text-success-600 mt-1">
               <i class="ri-check-line"></i>
               Dokumen lampiran akan di-upload untuk pegawai yang dipilih.
             </p>
@@ -927,7 +1027,17 @@ const uploadedCount = computed(() => {
                 <i class="ri-file-upload-line text-lg text-primary-600"></i>
                 Upload Dokumen
               </h3>
-              <span class="badge badge-primary">{{ uploadedCount }}/{{ jenisDokumenList.length }}</span>
+              <div class="flex items-center gap-2">
+                <span class="badge badge-primary">{{ uploadedCount }}/{{ jenisDokumenList.length }}</span>
+                <button
+                  @click="refreshJenisDokumen"
+                  :disabled="refreshingDokumen"
+                  class="p-1.5 rounded-lg hover:bg-secondary-100 transition-colors"
+                  title="Refresh daftar dokumen"
+                >
+                  <i :class="refreshingDokumen ? 'ri-loader-4-line animate-spin' : 'ri-refresh-line'" class="text-secondary-500"></i>
+                </button>
+              </div>
             </div>
             <p class="text-sm text-secondary-500 mt-1">Max 1MB per file. PDF, JPG, PNG.</p>
           </div>

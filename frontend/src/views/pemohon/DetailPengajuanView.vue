@@ -508,7 +508,7 @@ function getStatusIcon(status) {
       </div>
 
       <!-- Progress Milestone -->
-          <div class="card">
+          <!-- <div class="card">
             <div class="card-header">
               <h3 class="card-title flex items-center gap-2">
                 <i class="ri-route-line text-primary-600"></i>
@@ -518,9 +518,10 @@ function getStatusIcon(status) {
             <div class="card-body">
               <PengajuanMilestone :pengajuan-id="route.params.id" />
             </div>
-          </div>
+          </div> -->
 
-          <!-- Upload Section -->
+          <!-- Upload Section - Hidden -->
+          <!--
           <div v-if="canEdit" class="card border-l-4 border-l-primary-500">
             <div class="card-header bg-primary-50/50">
               <h3 class="card-title flex items-center gap-2">
@@ -565,6 +566,7 @@ function getStatusIcon(status) {
               </button>
             </div>
           </div>
+          -->
 
           <!-- Info Cards Grid -->
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">

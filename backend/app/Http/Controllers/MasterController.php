@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\JenisDokumen;
+use App\Models\JenisDokumenPga;
 use App\Models\JenjangPendidikan;
 use App\Models\PerguruanTinggi;
 use App\Models\Prodi;
@@ -13,6 +14,8 @@ use Illuminate\Support\Facades\Cache;
 class MasterController extends Controller
 {
     private const CACHE_TTL = 3600; // 1 hour
+
+    private const CACHE_TTL_SHORT = 300; // 5 minutes - for frequently changed data
 
     public function jenjang()
     {
@@ -46,6 +49,8 @@ class MasterController extends Controller
     {
         Cache::forget('master:jenjang');
         Cache::forget('master:unit_kerja');
+        Cache::forget('master:jenis_dokumen');
+        Cache::forget('master:jenis_dokumen_pga');
         Cache::forget('master:akreditasi');
         Cache::forget('master:jenis_dokumen');
 
@@ -68,10 +73,42 @@ class MasterController extends Controller
 
     /**
      * Get active jenis dokumen (public endpoint)
+     * Note: Uses shorter cache (5 min) because admins can add/edit document types frequently
+     * Query param ?refresh=true bypasses cache and forces fresh data
      */
-    public function jenisDokumen()
+    public function jenisDokumen(Request $request)
     {
-        $jenisDokumen = Cache::remember('master:jenis_dokumen', self::CACHE_TTL, function () {
+        $refresh = $request->query('refresh', false);
+
+        if ($refresh) {
+            // Bypass cache - get fresh data and update cache
+            $jenisDokumen = JenisDokumen::active()
+                ->get(['id', 'kode', 'nama', 'deskripsi', 'is_wajib', 'urutan', 'persyaratan', 'catatan'])
+                ->map(function ($item) {
+                    return [
+                        'id' => $item->id,
+                        'value' => $item->kode,
+                        'label' => $item->nama,
+                        'kode' => $item->kode,
+                        'nama' => $item->nama,
+                        'deskripsi' => $item->deskripsi,
+                        'required' => $item->is_wajib,
+                        'urutan' => $item->urutan,
+                        'persyaratan' => $item->persyaratan,
+                        'catatan' => $item->catatan,
+                    ];
+                })
+                ->sortBy('urutan')
+                ->values()
+                ->toArray();
+
+            // Update cache with fresh data
+            Cache::put('master:jenis_dokumen', $jenisDokumen, self::CACHE_TTL_SHORT);
+
+            return response()->json($jenisDokumen);
+        }
+
+        $jenisDokumen = Cache::remember('master:jenis_dokumen', self::CACHE_TTL_SHORT, function () {
             return JenisDokumen::active()
                 ->get(['id', 'kode', 'nama', 'deskripsi', 'is_wajib', 'urutan', 'persyaratan', 'catatan'])
                 ->map(function ($item) {
@@ -85,6 +122,70 @@ class MasterController extends Controller
                         'required' => $item->is_wajib,
                         'urutan' => $item->urutan,
                         'persyaratan' => $item->persyaratan,
+                        'catatan' => $item->catatan,
+                    ];
+                })
+                ->sortBy('urutan')
+                ->values()
+                ->toArray();
+        });
+
+        return response()->json($jenisDokumen);
+    }
+
+    /**
+     * Get active jenis dokumen PGA (public endpoint)
+     * Note: Uses shorter cache (5 min) because admins can add/edit document types frequently
+     * Query param ?refresh=true bypasses cache and forces fresh data
+     */
+    public function jenisDokumenPga(Request $request)
+    {
+        $refresh = $request->query('refresh', false);
+
+        if ($refresh) {
+            // Bypass cache - get fresh data and update cache
+            $jenisDokumen = JenisDokumenPga::active()
+                ->get(['id', 'kode', 'nama', 'deskripsi', 'is_wajib', 'urutan', 'persyaratan', 'format_nama', 'catatan'])
+                ->map(function ($item) {
+                    return [
+                        'id' => $item->id,
+                        'value' => $item->kode,
+                        'label' => $item->nama,
+                        'kode' => $item->kode,
+                        'nama' => $item->nama,
+                        'deskripsi' => $item->deskripsi,
+                        'required' => $item->is_wajib,
+                        'urutan' => $item->urutan,
+                        'persyaratan' => $item->persyaratan,
+                        'format_nama' => $item->format_nama,
+                        'catatan' => $item->catatan,
+                    ];
+                })
+                ->sortBy('urutan')
+                ->values()
+                ->toArray();
+
+            // Update cache with fresh data
+            Cache::put('master:jenis_dokumen_pga', $jenisDokumen, self::CACHE_TTL_SHORT);
+
+            return response()->json($jenisDokumen);
+        }
+
+        $jenisDokumen = Cache::remember('master:jenis_dokumen_pga', self::CACHE_TTL_SHORT, function () {
+            return JenisDokumenPga::active()
+                ->get(['id', 'kode', 'nama', 'deskripsi', 'is_wajib', 'urutan', 'persyaratan', 'format_nama', 'catatan'])
+                ->map(function ($item) {
+                    return [
+                        'id' => $item->id,
+                        'value' => $item->kode,
+                        'label' => $item->nama,
+                        'kode' => $item->kode,
+                        'nama' => $item->nama,
+                        'deskripsi' => $item->deskripsi,
+                        'required' => $item->is_wajib,
+                        'urutan' => $item->urutan,
+                        'persyaratan' => $item->persyaratan,
+                        'format_nama' => $item->format_nama,
                         'catatan' => $item->catatan,
                     ];
                 })

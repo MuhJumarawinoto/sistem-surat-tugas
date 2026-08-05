@@ -1,0 +1,82 @@
+# ============================================================================
+# .htaccess untuk Vue.js SPA di subdomain surat-belajar.velotek.co.id
+# ============================================================================
+#
+# Fungsi:
+# 1. Mengarahkan semua route ke index.html (Vue Router akan menanganinya)
+# 2. Mengabaikan file statis (assets, images, dll)
+# 3. Mengabaikan route API (/api/*)
+# 4. Mendukung history mode Vue Router
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Handle Angular Accelerator (cPanel)
+    # Some hosts use this for caching, we need to exclude API routes
+    RewriteCond %{REQUEST_URI} ^/api/
+    RewriteRule .* - [L]
+
+    # ========================================================================
+    # Redirect all non-file requests to index.html
+    # ========================================================================
+
+    # Jangan redirect jika file/folder benar-benar ada
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+
+    # Jangan redirect untuk API routes
+    RewriteCond %{REQUEST_URI} !^/api/
+
+    # Jangan redirect untuk file statis dengan ekstensi tertentu
+    RewriteCond %{REQUEST_URI} !\.(css|js|jpg|jpeg|png|gif|ico|svg|woff|woff2|ttf|eot|pdf|map)$ [NC]
+
+    # Redirect semua request lain ke index.html
+    RewriteRule ^(.*)$ index.html [L,QSA]
+
+</IfModule>
+
+# ============================================================================
+# Security Headers
+# ============================================================================
+
+<IfModule mod_headers.c>
+    # Prevent clickjacking
+    Header set X-Frame-Options "SAMEORIGIN"
+
+    # XSS Protection
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-XSS-Protection "1; mode=block"
+
+    # Referrer Policy
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# ============================================================================
+# Optional: Compress static files
+# ============================================================================
+
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css
+    AddOutputFilterByType DEFLATE application/xml application/xhtml+xml
+    AddOutputFilterByType DEFLATE application/json application/javascript
+    AddOutputFilterByType DEFLATE text/javascript application/x-javascript
+</IfModule>
+
+# ============================================================================
+# Optional: Cache static assets
+# ============================================================================
+
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpg "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType application/pdf "access plus 1 year"
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType application/x-javascript "access plus 1 month"
+    ExpiresByType application/font-woff "access plus 1 year"
+    ExpiresByType application/font-woff2 "access plus 1 year"
+</IfModule>

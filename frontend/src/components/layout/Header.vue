@@ -9,7 +9,7 @@ const authStore = useAuthStore()
 
 async function handleLogout() {
   await authStore.logout()
-  router.push('/login')
+  router.push('/service-selection')
 }
 
 function getInitials(name) {

@@ -27,6 +27,7 @@ watch(() => route.path, () => {
 
 const menuGroups = computed(() => {
   const groups = []
+  const isPgaService = authStore.isPgaService
 
   // ========== MENU PEMOHON & ATASAN ONLY ==========
   if (authStore.isPemohon || authStore.isAtasan) {
@@ -37,46 +38,70 @@ const menuGroups = computed(() => {
         { path: '/dashboard', label: 'Dashboard', icon: 'ri-dashboard-line' },
       ],
     })
-  }
 
-  // ========== MENU PENGAJUAN (PEMOHON & ATASAN ONLY) ==========
-  if (authStore.isPemohon || authStore.isAtasan) {
-    groups.push({
-      title: 'Pengajuan',
-      items: [
-        { path: '/pengajuan', label: 'Riwayat Pengajuan', icon: 'ri-file-list-3-line' },
-        { path: '/pengajuan/baru', label: 'Buat Pengajuan Baru', icon: 'ri-add-circle-line' },
-      ],
-    })
+    // Show appropriate menu based on service
+    if (isPgaService) {
+      // PGA Menu
+      groups.push({
+        title: 'Pencantuman Gelar Akademik',
+        items: [
+          { path: '/pga', label: 'Riwayat PGA', icon: 'ri-graduation-cap-line' },
+          { path: '/pga/baru', label: 'Buat Pengajuan Baru', icon: 'ri-add-circle-line' },
+        ],
+      })
+    } else {
+      // Tugas Belajar Menu (default)
+      groups.push({
+        title: 'Pengajuan',
+        items: [
+          { path: '/pengajuan', label: 'Riwayat Pengajuan', icon: 'ri-file-list-3-line' },
+          { path: '/pengajuan/baru', label: 'Buat Pengajuan Baru', icon: 'ri-add-circle-line' },
+        ],
+      })
+    }
   }
 
   // ========== MENU ADMIN BKPSDM ==========
   if (authStore.isAdmin) {
-    // Admin starts directly with Verifikasi (no Dashboard)
-    groups.push({
-      title: 'Verifikasi',
-      items: [
-        { path: '/admin/verifikasi', label: 'Verifikasi Dokumen', icon: 'ri-verified-badge-line' },
-        { path: '/admin/riwayat-verifikasi', label: 'Riwayat Verifikasi', icon: 'ri-history-line' },
-      ],
-    })
-    groups.push({
-      title: 'Surat',
-      items: [
-        // { path: '/admin/surat-izin', label: 'Surat Izin Belajar', icon: 'ri-file-text-line' }, // Hidden - Surat Izin auto-created with TTE
-        { path: '/admin/surat-tugas', label: 'Surat Tugas Belajar', icon: 'ri-file-list-line' },
-      ],
-    })
+    if (isPgaService) {
+      // PGA Admin Menu
+      groups.push({
+        title: 'Verifikasi PGA',
+        items: [
+          { path: '/admin/pga-verifikasi', label: 'Verifikasi PGA', icon: 'ri-verified-badge-line' },
+        ],
+      })
+    } else {
+      // Tugas Belajar Admin Menu (default)
+      groups.push({
+        title: 'Verifikasi',
+        items: [
+          { path: '/admin/verifikasi', label: 'Verifikasi Dokumen', icon: 'ri-verified-badge-line' },
+          { path: '/admin/riwayat-verifikasi', label: 'Riwayat Verifikasi', icon: 'ri-history-line' },
+        ],
+      })
+      groups.push({
+        title: 'Surat',
+        items: [
+          { path: '/admin/surat-tugas', label: 'Surat Tugas Belajar', icon: 'ri-file-list-line' },
+        ],
+      })
+    }
+
+    // Manajemen Data (always shown)
     groups.push({
       title: 'Manajemen Data',
       items: [
         { path: '/admin/pegawai', label: 'Data Pegawai', icon: 'ri-team-line' },
       ],
     })
+
+    // Master Data (always shown)
     groups.push({
       title: 'Master Data',
       items: [
         { path: '/admin/jenis-dokumen', label: 'Jenis Dokumen', icon: 'ri-file-list-3-line' },
+        { path: '/admin/jenis-dokumen-pga', label: 'Jenis Dokumen PGA', icon: 'ri-file-list-line' },
         { path: '/admin/pddikti-sync', label: 'Sync PDDikti', icon: 'ri-refresh-line' },
       ],
     })
@@ -84,22 +109,34 @@ const menuGroups = computed(() => {
 
   // ========== MENU KEPALA (Kepala Unit / Kepala BKPSDM) ==========
   if (authStore.isKepala) {
-    groups.push({
-      title: 'Tanda Tangan',
-      items: [
-        { path: '/kepala/signing', label: 'Surat Perlu TTE', icon: 'ri-edit-sign-line' },
-        { path: '/kepala/riwayat', label: 'Riwayat TTE', icon: 'ri-history-line' },
-      ],
-    })
-
-    // Additional menu for Kepala Unit (non-BKPSDM)
-    if (authStore.user?.is_kepala_unit) {
+    if (isPgaService) {
+      // PGA for Kepala - can create PGA for themselves
       groups.push({
-        title: 'Surat Tugas',
+        title: 'Pencantuman Gelar Akademik',
         items: [
-          { path: '/kepala/surat-tugas', label: 'Surat Tugas Belajar', icon: 'ri-file-list-line' },
+          { path: '/pga', label: 'Riwayat PGA', icon: 'ri-graduation-cap-line' },
+          { path: '/pga/baru', label: 'Buat Pengajuan Baru', icon: 'ri-add-circle-line' },
         ],
       })
+    } else {
+      // Tugas Belajar for Kepala
+      groups.push({
+        title: 'Tanda Tangan',
+        items: [
+          { path: '/kepala/signing', label: 'Surat Perlu TTE', icon: 'ri-edit-sign-line' },
+          { path: '/kepala/riwayat', label: 'Riwayat TTE', icon: 'ri-history-line' },
+        ],
+      })
+
+      // Additional menu for Kepala Unit (non-BKPSDM)
+      if (authStore.user?.is_kepala_unit) {
+        groups.push({
+          title: 'Surat Tugas',
+          items: [
+            { path: '/kepala/surat-tugas', label: 'Surat Tugas Belajar', icon: 'ri-file-list-line' },
+          ],
+        })
+      }
     }
   }
 
@@ -110,6 +147,17 @@ function isActive(path) {
   // Exact match for dashboard
   if (path === '/dashboard') {
     return route.path === '/dashboard'
+  }
+
+  // PGA routes
+  if (path === '/pga') {
+    return route.path === '/pga' || route.path.startsWith('/pga/')
+  }
+  if (path === '/pga/baru') {
+    return route.path === '/pga/baru' || route.path.startsWith('/pga/')
+  }
+  if (path === '/admin/pga-verifikasi') {
+    return route.path === '/admin/pga-verifikasi' || route.path.startsWith('/admin/pga-verifikasi/')
   }
 
   // Admin verifikasi routes
@@ -142,11 +190,18 @@ function isActive(path) {
     return route.path.startsWith('/kepala/riwayat')
   }
 
+  // Pengajuan routes
+  if (path === '/pengajuan') {
+    return route.path === '/pengajuan' || route.path.startsWith('/pengajuan/')
+  }
+  if (path === '/pengajuan/baru') {
+    return route.path === '/pengajuan/baru' || route.path.startsWith('/pengajuan/')
+  }
+
   // Default: check if route starts with path
   return route.path.startsWith(path)
 }
 </script>
-
 <template>
   <!-- Mobile sidebar with off-canvas behavior -->
   <aside

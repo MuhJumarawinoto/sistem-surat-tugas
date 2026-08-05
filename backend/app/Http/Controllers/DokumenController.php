@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\DokumenPengajuan;
+use App\Models\JenisDokumen;
 use App\Models\Pengajuan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -24,9 +25,14 @@ class DokumenController extends Controller
 
     public function store(Request $request, string $pengajuanId)
     {
+        // Get active jenis dokumen from database for dynamic validation
+        $activeJenisDokumen = JenisDokumen::where('is_active', true)
+            ->pluck('kode')
+            ->toArray();
+
         $request->validate([
-            'jenis_dokumen' => 'required|in:sk_pangkat,sk_cpns,skp,surat_lulus,jadwal,akreditasi,surat_mandiri,surat_ijazah,surat_sehat',
-            'file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:2048', // Max 2MB (sesuai PHP upload_max_filesize)
+            'jenis_dokumen' => 'required|in:'.implode(',', $activeJenisDokumen),
+            'file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120', // Max 5MB
         ]);
 
         $pengajuan = Pengajuan::findOrFail($pengajuanId);
@@ -37,7 +43,7 @@ class DokumenController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        if (!$pengajuan->isDraft() && !$pengajuan->isDitolak()) {
+        if (! $pengajuan->isDraft() && ! $pengajuan->isDitolak()) {
             return response()->json(['message' => 'Cannot upload documents for this status'], 400);
         }
 
@@ -48,7 +54,7 @@ class DokumenController extends Controller
             $existing->delete();
         }
 
-        $path = $request->file('file')->store('dokumen/' . $pengajuanId, 'public');
+        $path = $request->file('file')->store('dokumen/'.$pengajuanId, 'public');
 
         $dokumen = DokumenPengajuan::create([
             'pengajuan_id' => $pengajuanId,
@@ -73,7 +79,7 @@ class DokumenController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        if (!$dokumen->pengajuan->isDraft() && !$dokumen->pengajuan->isDitolak()) {
+        if (! $dokumen->pengajuan->isDraft() && ! $dokumen->pengajuan->isDitolak()) {
             return response()->json(['message' => 'Cannot delete documents for this status'], 400);
         }
 

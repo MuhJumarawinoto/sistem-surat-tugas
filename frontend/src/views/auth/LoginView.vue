@@ -39,7 +39,22 @@ async function handleLogin() {
     if (redirectPath && redirectPath !== '/login' && redirectPath !== '/register') {
       router.push(redirectPath)
     } else {
-      router.push('/dashboard')
+      // Redirect based on selected service
+      const isPgaService = authStore.selectedService === 'pga'
+
+      if (authStore.isAdmin) {
+        // Admin redirect based on service
+        router.push(isPgaService ? '/admin/pga-verifikasi' : '/admin/verifikasi')
+      } else if (authStore.isKepala) {
+        // Kepala redirect based on service
+        router.push(isPgaService ? '/pga' : '/kepala/signing')
+      } else if (authStore.isKepalaUnit) {
+        // Kepala Unit redirect based on service
+        router.push(isPgaService ? '/pga' : '/kepala/surat-tugas')
+      } else {
+        // Pemohon/Atasan redirect based on service
+        router.push(isPgaService ? '/pga' : '/dashboard')
+      }
     }
   } catch (err) {
     toast.error(err.response?.data?.message || 'Login gagal. Silakan coba lagi.', 4000)

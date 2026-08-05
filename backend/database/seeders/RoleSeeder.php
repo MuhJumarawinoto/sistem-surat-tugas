@@ -21,6 +21,11 @@ class RoleSeeder extends Seeder
                 'description' => 'Kepala OPD/Atasan langsung PNS',
             ],
             [
+                'name' => 'Bidang',
+                'slug' => 'bidang',
+                'description' => 'Staf Bidang yang dapat melihat dan memverifikasi pengajuan di unit kerja nya',
+            ],
+            [
                 'name' => 'Admin BKPSDM',
                 'slug' => 'admin_bkpsdm',
                 'description' => 'Admin di BKPSDM yang memproses pengajuan',

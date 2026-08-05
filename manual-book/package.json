@@ -1,0 +1,15 @@
+{
+  "name": "manual-book-screenshots",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Otomatisasi screenshot halaman SIPINTAR untuk manual book",
+  "scripts": {
+    "shoot": "node screenshot.mjs",
+    "shoot:desktop": "node screenshot.mjs --desktop",
+    "shoot:mobile": "node screenshot.mjs --mobile"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}

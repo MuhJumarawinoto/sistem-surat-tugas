@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Pengajuan;
 use App\Models\SuratTugas;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -13,7 +14,7 @@ class SuratTugasController extends Controller
     {
         $pengajuan = Pengajuan::with(['user', 'jenjang', 'unitKerja'])->findOrFail($id);
 
-        if (!$pengajuan->isDisetujui()) {
+        if (! $pengajuan->isDisetujui()) {
             return response()->json(['message' => 'Pengajuan must be approved first'], 400);
         }
 
@@ -23,12 +24,12 @@ class SuratTugasController extends Controller
             return response()->json($existing);
         }
 
-        $nomorSurat = $this->generateNomorSurat();
+        $nomorSurat = $this->generateNomorSuratWithRetry();
 
         $pdf = $this->generatePdf($pengajuan, $nomorSurat);
 
-        $fileName = 'surat-tugas-' . $pengajuan->nomor_pengajuan . '.pdf';
-        $path = 'surat-tugas/' . $fileName;
+        $fileName = 'surat-tugas-'.$pengajuan->nomor_pengajuan.'.pdf';
+        $path = 'surat-tugas/'.$fileName;
 
         Storage::disk('public')->put($path, $pdf->output());
 
@@ -54,9 +55,9 @@ class SuratTugasController extends Controller
     {
         $surat = SuratTugas::findOrFail($id);
 
-        $path = storage_path('app/public/' . $surat->file_path);
+        $path = storage_path('app/public/'.$surat->file_path);
 
-        if (!file_exists($path)) {
+        if (! file_exists($path)) {
             return response()->json(['message' => 'File not found'], 404);
         }
 
@@ -75,7 +76,7 @@ class SuratTugasController extends Controller
             'status_tte' => 'signed',
             'signed_by' => $request->user()->id,
             'signed_at' => now(),
-            'tte_qr_code' => 'QR-' . $surat->nomor_surat,
+            'tte_qr_code' => 'QR-'.$surat->nomor_surat,
         ]);
 
         return response()->json($surat->load(['pengajuan', 'signedBy']));
@@ -88,13 +89,13 @@ class SuratTugasController extends Controller
         // Generate surat first if not exists
         $surat = $pengajuan->suratTugas()->first();
 
-        if (!$surat) {
-            $nomorSurat = $this->generateNomorSurat();
+        if (! $surat) {
+            $nomorSurat = $this->generateNomorSuratWithRetry();
 
             $pdf = $this->generatePdf($pengajuan, $nomorSurat);
 
-            $fileName = 'surat-tugas-' . $pengajuan->nomor_pengajuan . '.pdf';
-            $path = 'surat-tugas/' . $fileName;
+            $fileName = 'surat-tugas-'.$pengajuan->nomor_pengajuan.'.pdf';
+            $path = 'surat-tugas/'.$fileName;
 
             Storage::disk('public')->put($path, $pdf->output());
 
@@ -115,7 +116,7 @@ class SuratTugasController extends Controller
             'status_tte' => 'signed',
             'signed_by' => $request->user()->id,
             'signed_at' => now(),
-            'tte_qr_code' => 'QR-' . $surat->nomor_surat,
+            'tte_qr_code' => 'QR-'.$surat->nomor_surat,
         ]);
 
         // Update pengajuan status
@@ -129,14 +130,53 @@ class SuratTugasController extends Controller
         $year = date('Y');
         $month = date('m');
 
+        // Use lockForUpdate to prevent race condition
         $lastNomor = SuratTugas::whereYear('created_at', $year)
             ->whereMonth('created_at', $month)
             ->orderBy('created_at', 'desc')
+            ->lockForUpdate()
             ->first();
 
         $sequence = $lastNomor ? (int) explode('/', $lastNomor->nomor_surat)[2] + 1 : 1;
 
-        return '800.1.3.1/' . $sequence . '/BKPSDM/' . $year;
+        return '800.1.3.1/'.$sequence.'/BKPSDM/'.$year;
+    }
+
+    /**
+     * Generate nomor surat with retry logic for race conditions
+     */
+    private function generateNomorSuratWithRetry(int $maxRetries = 3): string
+    {
+        $attempt = 0;
+        $lastException = null;
+
+        while ($attempt < $maxRetries) {
+            try {
+                \DB::beginTransaction();
+
+                $nomor = $this->generateNomorSurat();
+
+                // Verify this nomor doesn't exist yet
+                $exists = SuratTugas::where('nomor_surat', $nomor)->lockForUpdate()->first();
+
+                if ($exists) {
+                    \DB::rollBack();
+                    $attempt++;
+
+                    continue;
+                }
+
+                \DB::commit();
+
+                return $nomor;
+            } catch (\Exception $e) {
+                \DB::rollBack();
+                $lastException = $e;
+                $attempt++;
+            }
+        }
+
+        throw $lastException ?? new \Exception('Failed to generate nomor surat after '.$maxRetries.' attempts');
     }
 
     private function generatePdf(Pengajuan $pengajuan, string $nomorSurat)
@@ -148,7 +188,8 @@ class SuratTugasController extends Controller
         ];
 
         // Use DomPDF facade
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.surat-tugas', $data);
+        $pdf = Pdf::loadView('pdf.surat-tugas', $data);
+
         return $pdf;
     }
 }

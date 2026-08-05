@@ -3,20 +3,21 @@
 namespace App\Http\Controllers;
 
 use App\Models\Notification;
-use App\Models\SuratIzinBelajar;
-use App\Models\SuratTugasDinas;
-use App\Models\SuratTugasMandiri;
 use App\Models\Pengajuan;
-use App\Services\QrCodeService;
+use App\Models\SuratIzinBelajar;
+use App\Models\User;
 use App\Services\BarcodeService;
+use App\Services\QrCodeService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Barryvdh\DomPDF\Facade\Pdf;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class SuratIzinBelajarController extends Controller
 {
     protected QrCodeService $qrCodeService;
+
     protected BarcodeService $barcodeService;
 
     public function __construct(QrCodeService $qrCodeService, BarcodeService $barcodeService)
@@ -28,16 +29,16 @@ class SuratIzinBelajarController extends Controller
     /**
      * Authenticate user via token from query parameter
      */
-    protected function authenticateViaToken(Request $request): ?\App\Models\User
+    protected function authenticateViaToken(Request $request): ?User
     {
         $token = $request->query('token');
 
-        if (!$token) {
+        if (! $token) {
             return null;
         }
 
         // Use Sanctum token
-        $personalAccessToken = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
+        $personalAccessToken = PersonalAccessToken::findToken($token);
         if ($personalAccessToken) {
             return $personalAccessToken->tokenable;
         }
@@ -52,7 +53,7 @@ class SuratIzinBelajarController extends Controller
     {
         $user = auth()->user();
 
-        if (!$user->isAdminBkpsdm() && !$user->isKepalaBkpsdm()) {
+        if (! $user->isAdminBkpsdm() && ! $user->isKepalaBkpsdm()) {
             return response()->json(['message' => 'Unauthorized. Admin and Kepala BKPSDM only.'], 403);
         }
 
@@ -94,7 +95,7 @@ class SuratIzinBelajarController extends Controller
     {
         $user = auth()->user();
 
-        if (!$user->isAdminBkpsdm() && !$user->isKepalaBkpsdm()) {
+        if (! $user->isAdminBkpsdm() && ! $user->isKepalaBkpsdm()) {
             return response()->json(['message' => 'Unauthorized. Admin and Kepala BKPSDM only.'], 403);
         }
 
@@ -127,7 +128,7 @@ class SuratIzinBelajarController extends Controller
     {
         $user = auth()->user();
 
-        if (!$user->isKepalaBkpsdm()) {
+        if (! $user->isKepalaBkpsdm()) {
             return response()->json(['message' => 'Unauthorized. Only Kepala BKPSDM can generate and sign surat izin.'], 403);
         }
 
@@ -151,7 +152,8 @@ class SuratIzinBelajarController extends Controller
         try {
             // Generate nomor surat izin belajar
             $year = date('Y');
-            $lastNomor = SuratIzinBelajar::where('tahun', $year)->orderBy('id', 'desc')->first();
+            // Use lockForUpdate to prevent race condition
+            $lastNomor = SuratIzinBelajar::where('tahun', $year)->orderBy('id', 'desc')->lockForUpdate()->first();
 
             // Extract sequence number from format: 800.1.3.1/{sequence}/BKPSDM/{year}
             if ($lastNomor) {
@@ -215,7 +217,8 @@ class SuratIzinBelajarController extends Controller
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['message' => 'Failed to generate surat: ' . $e->getMessage()], 500);
+
+            return response()->json(['message' => 'Failed to generate surat: '.$e->getMessage()], 500);
         }
     }
 
@@ -226,7 +229,7 @@ class SuratIzinBelajarController extends Controller
     {
         $user = auth()->user();
 
-        if (!$user->isAdminBkpsdm() && !$user->isKepalaBkpsdm()) {
+        if (! $user->isAdminBkpsdm() && ! $user->isKepalaBkpsdm()) {
             return response()->json(['message' => 'Unauthorized. Admin only.'], 403);
         }
 
@@ -251,19 +254,19 @@ class SuratIzinBelajarController extends Controller
         if ($request->has('token')) {
             $token = $request->query('token', '');
             // Try Sanctum token first
-            $personalAccessToken = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
+            $personalAccessToken = PersonalAccessToken::findToken($token);
             if ($personalAccessToken) {
                 $user = $personalAccessToken->tokenable;
             } else {
                 $user = null;
             }
 
-            if (!$user) {
+            if (! $user) {
                 return response()->json(['message' => 'Unauthorized - Invalid token'], 401);
             }
         } else {
             $user = auth()->user();
-            if (!$user) {
+            if (! $user) {
                 return response()->json(['message' => 'Unauthorized - No user'], 401);
             }
         }
@@ -276,7 +279,7 @@ class SuratIzinBelajarController extends Controller
         ])->findOrFail($id);
 
         // Check permission - admin/kepala can preview all, user can only preview own
-        if (!$user->isAdminBkpsdm() && !$user->isKepalaBkpsdm() && $surat->pengajuan->user_id !== $user->id) {
+        if (! $user->isAdminBkpsdm() && ! $user->isKepalaBkpsdm() && $surat->pengajuan->user_id !== $user->id) {
             return response()->json(['message' => 'Unauthorized - Permission denied'], 403);
         }
 
@@ -293,8 +296,8 @@ class SuratIzinBelajarController extends Controller
         $barcodePath = $this->barcodeService->generateForSurat($surat->nomor_surat, 'izin', $surat->id);
 
         // Convert images to base64 for embedding in HTML
-        $qrCodeBase64 = 'data:image/png;base64,' . base64_encode(Storage::disk('public')->get($qrCodePath));
-        $barcodeBase64 = 'data:image/png;base64,' . base64_encode(Storage::disk('public')->get($barcodePath));
+        $qrCodeBase64 = 'data:image/png;base64,'.base64_encode(Storage::disk('public')->get($qrCodePath));
+        $barcodeBase64 = 'data:image/png;base64,'.base64_encode(Storage::disk('public')->get($barcodePath));
 
         return view('pdf.surat-izin-belajar', [
             'surat' => $surat,
@@ -310,7 +313,7 @@ class SuratIzinBelajarController extends Controller
     {
         $user = auth()->user();
 
-        if (!$user->isAdminBkpsdm() && !$user->isKepalaBkpsdm()) {
+        if (! $user->isAdminBkpsdm() && ! $user->isKepalaBkpsdm()) {
             return response()->json(['message' => 'Unauthorized. Admin only.'], 403);
         }
 
@@ -334,8 +337,8 @@ class SuratIzinBelajarController extends Controller
         $barcodePath = $this->barcodeService->generateForSurat($surat->nomor_surat, 'izin', $surat->id);
 
         // Convert images to base64 for embedding in PDF
-        $qrCodeBase64 = 'data:image/png;base64,' . base64_encode(Storage::disk('public')->get($qrCodePath));
-        $barcodeBase64 = 'data:image/png;base64,' . base64_encode(Storage::disk('public')->get($barcodePath));
+        $qrCodeBase64 = 'data:image/png;base64,'.base64_encode(Storage::disk('public')->get($qrCodePath));
+        $barcodeBase64 = 'data:image/png;base64,'.base64_encode(Storage::disk('public')->get($barcodePath));
 
         $pdf = Pdf::loadView('pdf.surat-izin-belajar', [
             'surat' => $surat,
@@ -363,7 +366,7 @@ class SuratIzinBelajarController extends Controller
         $user = auth()->user();
 
         // Only kepala BKPSDM can sign
-        if (!$user->isKepalaBkpsdm() && !$user->isAdminBkpsdm()) {
+        if (! $user->isKepalaBkpsdm() && ! $user->isAdminBkpsdm()) {
             return response()->json(['message' => 'Unauthorized. Only Kepala BKPSDM can sign.'], 403);
         }
 
@@ -374,7 +377,7 @@ class SuratIzinBelajarController extends Controller
             'suratTugasDinas.kepalaDinas',
         ])->findOrFail($id);
 
-        if (!$surat->canBeSigned()) {
+        if (! $surat->canBeSigned()) {
             return response()->json(['message' => 'Surat has already been signed or cannot be signed.'], 400);
         }
 
@@ -398,8 +401,8 @@ class SuratIzinBelajarController extends Controller
             $barcodePath = $this->barcodeService->generateForSurat($surat->nomor_surat, 'izin', $surat->id);
 
             // Convert images to base64 for embedding in PDF
-            $qrCodeBase64 = 'data:image/png;base64,' . base64_encode(Storage::disk('public')->get($qrCodePath));
-            $barcodeBase64 = 'data:image/png;base64,' . base64_encode(Storage::disk('public')->get($barcodePath));
+            $qrCodeBase64 = 'data:image/png;base64,'.base64_encode(Storage::disk('public')->get($qrCodePath));
+            $barcodeBase64 = 'data:image/png;base64,'.base64_encode(Storage::disk('public')->get($barcodePath));
 
             // Generate PDF first before signing
             $pdf = Pdf::loadView('pdf.surat-izin-belajar', [
@@ -446,7 +449,8 @@ class SuratIzinBelajarController extends Controller
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['message' => 'Failed to sign surat izin belajar: ' . $e->getMessage()], 500);
+
+            return response()->json(['message' => 'Failed to sign surat izin belajar: '.$e->getMessage()], 500);
         }
     }
 
@@ -461,19 +465,19 @@ class SuratIzinBelajarController extends Controller
             if ($request->has('token')) {
                 $token = $request->query('token', '');
                 // Try Sanctum token first
-                $personalAccessToken = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
+                $personalAccessToken = PersonalAccessToken::findToken($token);
                 if ($personalAccessToken) {
                     $user = $personalAccessToken->tokenable;
                 } else {
                     $user = null;
                 }
 
-                if (!$user) {
+                if (! $user) {
                     return response()->json(['message' => 'Unauthorized - Invalid token'], 401);
                 }
             } else {
                 $user = auth()->user();
-                if (!$user) {
+                if (! $user) {
                     return response()->json(['message' => 'Unauthorized - No user'], 401);
                 }
             }
@@ -486,11 +490,11 @@ class SuratIzinBelajarController extends Controller
             ])->findOrFail($id);
 
             // Check permission - admin/kepala can download all, user can only download own
-            if (!$user->isAdminBkpsdm() && !$user->isKepalaBkpsdm() && $surat->pengajuan->user_id !== $user->id) {
+            if (! $user->isAdminBkpsdm() && ! $user->isKepalaBkpsdm() && $surat->pengajuan->user_id !== $user->id) {
                 return response()->json(['message' => 'Unauthorized - Permission denied'], 403);
             }
 
-            if (!$surat->isSigned()) {
+            if (! $surat->isSigned()) {
                 return response()->json(['message' => 'Surat has not been signed yet.'], 400);
             }
 
@@ -500,12 +504,12 @@ class SuratIzinBelajarController extends Controller
             if ($surat->qr_code) {
                 $qrCodeData = is_string($surat->qr_code) ? $surat->qr_code : json_encode($surat->qr_code);
                 $qrCodePath = $this->qrCodeService->generateAndSave($qrCodeData, "izin-{$surat->id}");
-                $qrCodeBase64 = 'data:image/png;base64,' . base64_encode(Storage::disk('public')->get($qrCodePath));
+                $qrCodeBase64 = 'data:image/png;base64,'.base64_encode(Storage::disk('public')->get($qrCodePath));
             }
 
             // Generate barcode
             $barcodePath = $this->barcodeService->generateForSurat($surat->nomor_surat, 'izin', $surat->id);
-            $barcodeBase64 = 'data:image/png;base64,' . base64_encode(Storage::disk('public')->get($barcodePath));
+            $barcodeBase64 = 'data:image/png;base64,'.base64_encode(Storage::disk('public')->get($barcodePath));
 
             $pdf = Pdf::loadView('pdf.surat-izin-belajar', [
                 'surat' => $surat,
@@ -517,11 +521,12 @@ class SuratIzinBelajarController extends Controller
 
             return $pdf->download($filename);
         } catch (\Exception $e) {
-            \Log::error('SuratIzin download error: ' . $e->getMessage(), [
+            \Log::error('SuratIzin download error: '.$e->getMessage(), [
                 'id' => $id,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            return response()->json(['message' => 'Download failed: ' . $e->getMessage()], 500);
+
+            return response()->json(['message' => 'Download failed: '.$e->getMessage()], 500);
         }
     }
 
@@ -535,13 +540,13 @@ class SuratIzinBelajarController extends Controller
         $pengajuan = Pengajuan::findOrFail($pengajuanId);
 
         // Check permission - admin/kepala can see all, user can only see own
-        if (!$user->isAdminBkpsdm() && !$user->isKepalaBkpsdm() && $pengajuan->user_id !== $user->id) {
+        if (! $user->isAdminBkpsdm() && ! $user->isKepalaBkpsdm() && $pengajuan->user_id !== $user->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $surat = $pengajuan->suratIzinBelajar;
 
-        if (!$surat) {
+        if (! $surat) {
             return response()->json(['message' => 'Surat izin belajar not found'], 404);
         }
 
@@ -556,11 +561,11 @@ class SuratIzinBelajarController extends Controller
         // Authenticate using token from query parameter
         $user = $this->authenticateViaToken($request);
 
-        if (!$user) {
+        if (! $user) {
             return response()->json(['message' => 'Unauthorized. Admin only.'], 401);
         }
 
-        if (!$user->isAdminBkpsdm() && !$user->isKepalaBkpsdm()) {
+        if (! $user->isAdminBkpsdm() && ! $user->isKepalaBkpsdm()) {
             return response()->json(['message' => 'Forbidden. Admin only.'], 403);
         }
 
@@ -574,9 +579,9 @@ class SuratIzinBelajarController extends Controller
         ])->findOrFail($pengajuanId) : null;
 
         // Create dummy surat object for preview
-        $surat = new \stdClass();
+        $surat = new \stdClass;
         $surat->id = 0;
-        $surat->nomor_surat = $request->nomor_surat ?? '800.1.3.1/001/BKPSDM/' . date('Y');
+        $surat->nomor_surat = $request->nomor_surat ?? '800.1.3.1/001/BKPSDM/'.date('Y');
         $surat->tahun = $request->tahun ?? date('Y');
         $surat->tanggal_surat = $request->tanggal_surat ?? date('d F Y');
         $surat->tempat_ttd = $request->tempat_ttd ?? 'Sukabumi';
@@ -588,52 +593,82 @@ class SuratIzinBelajarController extends Controller
             $surat->suratTugasDinas = $pengajuan->suratTugasDinas;
         } else {
             // Default dummy data
-            $surat->pengajuan = new \stdClass();
-            $surat->pengajuan->user = new \stdClass();
+            $surat->pengajuan = new \stdClass;
+            $surat->pengajuan->user = new \stdClass;
             $surat->pengajuan->user->name = $request->nama ?? 'Nama Pegawai';
             $surat->pengajuan->user->nip = $request->nip ?? '198001012010011001';
             $surat->pengajuan->user->pangkat_gol = $request->pangkat ?? 'Pembina (IV/a)';
             $surat->pengajuan->user->jabatan = $request->jabatan ?? 'Jabatan Pegawai';
-            $surat->pengajuan->user->unitKerja = new \stdClass();
+            $surat->pengajuan->user->unitKerja = new \stdClass;
             $surat->pengajuan->user->unitKerja->nama = $request->unit_kerja ?? 'Dinas Pemerintahan';
 
-            $surat->pengajuan->jenjang = new \stdClass();
+            $surat->pengajuan->jenjang = new \stdClass;
             $surat->pengajuan->jenjang->nama = $request->jenjang ?? 'Magister (S2)';
 
             $surat->pengajuan->nama_prodi = $request->nama_prodi ?? 'Magister Administrasi Publik';
             $surat->pengajuan->perguruan_tinggi = $request->perguruan_tinggi ?? 'Universitas Indonesia';
             $surat->pengajuan->lokasi_pt = $request->lokasi_pt ?? 'Depok, Jawa Barat';
 
-            $surat->suratTugasDinas = new \stdClass();
-            $surat->suratTugasDinas->nomor_surat = $request->nomor_surat_dinas ?? '001/DK/Mei/' . date('Y');
+            $surat->suratTugasDinas = new \stdClass;
+            $surat->suratTugasDinas->nomor_surat = $request->nomor_surat_dinas ?? '001/DK/Mei/'.date('Y');
             $surat->suratTugasDinas->tanggal_mulai = $request->tanggal_mulai ?? date('Y-m-d');
             $surat->suratTugasDinas->tanggal_selesai = $request->tanggal_selesai ?? date('Y-m-d', strtotime('+2 years'));
-            $surat->suratTugasDinas->unitKerja = new \stdClass();
+            $surat->suratTugasDinas->unitKerja = new \stdClass;
             $surat->suratTugasDinas->unitKerja->nama = $request->dinas ?? 'Dinas Pendidikan';
-            $surat->suratTugasDinas->kepalaDinas = new \stdClass();
+            $surat->suratTugasDinas->kepalaDinas = new \stdClass;
             $surat->suratTugasDinas->kepalaDinas->nama = $request->nama_kepala_dinas ?? 'Nama Kepala Dinas';
             $surat->suratTugasDinas->kepalaDinas->nip = $request->nip_kepala_dinas ?? '197001011995031001';
         }
 
         // Override data with request values for live preview
-        if ($request->nama) $surat->pengajuan->user->name = $request->nama;
-        if ($request->nip) $surat->pengajuan->user->nip = $request->nip;
-        if ($request->pangkat) $surat->pengajuan->user->pangkat_gol = $request->pangkat;
-        if ($request->jabatan) $surat->pengajuan->user->jabatan = $request->jabatan;
-        if ($request->unit_kerja) $surat->pengajuan->user->unitKerja->nama = $request->unit_kerja;
-        if ($request->jenjang) $surat->pengajuan->jenjang->nama = $request->jenjang;
-        if ($request->nama_prodi) $surat->pengajuan->nama_prodi = $request->nama_prodi;
-        if ($request->perguruan_tinggi) $surat->pengajuan->perguruan_tinggi = $request->perguruan_tinggi;
-        if ($request->lokasi_pt) $surat->pengajuan->lokasi_pt = $request->lokasi_pt;
-        if ($request->tanggal_mulai) $surat->suratTugasDinas->tanggal_mulai = $request->tanggal_mulai;
-        if ($request->tanggal_selesai) $surat->suratTugasDinas->tanggal_selesai = $request->tanggal_selesai;
-        if ($request->nomor_surat_dinas) $surat->suratTugasDinas->nomor_surat = $request->nomor_surat_dinas;
-        if ($request->dinas) $surat->suratTugasDinas->unitKerja->nama = $request->dinas;
-        if ($request->nama_kepala_dinas) $surat->suratTugasDinas->kepalaDinas->nama = $request->nama_kepala_dinas;
-        if ($request->nip_kepala_dinas) $surat->suratTugasDinas->kepalaDinas->nip = $request->nip_kepala_dinas;
+        if ($request->nama) {
+            $surat->pengajuan->user->name = $request->nama;
+        }
+        if ($request->nip) {
+            $surat->pengajuan->user->nip = $request->nip;
+        }
+        if ($request->pangkat) {
+            $surat->pengajuan->user->pangkat_gol = $request->pangkat;
+        }
+        if ($request->jabatan) {
+            $surat->pengajuan->user->jabatan = $request->jabatan;
+        }
+        if ($request->unit_kerja) {
+            $surat->pengajuan->user->unitKerja->nama = $request->unit_kerja;
+        }
+        if ($request->jenjang) {
+            $surat->pengajuan->jenjang->nama = $request->jenjang;
+        }
+        if ($request->nama_prodi) {
+            $surat->pengajuan->nama_prodi = $request->nama_prodi;
+        }
+        if ($request->perguruan_tinggi) {
+            $surat->pengajuan->perguruan_tinggi = $request->perguruan_tinggi;
+        }
+        if ($request->lokasi_pt) {
+            $surat->pengajuan->lokasi_pt = $request->lokasi_pt;
+        }
+        if ($request->tanggal_mulai) {
+            $surat->suratTugasDinas->tanggal_mulai = $request->tanggal_mulai;
+        }
+        if ($request->tanggal_selesai) {
+            $surat->suratTugasDinas->tanggal_selesai = $request->tanggal_selesai;
+        }
+        if ($request->nomor_surat_dinas) {
+            $surat->suratTugasDinas->nomor_surat = $request->nomor_surat_dinas;
+        }
+        if ($request->dinas) {
+            $surat->suratTugasDinas->unitKerja->nama = $request->dinas;
+        }
+        if ($request->nama_kepala_dinas) {
+            $surat->suratTugasDinas->kepalaDinas->nama = $request->nama_kepala_dinas;
+        }
+        if ($request->nip_kepala_dinas) {
+            $surat->suratTugasDinas->kepalaDinas->nip = $request->nip_kepala_dinas;
+        }
 
         // Get kepala BKPSDM data
-        $kepalaBkpsdm = \App\Models\User::where('role_id', 4)->first();
+        $kepalaBkpsdm = User::where('role_id', 4)->first();
         if ($kepalaBkpsdm) {
             $surat->kepala_bkpsdm = $kepalaBkpsdm;
         }
@@ -653,19 +688,19 @@ class SuratIzinBelajarController extends Controller
         if ($request->has('token')) {
             $token = $request->query('token');
             // Try Sanctum token first
-            $personalAccessToken = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
+            $personalAccessToken = PersonalAccessToken::findToken($token);
             if ($personalAccessToken) {
                 $user = $personalAccessToken->tokenable;
             } else {
                 $user = null;
             }
 
-            if (!$user || (!$user->isAdminBkpsdm() && !$user->isKepalaBkpsdm())) {
+            if (! $user || (! $user->isAdminBkpsdm() && ! $user->isKepalaBkpsdm())) {
                 return response()->json(['message' => 'Unauthorized. Admin only.'], 403);
             }
         } else {
             $user = auth()->user();
-            if (!$user->isAdminBkpsdm() && !$user->isKepalaBkpsdm()) {
+            if (! $user->isAdminBkpsdm() && ! $user->isKepalaBkpsdm()) {
                 return response()->json(['message' => 'Unauthorized. Admin only.'], 403);
             }
         }
@@ -676,7 +711,7 @@ class SuratIzinBelajarController extends Controller
 
         $pdf = Pdf::loadHTML($html);
 
-        $filename = "Preview_Surat_Izin_Belajar_" . date('YmdHis') . ".pdf";
+        $filename = 'Preview_Surat_Izin_Belajar_'.date('YmdHis').'.pdf';
 
         return $pdf->stream($filename);
     }
@@ -703,7 +738,7 @@ class SuratIzinBelajarController extends Controller
                 ->first();
 
             // If not found, try by nomor_surat with format parsing
-            if (!$surat) {
+            if (! $surat) {
                 // Try to parse full format: 800.1.3.1/001/BKPSDM/2026 or 001/BKPSDM/2026
                 if (preg_match('/^[\d.]+\/(\d+)\/[A-Z]+\/(\d{4})$/', $qrCode, $matches)) {
                     // Full format: 800.1.3.1/001/BKPSDM/2026
@@ -732,11 +767,11 @@ class SuratIzinBelajarController extends Controller
             }
         }
 
-        if (!$surat) {
+        if (! $surat) {
             return response()->json(['message' => 'Surat not found or invalid.'], 404);
         }
 
-        if (!$surat->isSigned()) {
+        if (! $surat->isSigned()) {
             return response()->json(['message' => 'Surat has not been signed yet.'], 400);
         }
 

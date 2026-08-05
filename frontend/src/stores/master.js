@@ -7,6 +7,7 @@ export const useMasterStore = defineStore('master', {
     unitKerja: [],
     statusPengajuan: [],
     jenisDokumen: [],
+    jenisDokumenPga: [],
     akreditasi: [],
     perguruanTinggi: [],
     prodi: [],
@@ -41,12 +42,27 @@ export const useMasterStore = defineStore('master', {
       }
     },
 
-    async fetchJenisDokumen() {
+    async fetchJenisDokumen(refresh = false) {
       try {
-        const response = await api.get('/master/jenis-dokumen')
+        const response = await api.get('/master/jenis-dokumen', {
+          params: refresh ? { refresh: true } : {}
+        })
         this.jenisDokumen = response.data
       } catch (error) {
         console.error('Failed to fetch jenis dokumen:', error)
+      }
+    },
+
+    async fetchJenisDokumenPga(refresh = false) {
+      try {
+        const response = await api.get('/master/jenis-dokumen-pga', {
+          params: refresh ? { refresh: true } : {}
+        })
+        this.jenisDokumenPga = response.data
+        return response.data
+      } catch (error) {
+        console.error('Failed to fetch jenis dokumen PGA:', error)
+        return []
       }
     },
 

@@ -25,14 +25,35 @@ const showModal = ref(false)
 const selectedPengajuan = ref(null)
 const activeDropdown = ref(null)
 const searchQuery = ref('')
+const statusFilter = ref('all')
 const currentPage = ref(1)
 const itemsPerPage = 3
 
-// Filter untuk riwayat verifikasi (verified, signed, selesai, completed)
+// Status filter options
+const statusOptions = [
+  { value: 'all', label: 'Semua Status' },
+  { value: 'verified', label: 'Terverifikasi' },
+  { value: 'signed', label: 'Ditandatangani' },
+  { value: 'selesai', label: 'Selesai' },
+  { value: 'ditolak', label: 'Ditolak' },
+  { value: 'dicabut', label: 'Dicabut' },
+]
+
+// Filter untuk riwayat verifikasi
 const filteredList = computed(() => {
-  let list = pengajuanList.value.filter(p =>
-    ['verified', 'signed', 'selesai', 'completed'].includes(p.status)
-  )
+  let list = pengajuanList.value
+
+  // Status filter
+  if (statusFilter.value === 'all') {
+    // Show all statuses except draft
+    list = list.filter(p => p.status !== 'draft')
+  } else if (statusFilter.value === 'selesai') {
+    // Selesai includes both selesai and completed
+    list = list.filter(p => ['selesai', 'completed'].includes(p.status))
+  } else {
+    // Filter by specific status
+    list = list.filter(p => p.status === statusFilter.value)
+  }
 
   // Search filter
   if (searchQuery.value) {
@@ -68,8 +89,8 @@ const paginatedList = computed(() => {
   return filteredList.value.slice(start, end)
 })
 
-// Reset to page 1 when search changes
-watch(searchQuery, () => {
+// Reset to page 1 when search or status filter changes
+watch([searchQuery, statusFilter], () => {
   currentPage.value = 1
 })
 
@@ -309,6 +330,33 @@ async function deletePengajuan(id, nomor) {
   }
 }
 
+// Delete all filtered pengajuans (admin only)
+async function deleteAllFiltered() {
+  const count = filteredList.value.length
+  if (count === 0) {
+    toast.warning('Tidak ada pengajuan untuk dihapus')
+    return
+  }
+
+  const statusLabel = statusFilter.value === 'all'
+    ? 'semua riwayat'
+    : statusOptions.find(o => o.value === statusFilter.value)?.label.toLowerCase()
+
+  if (!confirm(`Hapus ${count} pengajuan dengan status "${statusLabel}"?\n\nData yang dihapus tidak dapat dikembalikan.`)) {
+    return
+  }
+
+  try {
+    const ids = filteredList.value.map(p => p.id)
+    const response = await api.post('/admin/pengajuan/delete-multiple', { ids })
+    toast.success(response.data.message || `${count} pengajuan berhasil dihapus`)
+    await loadPengajuan()
+  } catch (error) {
+    console.error('Failed to delete pengajuans:', error)
+    toast.error(error.response?.data?.message || 'Gagal menghapus pengajuan')
+  }
+}
+
 // Close dropdown when clicking outside
 if (typeof window !== 'undefined') {
   window.addEventListener('click', () => {
@@ -351,9 +399,10 @@ if (typeof window !== 'undefined') {
       </div>
     </div>
 
-    <!-- Search Box -->
-    <div class="mb-4">
-      <div class="relative">
+    <!-- Search Box & Status Filter -->
+    <div class="mb-4 flex flex-col sm:flex-row gap-3">
+      <!-- Search Box -->
+      <div class="flex-1 relative">
         <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-secondary-400"></i>
         <input
           v-model="searchQuery"
@@ -369,8 +418,42 @@ if (typeof window !== 'undefined') {
           <i class="ri-close-line"></i>
         </button>
       </div>
-      <div v-if="searchQuery" class="text-xs text-secondary-500 mt-1">
-        {{ filteredList.length }} hasil ditemukan
+
+      <!-- Status Filter Dropdown -->
+      <div class="sm:w-56 relative">
+        <select
+          v-model="statusFilter"
+          class="w-full pl-4 pr-10 py-2.5 border border-secondary-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent appearance-none bg-white"
+        >
+          <option v-for="option in statusOptions" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </option>
+        </select>
+        <i class="ri-filter-line absolute right-3 top-1/2 -translate-y-1/2 text-secondary-400 pointer-events-none"></i>
+      </div>
+
+      <!-- Hapus Semua Button -->
+      <button
+        @click="deleteAllFiltered"
+        :disabled="filteredList.length === 0"
+        class="sm:w-auto px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg flex items-center gap-2 transition-colors"
+        title="Hapus semua pengajuan yang terfilter"
+      >
+        <i class="ri-delete-bin-line"></i>
+        <span class="hidden sm:inline">Hapus Semua</span>
+      </button>
+    </div>
+
+    <!-- Result Count -->
+    <div v-if="searchQuery || statusFilter !== 'all'" class="text-xs text-secondary-500 mb-4 flex items-center gap-3">
+      <div>
+        <span v-if="searchQuery">{{ filteredList.length }} hasil ditemukan</span>
+        <span v-if="searchQuery && statusFilter !== 'all'" class="mx-1">•</span>
+        <span v-if="statusFilter !== 'all'">Filter: {{ statusOptions.find(o => o.value === statusFilter)?.label }}</span>
+      </div>
+      <div v-if="filteredList.length > 0" class="text-red-600 flex items-center gap-1">
+        <i class="ri-information-line"></i>
+        <span>{{ filteredList.length }} pengajuan akan dihapus jika klik "Hapus Semua"</span>
       </div>
     </div>
 
@@ -408,7 +491,15 @@ if (typeof window !== 'undefined') {
       </div>
       <h3 class="text-base font-semibold text-secondary-800 mb-1">Tidak Ada Data</h3>
       <p class="text-sm text-secondary-500">
-        {{ searchQuery ? 'Tidak ditemukan hasil pencarian' : 'Belum ada pengajuan yang selesai diverifikasi' }}
+        <template v-if="searchQuery">
+          Tidak ditemukan hasil pencarian
+        </template>
+        <template v-else-if="statusFilter !== 'all'">
+          Tidak ada pengajuan dengan status {{ statusOptions.find(o => o.value === statusFilter)?.label.toLowerCase() }}
+        </template>
+        <template v-else>
+          Belum ada pengajuan yang selesai diverifikasi
+        </template>
       </p>
     </div>
 

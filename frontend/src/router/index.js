@@ -8,6 +8,12 @@ import { useAuthStore } from '@/stores/auth'
 const routes = [
   // ========== PUBLIC ROUTES ==========
   {
+    path: '/service-selection',
+    name: 'service-selection',
+    component: () => import('@/views/ServiceSelectionView.vue'),
+    meta: { requiresAuth: false },
+  },
+  {
     path: '/login',
     name: 'login',
     component: () => import('@/views/auth/LoginView.vue'),
@@ -23,14 +29,7 @@ const routes = [
   // ========== REDIRECT ==========
   {
     path: '/',
-    redirect: () => {
-      const authStore = useAuthStore()
-      // Redirect based on role
-      if (authStore.isAdmin) return '/admin/verifikasi'
-      if (authStore.isKepala) return '/kepala/signing' // Kepala BKPSDM (prioritas TTE surat izin)
-      if (authStore.isKepalaUnit) return '/kepala/surat-tugas' // Kepala Dinas per unit kerja (bukan Kepala BKPSDM)
-      return '/dashboard'
-    },
+    redirect: '/service-selection',
   },
 
   // ========== PEMOHAN & ATASAN ROUTES ==========
@@ -38,7 +37,7 @@ const routes = [
     path: '/dashboard',
     name: 'dashboard',
     component: () => import('@/views/pemohon/DashboardView.vue'),
-    meta: { requiresAuth: true, roles: ['pemohon', 'atasan'] },
+    meta: { requiresAuth: true, roles: ['pemohon', 'atasan', 'kepala'] },
   },
 
   // Pengajuan Management (only pemohon & atasan can create/edit)
@@ -81,6 +80,40 @@ const routes = [
     name: 'notifications',
     component: () => import('@/views/NotificationView.vue'),
     meta: { requiresAuth: true },
+  },
+
+  // ========== PGA ROUTES (PENCANTUMAN GELAR AKADEMIK) ==========
+  {
+    path: '/pga',
+    name: 'pga.index',
+    component: () => import('@/views/pga/PgaDashboardView.vue'),
+    meta: { requiresAuth: true, roles: ['pemohon', 'atasan', 'kepala'] },
+  },
+  {
+    path: '/pga/baru',
+    name: 'pga.create',
+    component: () => import('@/views/pga/PgaBaruView.vue'),
+    meta: { requiresAuth: true, roles: ['pemohon', 'atasan', 'kepala'] },
+  },
+  {
+    path: '/pga/:id',
+    name: 'pga.show',
+    component: () => import('@/views/pga/PgaDashboardView.vue'), // Reuse dashboard for now
+    meta: { requiresAuth: true, roles: ['pemohon', 'atasan', 'kepala'] },
+  },
+  {
+    path: '/pga/:id/edit',
+    name: 'pga.edit',
+    component: () => import('@/views/pga/PgaBaruView.vue'), // Reuse baru view for edit
+    meta: { requiresAuth: true, roles: ['pemohon', 'atasan', 'kepala'] },
+  },
+
+  // PGA Verifikasi (Admin BKPSDM)
+  {
+    path: '/admin/pga-verifikasi',
+    name: 'admin.pga.verifikasi',
+    component: () => import('@/views/admin/PgaVerifikasiView.vue'),
+    meta: { requiresAuth: true, roles: ['admin_bkpsdm', 'kepala_bkpsdm'] },
   },
 
   // ========== ADMIN BKPSDM ROUTES ==========
@@ -185,6 +218,14 @@ const routes = [
     meta: { requiresAuth: true, roles: ['admin_bkpsdm'] },
   },
 
+  // Jenis Dokumen PGA Management
+  {
+    path: '/admin/jenis-dokumen-pga',
+    name: 'admin.jenis-dokumen-pga',
+    component: () => import('@/views/admin/JenisDokumenPgaView.vue'),
+    meta: { requiresAuth: true, roles: ['admin_bkpsdm'] },
+  },
+
   // PDDikti Sync
   {
     path: '/admin/pddikti-sync',
@@ -240,46 +281,77 @@ router.beforeEach((to, from, next) => {
   const requiresAuth = to.matched.some((record) => record.meta.requiresAuth)
   const allowedRoles = to.meta.roles || []
 
+  // Direct check from localStorage for reliability (bypass reactive state)
+  const hasToken = !!localStorage.getItem('token') && localStorage.getItem('token') !== 'undefined'
+  const hasUser = !!localStorage.getItem('user') && localStorage.getItem('user') !== 'undefined'
+
+  // Use store state but fallback to direct localStorage check
+  const isAuthenticated = authStore.isAuthenticated || (hasToken && hasUser)
+
   console.log('[ROUTER] Navigation guard:', {
     to: to.path,
     from: from.path,
-    isAuthenticated: authStore.isAuthenticated,
-    hasToken: !!authStore.token,
-    hasUser: !!authStore.user,
+    isAuthenticated,
+    storeToken: !!authStore.token,
+    storeUser: !!authStore.user,
+    hasToken,
+    hasUser,
     userRole: authStore.userRole,
     requiresAuth,
-    allowedRoles,
-    localStorageToken: localStorage.getItem('token')?.substring(0, 20) + '...'
+    allowedRoles
   })
 
-  if (requiresAuth && !authStore.isAuthenticated) {
-    console.log('[ROUTER] Redirecting to login - not authenticated')
-    next('/login')
-  } else if (to.path === '/login' && authStore.isAuthenticated) {
-    // Redirect to appropriate home based on role after login
-    if (authStore.isAdmin) {
-      next('/admin/verifikasi')
-    } else if (authStore.isKepala) {
-      next('/kepala/signing') // Kepala BKPSDM ke signing
-    } else if (authStore.isKepalaUnit) {
-      next('/kepala/surat-tugas') // Kepala Dinas per unit kerja
-    } else {
-      next('/dashboard')
+  // Redirect to service-selection if not authenticated
+  if (requiresAuth && !isAuthenticated) {
+    console.log('[ROUTER] Redirecting to service-selection - not authenticated')
+    // Clear any corrupted data
+    if (!hasToken) localStorage.removeItem('token')
+    if (!hasUser) localStorage.removeItem('user')
+    // Store intended destination for after login
+    if (to.path !== '/service-selection' && to.path !== '/login') {
+      sessionStorage.setItem('redirectAfterLogin', to.fullPath)
     }
-  } else if (allowedRoles.length > 0 && !allowedRoles.includes(authStore.userRole)) {
-    // Redirect to appropriate home if role doesn't match
-    if (authStore.isAdmin) {
-      next('/admin/verifikasi')
-    } else if (authStore.isKepala) {
-      next('/kepala/signing') // Kepala BKPSDM ke signing
-    } else if (authStore.isKepalaUnit) {
-      next('/kepala/surat-tugas') // Kepala Dinas per unit kerja
-    } else {
-      next('/dashboard')
-    }
-  } else {
-    next()
+    next('/service-selection')
+    return
   }
+
+  // Redirect to appropriate home if already on login or service-selection page and authenticated
+  if ((to.path === '/login' || to.path === '/service-selection') && isAuthenticated) {
+    const isPgaService = authStore.selectedService === 'pga'
+
+    if (authStore.isAdmin) {
+      // Admin redirect based on service
+      next(isPgaService ? '/admin/pga-verifikasi' : '/admin/verifikasi')
+    } else if (authStore.isKepala) {
+      // Kepala redirect based on service
+      next(isPgaService ? '/pga' : '/kepala/signing')
+    } else if (authStore.isKepalaUnit) {
+      // Kepala Unit redirect based on service
+      next(isPgaService ? '/pga' : '/kepala/surat-tugas')
+    } else {
+      // Pemohon/Atasan redirect based on service
+      next(isPgaService ? '/pga' : '/dashboard')
+    }
+    return
+  }
+
+  // Redirect to appropriate home if role doesn't match
+  if (allowedRoles.length > 0 && !allowedRoles.includes(authStore.userRole)) {
+    const isPgaService = authStore.selectedService === 'pga'
+
+    if (authStore.isAdmin) {
+      next(isPgaService ? '/admin/pga-verifikasi' : '/admin/verifikasi')
+    } else if (authStore.isKepala) {
+      next(isPgaService ? '/pga' : '/kepala/signing')
+    } else if (authStore.isKepalaUnit) {
+      next(isPgaService ? '/pga' : '/kepala/surat-tugas')
+    } else {
+      next(isPgaService ? '/pga' : '/dashboard')
+    }
+    return
+  }
+
+  next()
 })
 
 export default router

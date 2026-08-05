@@ -1,9 +1,12 @@
 <?php
 
+use App\Http\Controllers\AdminPengajuanController;
+use App\Http\Controllers\Api\PgaController;
 use App\Http\Controllers\ApprovalController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DokumenController;
 use App\Http\Controllers\JenisDokumenController;
+use App\Http\Controllers\JenisDokumenPgaController;
 use App\Http\Controllers\MasterController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PDDiktiController;
@@ -16,6 +19,7 @@ use App\Http\Controllers\SuratTugasController;
 use App\Http\Controllers\SuratTugasDinasController;
 use App\Http\Controllers\SuratTugasMandiriController;
 use App\Http\Controllers\VerificationController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login'])->name('login');
@@ -26,6 +30,7 @@ Route::prefix('master')->group(function () {
     Route::get('/unit-kerja', [MasterController::class, 'unitKerja']);
     Route::get('/status-pengajuan', [MasterController::class, 'statusPengajuan']);
     Route::get('/jenis-dokumen', [MasterController::class, 'jenisDokumen']);
+    Route::get('/jenis-dokumen-pga', [MasterController::class, 'jenisDokumenPga']);
     Route::get('/akreditasi', [MasterController::class, 'akreditasi']);
     Route::get('/perguruan-tinggi', [MasterController::class, 'perguruanTinggi']);
     Route::get('/prodi', [MasterController::class, 'prodi']);
@@ -64,6 +69,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/template', [PegawaiSyncController::class, 'downloadTemplate']);
     });
 
+    // Admin Pengajuan Management (Admin only)
+    Route::prefix('admin/pengajuan')->middleware('admin')->group(function () {
+        Route::delete('/{id}', [AdminPengajuanController::class, 'destroy']);
+        Route::post('/delete-multiple', [AdminPengajuanController::class, 'destroyMultiple']);
+    });
+
     // Verification routes
     Route::prefix('verification')->group(function () {
         Route::get('/rules', [VerificationController::class, 'getRules']);
@@ -98,6 +109,22 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Document verification route
     Route::put('/dokumen/{id}/verify', [ApprovalController::class, 'verifyDocument'])->middleware('admin');
+
+    // PGA (Pencantuman Gelar Akademik) Routes
+    Route::prefix('pga')->group(function () {
+        Route::get('/', [PgaController::class, 'index']);
+        Route::post('/', [PgaController::class, 'store']);
+        Route::get('/{id}', [PgaController::class, 'show']);
+        Route::put('/{id}', [PgaController::class, 'update']);
+        Route::delete('/{id}', [PgaController::class, 'destroy']);
+        Route::post('/{id}/submit', [PgaController::class, 'submit']);
+        Route::post('/{id}/restore', [PgaController::class, 'restore']);
+        Route::get('/{id}/document/{type}', [PgaController::class, 'downloadDocument']);
+
+        // Admin/Kepala BKPSDM only
+        Route::post('/{id}/approve', [PgaController::class, 'approve']);
+        Route::post('/{id}/reject', [PgaController::class, 'reject']);
+    });
 
     // Signing routes (by pengajuan_id)
     Route::prefix('pengajuan')->group(function () {
@@ -139,6 +166,20 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/{id}', [JenisDokumenController::class, 'update']);
         Route::delete('/{id}', [JenisDokumenController::class, 'destroy']);
     });
+
+    // Jenis Dokumen PGA Management (Admin only)
+    Route::prefix('admin/jenis-dokumen-pga')->middleware('admin')->group(function () {
+        Route::get('/', [JenisDokumenPgaController::class, 'index']);
+        Route::post('/', [JenisDokumenPgaController::class, 'store']);
+        Route::get('/{id}', [JenisDokumenPgaController::class, 'show']);
+        Route::put('/{id}', [JenisDokumenPgaController::class, 'update']);
+        Route::delete('/{id}', [JenisDokumenPgaController::class, 'destroy']);
+        Route::post('/update-order', [JenisDokumenPgaController::class, 'updateOrder']);
+    });
+
+    // Public routes for active jenis dokumen PGA
+    Route::get('/jenis-dokumen-pga/active', [JenisDokumenPgaController::class, 'active']);
+    Route::get('/jenis-dokumen-pga/required', [JenisDokumenPgaController::class, 'required']);
 
     // Cache Management (Admin only)
     Route::prefix('admin/cache')->middleware('admin')->group(function () {
@@ -228,3 +269,33 @@ Route::get('/admin/surat-tugas/{id}/pdf', [SuratTugasDinasController::class, 'ge
 Route::get('/admin/surat-tugas/{id}/preview', [SuratTugasDinasController::class, 'preview']);
 Route::get('/admin/surat-tugas-mandiri/{id}/download', [SuratTugasMandiriController::class, 'download']);
 Route::get('/kepala/surat-tugas/{id}/pdf', [SuratTugasDinasController::class, 'generatePdf']);
+
+// ============================================================================
+// SYSTEM ROUTES (For deployment without terminal access)
+// ============================================================================
+
+// Run migrations (protected with secret key)
+Route::post('/system/migrate', function (Request $request) {
+    $secret = config('app.migration_secret', 'sipintar_migration_2024');
+
+    if ($request->input('secret') !== $secret) {
+        return response()->json(['message' => 'Unauthorized'], 403);
+    }
+
+    try {
+        Artisan::call('migrate', ['--force' => true]);
+        $output = Artisan::output();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Migration completed successfully',
+            'output' => $output,
+        ]);
+    } catch (Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Migration failed',
+            'error' => $e->getMessage(),
+        ], 500);
+    }
+});

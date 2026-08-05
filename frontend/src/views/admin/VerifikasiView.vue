@@ -199,7 +199,7 @@ function getFinalSigner(pengajuan) {
   }
 }
 
-// Milestone dot-line functions (Updated for Simplified Flow - 4 Steps)
+// Milestone dot-line functions (3 Steps - tanpa TTE)
 function getMilestoneSteps(pengajuan) {
   const status = pengajuan.status
   const steps = []
@@ -217,14 +217,7 @@ function getMilestoneSteps(pengajuan) {
               ['pending_admin'].includes(status) ? 'current' : 'pending',
   })
 
-  // Step 3: TTE (Kepala BKPSDM)
-  steps.push({
-    label: 'TTE',
-    status: ['selesai', 'completed'].includes(status) ? 'completed' :
-              ['signed'].includes(status) ? 'current' : 'pending',
-  })
-
-  // Step 4: Selesai
+  // Step 3: Selesai
   steps.push({
     label: 'Selesai',
     status: ['selesai', 'completed'].includes(status) ? 'completed' :
@@ -235,25 +228,21 @@ function getMilestoneSteps(pengajuan) {
 }
 
 function getProgressLineClass(status) {
-  // Simplified Flow: 4 Steps - Dikirim → Verifikasi → TTE → Selesai
+  // Flow: 3 Steps - Dikirim → Verifikasi → Selesai (tanpa TTE)
   // Draft - no progress
   if (status === 'draft' || status === 'dicabut' || status === 'ditolak') {
     return 'w-0 bg-gray-200'
   }
-  // Pending Admin - 1/4 progress (25%) - Dikirim completed, Verifikasi current
+  // Pending Admin - 1/3 progress (33%)
   if (status === 'pending_admin') {
-    return 'w-1/4 bg-blue-500'
+    return 'w-1/3 bg-blue-500'
   }
-  // Verified - 2/4 progress (50%) - Verifikasi completed, TTE current
+  // Verified - 2/3 progress (66%)
   if (status === 'verified') {
-    return 'w-2/4 bg-blue-500'
+    return 'w-2/3 bg-blue-500'
   }
-  // Signed - 3/4 progress (75%) - TTE completed, Selesai current
-  if (status === 'signed') {
-    return 'w-3/4 bg-blue-500'
-  }
-  // Selesai/Completed - full progress (100%)
-  if (status === 'selesai' || status === 'completed') {
+  // Signed/Selesai/Completed - full progress (100%)
+  if (status === 'signed' || status === 'selesai' || status === 'completed') {
     return 'w-full bg-green-500'
   }
   // Default

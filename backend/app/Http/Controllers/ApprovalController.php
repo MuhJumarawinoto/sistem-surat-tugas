@@ -98,7 +98,8 @@ class ApprovalController extends Controller
 
             // Generate nomor surat izin belajar
             $year = date('Y');
-            $lastNomor = SuratIzinBelajar::where('tahun', $year)->orderBy('id', 'desc')->first();
+            // Use lockForUpdate to prevent race condition
+            $lastNomor = SuratIzinBelajar::where('tahun', $year)->orderBy('id', 'desc')->lockForUpdate()->first();
 
             // Extract sequence number from format: 800.1.3.1/{sequence}/BKPSDM/{year}
             if ($lastNomor) {
@@ -152,7 +153,8 @@ class ApprovalController extends Controller
             $suratIzin->update(['qr_code' => $qrCodeData]);
 
             // Generate nomor surat tugas mandiri
-            $lastNomorTugas = SuratTugasMandiri::where('tahun', $year)->orderBy('id', 'desc')->first();
+            // Use lockForUpdate to prevent race condition
+            $lastNomorTugas = SuratTugasMandiri::where('tahun', $year)->orderBy('id', 'desc')->lockForUpdate()->first();
             if ($lastNomorTugas) {
                 $parts = explode('/', $lastNomorTugas->nomor_surat);
                 if (count($parts) >= 2 && is_numeric($parts[1])) {
@@ -198,9 +200,11 @@ class ApprovalController extends Controller
 
             // Generate nomor surat tugas dinas
             $unitKerjaId = $pengajuan->user->unit_kerja_id;
+            // Use lockForUpdate to prevent race condition
             $lastNomorDinas = SuratTugasDinas::where('unit_kerja_id', $unitKerjaId)
                 ->where('tahun', $year)
                 ->orderBy('id', 'desc')
+                ->lockForUpdate()
                 ->first();
 
             if ($lastNomorDinas) {

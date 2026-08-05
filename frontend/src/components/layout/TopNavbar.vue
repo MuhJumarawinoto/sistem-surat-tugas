@@ -25,14 +25,18 @@ function closeMenu() {
 }
 
 function goHome() {
+  const isPgaService = authStore.selectedService === 'pga'
+
   if (authStore.isAuthenticated) {
-    // Redirect based on role
+    // Redirect based on role and service
     if (authStore.isAdmin) {
-      router.push('/admin/verifikasi')
+      router.push(isPgaService ? '/admin/pga-verifikasi' : '/admin/verifikasi')
     } else if (authStore.isKepala) {
-      router.push('/kepala/signing')
+      router.push(isPgaService ? '/pga' : '/kepala/signing')
+    } else if (authStore.isKepalaUnit) {
+      router.push(isPgaService ? '/pga' : '/kepala/surat-tugas')
     } else {
-      router.push('/dashboard')
+      router.push(isPgaService ? '/pga' : '/dashboard')
     }
   } else {
     router.push('/login')
@@ -42,7 +46,7 @@ function goHome() {
 async function handleLogout() {
   closeMenu()
   await authStore.logout()
-  router.push('/login')
+  router.push('/service-selection')
 }
 
 function getInitials(name) {

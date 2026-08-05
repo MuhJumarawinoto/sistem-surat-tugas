@@ -16,7 +16,7 @@ class UserSeeder extends Seeder
                 'email' => 'admin@bkpsdm.go.id',
                 'password' => Hash::make('password'),
                 'nip' => '198001012010011001',
-                'role_id' => 3,
+                'role_id' => 4, // admin_bkpsdm
                 'unit_kerja_id' => 1,
                 'pangkat_gol' => 'Penata Tk.I - III/d',
                 'jabatan' => 'Kepala Subbidang Pendidikan',
@@ -26,17 +26,27 @@ class UserSeeder extends Seeder
                 'email' => 'kepala@bkpsdm.go.id',
                 'password' => Hash::make('password'),
                 'nip' => '197506152005011002',
-                'role_id' => 4,
+                'role_id' => 5, // kepala_bkpsdm
                 'unit_kerja_id' => 1,
                 'pangkat_gol' => 'Pembina Utama - IV/e',
                 'jabatan' => 'Kepala BKPSDM',
+            ],
+            [
+                'name' => 'Staf Bidang BKPSDM',
+                'email' => 'bidang@bkpsdm.go.id',
+                'password' => Hash::make('password'),
+                'nip' => '198805202011011003',
+                'role_id' => 3, // bidang
+                'unit_kerja_id' => 1,
+                'pangkat_gol' => 'Penata - III/c',
+                'jabatan' => 'Staf Bidang Pendidikan',
             ],
             [
                 'name' => 'Drajat Sukmana',
                 'email' => 'drajat@disdik.go.id',
                 'password' => Hash::make('password'),
                 'nip' => '198505102015011001',
-                'role_id' => 1,
+                'role_id' => 1, // pemohon
                 'unit_kerja_id' => 2,
                 'pangkat_gol' => 'Penata Muda - III/a',
                 'jabatan' => 'Guru ASN',
@@ -46,7 +56,7 @@ class UserSeeder extends Seeder
                 'email' => 'kadisdik@disdik.go.id',
                 'password' => Hash::make('password'),
                 'nip' => '197005122000121001',
-                'role_id' => 2,
+                'role_id' => 2, // atasan
                 'unit_kerja_id' => 2,
                 'pangkat_gol' => 'Pembina - IV/a',
                 'jabatan' => 'Kepala Dinas Pendidikan',
@@ -56,7 +66,7 @@ class UserSeeder extends Seeder
                 'email' => 'siti@disdik.go.id',
                 'password' => Hash::make('password'),
                 'nip' => '199008152019022001',
-                'role_id' => 1,
+                'role_id' => 1, // pemohon
                 'unit_kerja_id' => 2,
                 'pangkat_gol' => 'Penata Muda - III/a',
                 'jabatan' => 'Guru ASN',

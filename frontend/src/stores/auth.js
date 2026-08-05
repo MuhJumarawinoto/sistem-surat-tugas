@@ -26,6 +26,7 @@ export const useAuthStore = defineStore('auth', {
     user: getFromLocalStorage('user', true),
     token: getFromLocalStorage('token'),
     tokenExpiryTime: getFromLocalStorage('tokenExpiryTime'),
+    selectedService: getFromLocalStorage('selectedService'), // 'tugas-belajar' or 'pga'
     loading: false,
     showSessionWarning: false,
   }),
@@ -43,6 +44,7 @@ export const useAuthStore = defineStore('auth', {
     userRole: (state) => state.user?.role || null,
     isPemohon: (state) => state.user?.role === 'pemohon',
     isAtasan: (state) => state.user?.role === 'atasan',
+    isBidang: (state) => state.user?.role === 'bidang',
     isAdmin: (state) => state.user?.role === 'admin_bkpsdm',
     isKepala: (state) => state.user?.role === 'kepala_bkpsdm',
     isKepalaUnit: (state) => state.user?.is_kepala_unit === true,
@@ -55,6 +57,9 @@ export const useAuthStore = defineStore('auth', {
       const diff = expiry - now
       return Math.max(0, Math.floor(diff / 60000))
     },
+    // Service selection getters
+    isTugasBelajarService: (state) => state.selectedService === 'tugas-belajar' || !state.selectedService,
+    isPgaService: (state) => state.selectedService === 'pga',
   },
 
   actions: {
@@ -63,6 +68,7 @@ export const useAuthStore = defineStore('auth', {
       this.user = getFromLocalStorage('user', true)
       this.token = getFromLocalStorage('token')
       this.tokenExpiryTime = getFromLocalStorage('tokenExpiryTime')
+      this.selectedService = getFromLocalStorage('selectedService')
 
       console.log('[AUTH] Initialized from storage:', {
         hasToken: !!this.token,
@@ -156,6 +162,7 @@ export const useAuthStore = defineStore('auth', {
         this.user = null
         this.tokenExpiryTime = null
         this.showSessionWarning = false
+        this.clearService()
         localStorage.removeItem('token')
         localStorage.removeItem('user')
         localStorage.removeItem('tokenExpiryTime')
@@ -216,6 +223,18 @@ export const useAuthStore = defineStore('auth', {
         localStorage.setItem('tokenExpiryTime', this.tokenExpiryTime)
         this.showSessionWarning = false
       }
+    },
+
+    // Set selected service
+    setService(service) {
+      this.selectedService = service
+      localStorage.setItem('selectedService', service)
+    },
+
+    // Clear selected service (on logout)
+    clearService() {
+      this.selectedService = null
+      localStorage.removeItem('selectedService')
     },
   },
 })

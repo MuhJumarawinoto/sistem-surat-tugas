@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'user_id',
     'pengajuan_id',
+    'pga_id',
     'type',
     'title',
     'message',
@@ -37,6 +38,11 @@ class Notification extends Model
         return $this->belongsTo(Pengajuan::class);
     }
 
+    public function pga(): BelongsTo
+    {
+        return $this->belongsTo(PgaPengajuan::class);
+    }
+
     public function markAsRead(): void
     {
         $this->update([
@@ -60,11 +66,13 @@ class Notification extends Model
         string $type,
         string $title,
         string $message,
-        ?int $pengajuanId = null
+        ?int $pengajuanId = null,
+        ?int $pgaId = null
     ): self {
         return self::create([
             'user_id' => $userId,
             'pengajuan_id' => $pengajuanId,
+            'pga_id' => $pgaId,
             'type' => $type,
             'title' => $title,
             'message' => $message,

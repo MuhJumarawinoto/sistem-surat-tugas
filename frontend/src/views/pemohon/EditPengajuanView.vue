@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useMasterStore } from '@/stores/master'
 import { usePengajuanStore } from '@/stores/pengajuan'
@@ -116,6 +116,7 @@ const currentImageAlt = ref('')
 
 const loading = ref(false)
 const saving = ref(false)
+const refreshingDokumen = ref(false)
 
 // Computed property untuk jenis dokumen dari master store
 const jenisDokumenList = computed(() => {
@@ -153,6 +154,19 @@ const docMap = computed(() => {
 
 const hasDoc = (key) => !!docMap.value[key]
 
+async function refreshJenisDokumen() {
+  refreshingDokumen.value = true
+  try {
+    await masterStore.fetchJenisDokumen(true)
+    toast.success('Daftar dokumen berhasil diperbarui')
+  } catch (error) {
+    console.error('Failed to refresh jenis dokumen:', error)
+    toast.error('Gagal memperbarui daftar dokumen')
+  } finally {
+    refreshingDokumen.value = false
+  }
+}
+
 async function loadPengajuan() {
   loading.value = true
   try {
@@ -176,6 +190,9 @@ async function loadPengajuan() {
       rencana_mulai: formatDateForInput(pengajuan.rencana_mulai),
       rencana_selesai: formatDateForInput(pengajuan.rencana_selesai),
     }
+    // Set search keyword to show existing PT value in input
+    ptSearchKeyword.value = pengajuan.perguruan_tinggi || ''
+    prodiSearchKeyword.value = pengajuan.nama_prodi || ''
     existingDocs.value = pengajuan.dokumen || []
   } catch (error) {
     alert('Gagal memuat pengajuan')
@@ -348,6 +365,19 @@ function handleClickOutside(event) {
   }
 }
 
+onMounted(async () => {
+  // Load master data dulu supaya dropdown options terisi
+  await masterStore.fetchAll()
+
+  // Force refresh jenis dokumen to get latest data (bypass cache)
+  // This ensures newly added document types appear immediately
+  await masterStore.fetchJenisDokumen(true)
+
+  // Baru load data pengajuan
+  await loadPengajuan()
+  document.addEventListener('click', handleClickOutside)
+})
+
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
 })
@@ -504,7 +534,17 @@ onUnmounted(() => {
                     <i class="ri-file-upload-line text-primary-600"></i>
                     Upload/Ubah Dokumen
                   </h3>
-                  <span class="badge badge-primary">{{ totalDocs }}/{{ jenisDokumenList.length }}</span>
+                  <div class="flex items-center gap-2">
+                    <span class="badge badge-primary">{{ totalDocs }}/{{ jenisDokumenList.length }}</span>
+                    <button
+                      @click="refreshJenisDokumen"
+                      :disabled="refreshingDokumen"
+                      class="p-1.5 rounded-lg hover:bg-secondary-100 transition-colors"
+                      title="Refresh daftar dokumen"
+                    >
+                      <i :class="refreshingDokumen ? 'ri-loader-4-line animate-spin' : 'ri-refresh-line'" class="text-secondary-500"></i>
+                    </button>
+                  </div>
                 </div>
                 <p class="text-sm text-secondary-500 mt-1">Opsional. Pilih dokumen yang ingin diganti.</p>
               </div>

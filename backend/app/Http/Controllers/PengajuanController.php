@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Notification;
 use App\Models\Pengajuan;
 use App\Models\User;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 
 class PengajuanController extends Controller
@@ -121,24 +122,12 @@ class PengajuanController extends Controller
             }
         }
 
-        // Use provided nomor_pengajuan or generate one
-        $nomorPengajuan = $request->filled('nomor_pengajuan')
-            ? $request->nomor_pengajuan
-            : $this->generateNomorPengajuan();
-
-        $pengajuan = Pengajuan::create([
-            'nomor_pengajuan' => $nomorPengajuan,
-            'user_id' => $targetUserId,
-            'created_by' => $user->isKepalaUnit() && $targetUserId !== $user->id ? $user->id : null,
-            'jenjang_id' => $request->jenjang_id,
-            'nama_prodi' => $request->nama_prodi,
-            'perguruan_tinggi' => $request->perguruan_tinggi,
-            'akreditasi_prodi' => $request->akreditasi_prodi,
-            'lokasi_pt' => $request->lokasi_pt,
-            'rencana_mulai' => $request->rencana_mulai,
-            'rencana_selesai' => $request->rencana_selesai,
-            'status' => 'draft',
-        ]);
+        // Create pengajuan with retry logic to handle race conditions
+        $pengajuan = $this->createPengajuanWithRetry(
+            $request,
+            $user,
+            $targetUserId
+        );
 
         // Notify target staff if created by kepala unit
         if ($pengajuan->isCreatedByKepalaUnit()) {
@@ -358,7 +347,7 @@ class PengajuanController extends Controller
     public function getNomor()
     {
         return response()->json([
-            'nomor_pengajuan' => $this->generateNomorPengajuan(),
+            'nomor_pengajuan' => $this->generateNomorPengajuanWithRetry(),
         ]);
     }
 
@@ -366,12 +355,116 @@ class PengajuanController extends Controller
     {
         $year = date('Y');
 
+        // Use lockForUpdate to prevent race condition
+        // This locks the row until the transaction completes
         $lastNomor = Pengajuan::whereYear('created_at', $year)
             ->orderBy('created_at', 'desc')
+            ->lockForUpdate()
             ->first();
 
         $sequence = $lastNomor ? (int) substr($lastNomor->nomor_pengajuan, -4) + 1 : 1;
 
         return 'IBL/'.$year.'/'.str_pad($sequence, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Generate nomor pengajuan with retry logic for race conditions
+     * This wrapper handles duplicate key errors by retrying with a new sequence
+     */
+    private function generateNomorPengajuanWithRetry(int $maxRetries = 3): string
+    {
+        $attempt = 0;
+        $lastException = null;
+
+        while ($attempt < $maxRetries) {
+            try {
+                \DB::beginTransaction();
+
+                $nomor = $this->generateNomorPengajuan();
+
+                // Verify this nomor doesn't exist yet (double-check)
+                $exists = Pengajuan::where('nomor_pengajuan', $nomor)->lockForUpdate()->first();
+
+                if ($exists) {
+                    // If by some chance it exists, generate a new one in next iteration
+                    \DB::rollBack();
+                    $attempt++;
+
+                    continue;
+                }
+
+                \DB::commit();
+
+                return $nomor;
+            } catch (\Exception $e) {
+                \DB::rollBack();
+                $lastException = $e;
+                $attempt++;
+            }
+        }
+
+        // If all retries failed, throw the last exception
+        throw $lastException ?? new \Exception('Failed to generate nomor pengajuan after '.$maxRetries.' attempts');
+    }
+
+    /**
+     * Create pengajuan with retry logic to handle race conditions on duplicate nomor_pengajuan
+     * This keeps the lock active until the pengajuan is created
+     */
+    private function createPengajuanWithRetry(Request $request, $user, $targetUserId, int $maxRetries = 3): Pengajuan
+    {
+        $attempt = 0;
+        $lastException = null;
+
+        while ($attempt < $maxRetries) {
+            try {
+                \DB::beginTransaction();
+
+                // Generate nomor pengajuan with lock
+                $nomorPengajuan = $request->filled('nomor_pengajuan')
+                    ? $request->nomor_pengajuan
+                    : $this->generateNomorPengajuan();
+
+                // Create pengajuan within the same transaction (lock is still active)
+                $pengajuan = Pengajuan::create([
+                    'nomor_pengajuan' => $nomorPengajuan,
+                    'user_id' => $targetUserId,
+                    'created_by' => $user->isKepalaUnit() && $targetUserId !== $user->id ? $user->id : null,
+                    'jenjang_id' => $request->jenjang_id,
+                    'nama_prodi' => $request->nama_prodi,
+                    'perguruan_tinggi' => $request->perguruan_tinggi,
+                    'akreditasi_prodi' => $request->akreditasi_prodi,
+                    'lokasi_pt' => $request->lokasi_pt,
+                    'rencana_mulai' => $request->rencana_mulai,
+                    'rencana_selesai' => $request->rencana_selesai,
+                    'status' => 'draft',
+                ]);
+
+                \DB::commit();
+
+                return $pengajuan;
+            } catch (QueryException $e) {
+                \DB::rollBack();
+
+                // If it's a duplicate key error, retry with a new nomor
+                if ($e->getCode() == 23000 && str_contains($e->getMessage(), 'Duplicate entry')) {
+                    // Clear the provided nomor so we generate a new one on next attempt
+                    $request->merge(['nomor_pengajuan' => null]);
+                    $lastException = $e;
+                    $attempt++;
+
+                    continue;
+                }
+
+                // If it's not a duplicate error, throw immediately
+                throw $e;
+            } catch (\Exception $e) {
+                \DB::rollBack();
+                throw $e;
+            }
+        }
+
+        // If all retries failed, throw the last exception
+        throw $lastException ?? new \Exception('Failed to create pengajuan after '.$maxRetries.' attempts');
     }
 }

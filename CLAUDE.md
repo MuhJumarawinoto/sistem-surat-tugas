@@ -735,6 +735,131 @@ draft → delete → dicabut (masuk riwayat)
 5. **Kepala BKPSDM** → TTE elektronik
 6. **Selesai** → User unduh surat
 
+---
+
+# PGA (Pencantuman Gelar Akademik)
+
+## Overview
+
+PGA (Pencantuman Gelar Akademik) adalah layanan untuk PNS yang telah menyelesaikan pendidikan dan ingin mencantumkan gelar akademiknya sesuai dengan Peraturan BKN.
+
+## Alur PGA
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   ALUR PENGAJUAN PGA                          │
+└─────────────────────────────────────────────────────────────────┘
+
+  [PEMOHON/PNS]              [ADMIN BKPSDM]             
+       │                           │                            
+   Buat Pengajuan PGA      Verifikasi Dokumen         
+       │                           │                            
+       ▼                           ▼                            
+    draft ──────────────→ approved_admin ─────────────→ selesai
+                                                              │
+                                                              ▼
+                                                          ditolak
+                                                              │
+                                                              ▼
+                                                          draft (edit)
+```
+
+## Status Flow
+
+| Status | Penjelasan | Bisa Edit/Hapus |
+|--------|------------|-----------------|
+| `draft` | Pengajuan dibuat, belum dikirim | Ya |
+| `approved_admin` | Menunggu verifikasi admin BKPSDM | Tidak |
+| `selesai` | Pengajuan disetujui | Tidak |
+| `ditolak` | Ditolak admin | Bisa edit & kirim ulang |
+
+## Dokumen Wajib (3 Dokumen)
+
+1. **Ijazah** - File ijazah legalisir (PDF/JPG/PNG, maks 5MB)
+2. **Transkrip Nilai** - Transkrip nilai lengkap (PDF/JPG/PNG, maks 5MB)
+3. **SK Kum** - SK Kenaikan Pangkat/Golongan Terakhir (PDF/JPG/PNG, maks 5MB)
+
+## API Endpoints (PGA)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/pga` | List semua pengajuan PGA (filtered by role, paginated) |
+| POST | `/api/pga` | Create pengajuan PGA baru |
+| GET | `/api/pga/{id}` | Get detail pengajuan PGA |
+| PUT | `/api/pga/{id}` | Update pengajuan PGA (draft/ditolak only) |
+| DELETE | `/api/pga/{id}` | Delete pengajuan PGA (draft only) |
+| POST | `/api/pga/{id}/submit` | Submit pengajuan PGA |
+| POST | `/api/pga/{id}/restore` | Restore deleted pengajuan PGA |
+| POST | `/api/pga/{id}/approve` | Approve pengajuan PGA (admin only) |
+| POST | `/api/pga/{id}/reject` | Reject pengajuan PGA (admin only) |
+| GET | `/api/pga/{id}/document/{type}` | Download dokumen (ijazah/transkrip/sk_kum) |
+
+## Frontend Routes (PGA)
+
+| Path | Component | Access |
+|------|-----------|--------|
+| `/pga` | PgaDashboardView.vue | Pemohon, Atasan, Kepala |
+| `/pga/baru` | PgaBaruView.vue | Pemohon, Atasan, Kepala |
+| `/pga/{id}` | PgaDashboardView.vue | Pemohon, Atasan, Kepala |
+| `/pga/{id}/edit` | PgaBaruView.vue | Pemohon, Atasan, Kepala |
+| `/admin/pga-verifikasi` | PgaVerifikasiView.vue | Admin BKPSDM |
+
+## Pinia Store: PGA
+
+```javascript
+import { usePgaStore } from '@/stores/pga'
+
+const pgaStore = usePgaStore()
+
+// Fetch list
+await pgaStore.fetchPga({ status: 'approved_admin' })
+
+// Create new
+await pgaStore.createPga(formData)
+
+// Update
+await pgaStore.updatePga(id, formData)
+
+// Submit for approval
+await pgaStore.submitPga(id)
+
+// Approve (admin)
+await pgaStore.approvePga(id)
+
+// Reject (admin)
+await pgaStore.rejectPga(id, catatan)
+```
+
+## Database Schema: PGA Pengajuan
+
+```sql
+CREATE TABLE pga_pengajuan (
+  id BIGINT PRIMARY KEY,
+  nomor_pengajuan VARCHAR UNIQUE,     -- PGA-YYYYMMNNNN
+  user_id BIGINT,                      -- Foreign key to users
+  jenjang_pendidikan_id BIGINT,        -- Foreign key to jenjang_pendidikan
+  gelar_akademik VARCHAR,              -- S.Kom, M.H., Dr., etc.
+  nama_prodi VARCHAR,                  -- Nama program studi
+  perguruan_tinggi VARCHAR,            -- Nama universitas
+  lokasi_pt VARCHAR,                   -- Lokasi perguruan tinggi
+  nomor_ijazah VARCHAR,                -- Nomor ijazah
+  tanggal_ijazah DATE,                 -- Tanggal ijazah
+  tahun_lulus YEAR,                    -- Tahun kelulusan
+  status ENUM('draft', 'approved_admin', 'selesai', 'ditolak'),
+  catatan_tolak TEXT,                  -- Alasan penolakan
+  tanggal_approve_admin TIMESTAMP,     -- Tanggal persetujuan admin
+  tanggal_selesai TIMESTAMP,           -- Tanggal selesai
+  ijazah_file VARCHAR,                 -- Path file ijazah
+  transkrip_file VARCHAR,              -- Path file transkrip
+  sk_kum_file VARCHAR,                 -- Path file SK Kum
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP,
+  deleted_at TIMESTAMP NULL,           -- Soft delete
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (jenjang_pendidikan_id) REFERENCES jenjang_pendidikan(id)
+);
+```
+
 ## Custom Tailwind Classes
 
 In `style.css`, these custom classes are defined:
