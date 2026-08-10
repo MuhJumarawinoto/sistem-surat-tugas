@@ -64,7 +64,7 @@ async function verifySurat() {
 
 function getSuratTypeLabel(type) {
   const labels = {
-    'surat_izin_belajar': 'Surat Izin Belajar Mandiri',
+    'surat_izin_belajar': 'Surat Surat Tugas Belajar Mandiri',
     'surat_tugas_dinas': 'Surat Tugas Dinas',
     'surat_tugas_mandiri': 'Surat Tugas Belajar Mandiri'
   }

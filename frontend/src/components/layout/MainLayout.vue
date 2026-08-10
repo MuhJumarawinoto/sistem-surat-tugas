@@ -19,30 +19,24 @@ function closeMobileMenu() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-secondary-50">
-    <!-- Navbar: z-50 (highest) -->
+  <div class="min-h-screen bg-secondary-50 flex flex-col">
+    <!-- Navbar: fixed at top -->
     <TopNavbar @toggle-mobile-menu="toggleMobileMenu" />
 
-    <!-- Main Container -->
-    <div class="flex pt-16">
-      <!-- Sidebar: z-40 (below navbar, above content) -->
-      <!-- Desktop: visible, takes space in flex -->
-      <!-- Mobile: fixed overlay, doesn't push content -->
+    <!-- Main Container: starts below navbar -->
+    <div class="flex flex-1 lg:flex-1">
+      <!-- Sidebar: normal flow, below navbar -->
+      <!-- Mobile: fixed overlay when open -->
+      <!-- Desktop: sticky positioning with full height -->
       <AppSidebar :mobile-menu-open="mobileMenuOpen" @close-mobile-menu="closeMobileMenu" />
 
       <!-- Main Content -->
-      <!-- Desktop: flex-1 takes remaining space -->
-      <!-- Mobile: no margin change, content stays in place -->
-      <!-- z-10 ensures content is below sidebar on mobile -->
-      <main
-        class="flex-1 p-4 sm:p-6 overflow-y-auto relative z-10"
-        @click="closeMobileMenu"
-      >
+      <main class="flex-1 p-4 sm:p-6 overflow-y-auto min-h-0">
         <slot />
       </main>
     </div>
 
-    <!-- Mobile backdrop overlay - z-30 (below sidebar, above content) -->
+    <!-- Mobile backdrop overlay -->
     <Transition name="fade">
       <div
         v-if="mobileMenuOpen"
@@ -51,7 +45,7 @@ function closeMobileMenu() {
       ></div>
     </Transition>
 
-    <!-- Toast Notifications - z-50 (above everything) -->
+    <!-- Toast Notifications -->
     <div class="fixed inset-0 pointer-events-none z-50 flex flex-col items-end gap-2 p-4">
       <ToastContainer />
     </div>

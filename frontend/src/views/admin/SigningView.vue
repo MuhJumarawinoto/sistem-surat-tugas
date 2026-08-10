@@ -127,6 +127,20 @@ const filteredList = computed(() => {
 
 <template>
   <MainLayout>
+    <!-- Service Type Indicator -->
+    <!-- <div class="mb-4 px-1">
+      <div class="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+        <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+          <i class="ri-edit-sign-line text-blue-600"></i>
+        </div>
+        <div class="flex-1">
+          <p class="text-sm font-semibold text-blue-800">Izin Belajar / Surat Tugas Belajar</p>
+          <p class="text-xs text-blue-600">Generate & TTE Surat Izin Belajar untuk pengajuan verified</p>
+        </div>
+        <span class="badge badge-warning text-xs">TTE</span>
+      </div>
+    </div> -->
+
     <PageHeader
       title="Tanda Tangan Surat Izin Belajar"
       subtitle="Daftar pengajuan verified yang siap dibuatkan Surat Izin Belajar dengan TTE"

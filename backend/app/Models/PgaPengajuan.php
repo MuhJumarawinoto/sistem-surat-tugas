@@ -77,7 +77,7 @@ class PgaPengajuan extends Model
 
     public function isApprovedAdmin(): bool
     {
-        return $this->status === 'approved_admin';
+        return $this->status === 'approved_admin'; // Status means "waiting for admin approval"
     }
 
     public function isSelesai(): bool

@@ -296,13 +296,20 @@ class ApprovalController extends Controller
             return response()->json(['message' => 'Cannot reject this pengajuan'], 400);
         }
 
-        $request->validate([
-            'catatan' => 'required|string',
-        ]);
+        // Get catatan from either field name for compatibility
+        $catatan = $request->input('catatan_tolak') ?? $request->input('catatan');
+
+        if (empty($catatan)) {
+            return response()->json(['message' => 'Catatan penolakan wajib diisi'], 422);
+        }
+
+        if (! is_string($catatan)) {
+            return response()->json(['message' => 'Catatan penolakan harus berupa teks'], 422);
+        }
 
         $pengajuan->update([
             'status' => 'ditolak',
-            'catatan_tolak' => $request->catatan,
+            'catatan_tolak' => $catatan,
         ]);
 
         ApprovalHistory::create([
@@ -310,7 +317,7 @@ class ApprovalController extends Controller
             'approver_id' => $user->id,
             'role_approval' => $roleApproval,
             'status' => 'tolak',
-            'catatan' => $request->catatan,
+            'catatan' => $catatan,
         ]);
 
         // Send notification to pemohon
@@ -319,7 +326,7 @@ class ApprovalController extends Controller
             $pengajuan->user_id,
             'error',
             "Pengajuan Ditolak oleh $roleName",
-            "Pengajuan Anda ditolak. Alasan: {$request->catatan}",
+            "Pengajuan Anda ditolak. Alasan: {$catatan}",
             $pengajuan->id
         );
 

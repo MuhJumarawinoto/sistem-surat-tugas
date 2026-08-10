@@ -1,16 +1,30 @@
 <script setup>
-import { ref, watch, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, watch, onUnmounted, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import NotificationBell from '@/components/NotificationBell.vue'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 const showUserMenu = ref(false)
 
 // Emit event for mobile menu toggle
 const emit = defineEmits(['toggleMobileMenu'])
+
+// Get service name based on route
+const serviceName = computed(() => {
+  const path = route.path
+
+  // PGA routes
+  if (path.startsWith('/pga') || path.startsWith('/admin/pga')) {
+    return 'Pencantuman Gelar Akademik'
+  }
+
+  // Default: Izin Belajar
+  return 'Surat Tugas Belajar Mandiri'
+})
 
 function toggleMenu() {
   showUserMenu.value = !showUserMenu.value
@@ -109,7 +123,7 @@ onUnmounted(() => {
           <img src="/logo.png" alt="Logo" class="h-full w-auto object-contain" />
         </div>
         <div class="text-white">
-          <h1 class="text-base sm:text-lg font-bold leading-tight">SI-TEMA CANTIK</h1>
+          <h1 class="text-base sm:text-lg font-bold leading-tight">SI-TEMA CANTIK {{ serviceName }}</h1>
           <p class="text-xs text-white/80 hidden sm:block">BKPSDM Kabupaten Sukabumi</p>
         </div>
       </div>

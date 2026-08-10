@@ -9,6 +9,8 @@ use App\Models\PgaPengajuan;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class PgaController extends Controller
 {
@@ -125,6 +127,8 @@ class PgaController extends Controller
 
     public function show(string $id)
     {
+        \Log::info('PGA show called', ['id' => $id, 'method' => request()->method(), 'url' => request()->url()]);
+
         $pga = PgaPengajuan::with(['user.unitKerja', 'jenjangPendidikan'])
             ->withTrashed()
             ->findOrFail($id);
@@ -133,7 +137,7 @@ class PgaController extends Controller
 
         // Admin can view all
         if ($user->isAdminBkpsdm() || $user->isKepalaBkpsdm()) {
-            return response()->json($pga);
+            return response()->json($this->transformWithDocuments($pga));
         }
 
         // Kepala unit can view own unit
@@ -145,7 +149,7 @@ class PgaController extends Controller
                 return response()->json(['message' => 'Unauthorized'], 403);
             }
 
-            return response()->json($pga);
+            return response()->json($this->transformWithDocuments($pga));
         }
 
         // Pemohon/Atasan: hanya bisa lihat pengajuan sendiri
@@ -153,7 +157,45 @@ class PgaController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        return response()->json($pga);
+        return response()->json($this->transformWithDocuments($pga));
+    }
+
+    /**
+     * Transform PGA with documents array for frontend consumption
+     */
+    protected function transformWithDocuments($pga)
+    {
+        // Get active document types
+        $docTypes = JenisDokumenPga::active()->get();
+
+        $documents = [];
+        foreach ($docTypes as $index => $docType) {
+            $filePath = $pga->{$docType->kode};
+
+            if (! empty($filePath)) {
+                $fullPath = storage_path('app/public/'.$filePath);
+                $fileSize = file_exists($fullPath) ? filesize($fullPath) : 0;
+                $fileName = basename($filePath);
+                $fileType = mime_content_type($fullPath) ?: 'application/pdf';
+
+                $documents[] = [
+                    'id' => $index + 1,
+                    'jenis_dokumen' => $docType->nama,
+                    'file_name' => $fileName,
+                    'file_size' => $fileSize,
+                    'file_type' => $fileType,
+                    'file_path' => $filePath,
+                    'status_verifikasi' => 'lengkap',
+                    'catatan' => null,
+                ];
+            }
+        }
+
+        // Convert PGA to array and add documents
+        $pgaArray = $pga->toArray();
+        $pgaArray['dokumen'] = $documents;
+
+        return $pgaArray;
     }
 
     public function update(Request $request, string $id)
@@ -276,8 +318,7 @@ class PgaController extends Controller
         }
 
         $pga->update([
-            'status' => 'approved_admin',
-            'tanggal_approve_admin' => now(),
+            'status' => 'approved_admin', // Status means "waiting for admin approval"
         ]);
 
         // Notify all admin BKPSDM
@@ -288,7 +329,7 @@ class PgaController extends Controller
         foreach ($adminUsers as $admin) {
             Notification::createForUser(
                 userId: $admin->id,
-                type: 'pga_baru',
+                type: 'info',
                 title: 'Pengajuan PGA Baru',
                 message: "Pengajuan Pencantuman Gelar Akademik dari {$user->name} menunggu verifikasi.",
                 pgaId: $pga->id
@@ -318,13 +359,14 @@ class PgaController extends Controller
 
         $pga->update([
             'status' => 'selesai',
+            'tanggal_approve_admin' => now(),
             'tanggal_selesai' => now(),
         ]);
 
         // Notify user
         Notification::createForUser(
             userId: $pga->user_id,
-            type: 'pga_disetujui',
+            type: 'success',
             title: 'PGA Disetujui',
             message: 'Pengajuan Pencantuman Gelar Akademik Anda telah disetujui.',
             pgaId: $pga->id
@@ -338,6 +380,8 @@ class PgaController extends Controller
 
     public function reject(Request $request, string $id)
     {
+        \Log::info('PGA reject request:', ['id' => $id, 'catatan_tolak' => $request->input('catatan_tolak'), 'all' => $request->all()]);
+
         $request->validate([
             'catatan_tolak' => 'required|string|max:500',
         ]);
@@ -363,7 +407,7 @@ class PgaController extends Controller
         // Notify user
         Notification::createForUser(
             userId: $pga->user_id,
-            type: 'pga_ditolak',
+            type: 'error',
             title: 'PGA Ditolak',
             message: 'Pengajuan Pencantuman Gelar Akademik Anda ditolak. '.$request->catatan_tolak,
             pgaId: $pga->id
@@ -441,5 +485,140 @@ class PgaController extends Controller
         }
 
         return response()->download($fullPath, basename($filePath));
+    }
+
+    public function viewDocument(string $id, string $type)
+    {
+        // Check authentication from Bearer token or query parameter (for iframe PDF viewing)
+        $user = request()->user();
+
+        // If no user from Bearer token, try query parameter token (for iframe support)
+        if (! $user && request()->has('token')) {
+            $token = request()->query('token');
+            $tokenModel = PersonalAccessToken::findToken($token);
+
+            if ($tokenModel) {
+                $user = $tokenModel->tokenable;
+            }
+        }
+
+        if (! $user) {
+            abort(401, 'Unauthenticated');
+        }
+
+        $pga = PgaPengajuan::findOrFail($id);
+
+        // Authorization check
+        if ($user->isPemohon() || $user->isAtasan()) {
+            if ($pga->user_id !== $user->id) {
+                abort(403, 'Unauthorized');
+            }
+        } elseif (! $user->isAdminBkpsdm() && ! $user->isKepalaBkpsdm() && ! $user->isKepalaUnit()) {
+            abort(403, 'Unauthorized');
+        }
+
+        $filePath = match ($type) {
+            'surat_pengantar' => $pga->surat_pengantar_file,
+            'sk_pangkat' => $pga->sk_pangkat_file,
+            'sk_jabatan' => $pga->sk_jabatan_file,
+            'surat_izin' => $pga->surat_izin_file,
+            'ijazah' => $pga->ijazah_file,
+            'ijazah_forlap' => $pga->ijazah_forlap_file,
+            'transkrip' => $pga->transkrip_file,
+            'akreditasi' => $pga->akreditasi_file,
+            'ijazah_dikti' => $pga->ijazah_dikti_file,
+            'sk_kum' => $pga->sk_kum_file,
+            default => null,
+        };
+
+        if (! $filePath) {
+            abort(404, 'Dokumen tidak ditemukan');
+        }
+
+        $fullPath = storage_path('app/public/'.$filePath);
+
+        if (! file_exists($fullPath)) {
+            abort(404, 'File tidak ditemukan');
+        }
+
+        // Determine content type
+        $mimeType = mime_content_type($fullPath);
+
+        // Force inline viewing for PDF
+        if ($mimeType === 'application/pdf') {
+            $headers = [
+                'Content-Type' => $mimeType,
+                'Content-Disposition' => 'inline; filename="'.basename($fullPath).'"',
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'private, max-age=3600',
+            ];
+        } else {
+            $headers = [
+                'Content-Type' => $mimeType,
+                'Content-Disposition' => 'inline; filename="'.basename($fullPath).'"',
+            ];
+        }
+
+        // Add CORS headers for iframe embedding
+        $response = response()->file($fullPath, $headers);
+        $response->headers->set('Access-Control-Allow-Origin', '*');
+        $response->headers->set('Access-Control-Allow-Methods', 'GET');
+        $response->headers->set('Access-Control-Allow-Headers', 'Authorization');
+
+        return $response;
+    }
+
+    /**
+     * Generate signed URL for viewing document
+     */
+    public function getDocumentViewUrl(string $id, string $type)
+    {
+        $pga = PgaPengajuan::findOrFail($id);
+        $user = request()->user();
+
+        if (! $user) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        // Authorization check
+        if ($user->isPemohon() || $user->isAtasan()) {
+            if ($pga->user_id !== $user->id) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
+        } elseif (! $user->isAdminBkpsdm() && ! $user->isKepalaBkpsdm() && ! $user->isKepalaUnit()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // Generate signed URL valid for 10 minutes
+        $url = URL::signedRoute('pga.viewDocument', [
+            'id' => $id,
+            'type' => $type,
+        ], now()->addMinutes(10));
+
+        return response()->json(['url' => $url]);
+    }
+
+    public function deleteMultiple(Request $request)
+    {
+        $request->validate([
+            'ids' => 'required|array',
+            'ids.*' => 'integer',
+        ]);
+
+        $user = $request->user();
+
+        // Only admin can delete multiple
+        if (! $user->isAdminBkpsdm() && ! $user->isKepalaBkpsdm()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $ids = $request->ids;
+
+        // Delete (soft delete) all PGAs
+        $deleted = PgaPengajuan::whereIn('id', $ids)->delete();
+
+        return response()->json([
+            'message' => "{$deleted} pengajuan berhasil dihapus",
+        ]);
     }
 }

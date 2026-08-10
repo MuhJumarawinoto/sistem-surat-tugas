@@ -66,6 +66,19 @@ export const usePgaStore = defineStore('pga', {
       this.loading = true
       this.error = null
       try {
+        // For FormData with PUT, use POST with _method override
+        // This is more reliable than PUT for multipart/form-data
+        if (data instanceof FormData) {
+          data.append('_method', 'PUT')
+          const response = await api.post(`/pga/${id}`, data, {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+          })
+          return response.data
+        }
+
+        // For regular JSON data
         const response = await api.put(`/pga/${id}`, data, {
           headers: {
             'Content-Type': 'multipart/form-data',
@@ -160,6 +173,7 @@ export const usePgaStore = defineStore('pga', {
       this.loading = true
       this.error = null
       try {
+        console.log('Rejecting PGA:', { id, catatan, type: typeof catatan })
         const response = await api.post(`/pga/${id}/reject`, { catatan_tolak: catatan })
 
         // Update PGA in the list
@@ -170,6 +184,7 @@ export const usePgaStore = defineStore('pga', {
 
         return response.data
       } catch (error) {
+        console.error('Reject PGA error:', error.response?.status, error.response?.data)
         this.error = error.response?.data?.message || 'Failed to reject PGA'
         throw error
       } finally {

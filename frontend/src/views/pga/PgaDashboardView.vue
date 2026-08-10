@@ -195,48 +195,76 @@ function getMilestoneSteps(pga) {
   const status = pga.status
   const steps = []
 
-  // PGA Flow: Draft → Menunggu → Selesai (3 steps)
+  // PGA Flow: Draft → Verifikasi → Selesai (3 steps)
 
   // Step 1: Draft
-  steps.push({
-    label: 'Draft',
-    status: ['approved_admin', 'selesai'].includes(status) ? 'completed' : 'pending',
-  })
+  if (status === 'draft') {
+    steps.push({ label: 'Draft', status: 'current' })
+  } else if (['approved_admin', 'selesai', 'ditolak'].includes(status)) {
+    steps.push({ label: 'Draft', status: 'completed' })
+  } else {
+    steps.push({ label: 'Draft', status: 'pending' })
+  }
 
-  // Step 2: Menunggu
-  steps.push({
-    label: 'Verifikasi',
-    status: ['selesai'].includes(status) ? 'completed' :
-              ['approved_admin'].includes(status) ? 'current' : 'pending',
-  })
+  // Step 2: Verifikasi
+  if (status === 'approved_admin') {
+    steps.push({ label: 'Verifikasi', status: 'current' })
+  } else if (status === 'selesai') {
+    steps.push({ label: 'Verifikasi', status: 'completed' })
+  } else if (status === 'ditolak') {
+    steps.push({ label: 'Verifikasi', status: 'rejected' })
+  } else {
+    steps.push({ label: 'Verifikasi', status: 'pending' })
+  }
 
   // Step 3: Selesai
-  steps.push({
-    label: 'Selesai',
-    status: ['selesai'].includes(status) ? 'completed' : 'pending',
-  })
+  if (status === 'selesai') {
+    steps.push({ label: 'Selesai', status: 'completed' })
+  } else if (status === 'ditolak') {
+    steps.push({ label: 'Ditolak', status: 'rejected' })
+  } else {
+    steps.push({ label: 'Selesai', status: 'pending' })
+  }
 
   return steps
 }
 
 function getStepClass(step) {
   if (step.status === 'completed') return 'bg-green-500'
-  if (step.status === 'current') return 'bg-blue-500'
+  if (step.status === 'current') return 'bg-purple-500 animate-pulse'
+  if (step.status === 'rejected') return 'bg-red-500'
   return 'bg-gray-300'
 }
 
 function getProgressLineClass(status) {
-  // PGA Flow: 3 Steps - Draft → Menunggu → Selesai
-  if (status === 'draft' || status === 'dicabut' || status === 'ditolak') {
-    return 'w-0 bg-gray-200'
+  // PGA Flow: 3 Steps - Draft → Verifikasi → Selesai
+  if (status === 'draft') {
+    return 'w-1/3 bg-purple-500'  // First step active
   }
   if (status === 'approved_admin') {
-    return 'w-1/3 bg-blue-500'
+    return 'w-2/3 bg-purple-500'  // Second step active
   }
   if (status === 'selesai') {
-    return 'w-full bg-green-500'
+    return 'w-full bg-green-500'  // All complete
+  }
+  if (status === 'ditolak') {
+    return 'w-2/3 bg-red-500'  // Rejected at verifikasi
   }
   return 'w-0 bg-gray-200'
+}
+
+function getStepTooltip(step) {
+  if (step.status === 'completed') return `${step.label}: Selesai`
+  if (step.status === 'current') return `${step.label}: Sedang diproses`
+  if (step.status === 'rejected') return `${step.label}: Ditolak`
+  return `${step.label}: Belum diproses`
+}
+
+function getStepLabelClass(step) {
+  if (step.status === 'completed') return 'text-green-600'
+  if (step.status === 'current') return 'text-purple-600 font-semibold'
+  if (step.status === 'rejected') return 'text-red-600'
+  return 'text-gray-600'
 }
 
 // Navigate to detail with state
@@ -296,10 +324,24 @@ onUnmounted(() => {
 
 <template>
   <MainLayout>
+    <!-- Service Type Indicator -->
+    <!-- <div class="mb-4 px-1">
+      <div class="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg">
+        <div class="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center">
+          <i class="ri-graduation-cap-line text-purple-600"></i>
+        </div>
+        <div class="flex-1">
+          <p class="text-sm font-semibold text-purple-800">Pencantuman Gelar Akademik (PGA)</p>
+          <p class="text-xs text-purple-600">Layanan pencantuman gelar akademik bagi PNS</p>
+        </div>
+        <span class="badge badge-primary text-xs bg-purple-600">Layanan Aktif</span>
+      </div>
+    </div> -->
+
     <!-- Page Header -->
     <PageHeader
       title="Dashboard Pencantuman Gelar Akademik"
-      :subtitle="`Selamat datang, ${authStore.user?.name}`"
+      subtitle="Kelola pengajuan pencantuman gelar akademik dan pantau statusnya"
       :actions="headerActions"
     />
 
@@ -346,7 +388,8 @@ onUnmounted(() => {
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-3xl font-bold text-secondary-800">{{ stats.draft }}</p>
-                <p class="text-sm text-secondary-500 mt-1">Draft</p>
+                <p class="text-sm text-secondary-500 mt-1">Belum Dikirim</p>
+                <p class="text-xs text-secondary-400 mt-0.5">Draft pengajuan</p>
               </div>
               <div class="w-12 h-12 rounded-xl bg-secondary-100 flex items-center justify-center">
                 <i class="ri-draft-line text-2xl text-secondary-500"></i>
@@ -360,7 +403,8 @@ onUnmounted(() => {
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-3xl font-bold text-warning">{{ stats.pending }}</p>
-                <p class="text-sm text-secondary-500 mt-1">Menunggu</p>
+                <p class="text-sm text-secondary-500 mt-1">Menunggu Verifikasi</p>
+                <p class="text-xs text-secondary-400 mt-0.5">Sedang diproses admin</p>
               </div>
               <div class="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center">
                 <i class="ri-time-line text-2xl text-warning"></i>
@@ -374,7 +418,8 @@ onUnmounted(() => {
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-3xl font-bold text-success">{{ stats.selesai }}</p>
-                <p class="text-sm text-secondary-500 mt-1">Selesai</p>
+                <p class="text-sm text-secondary-500 mt-1">Disetujui</p>
+                <p class="text-xs text-secondary-400 mt-0.5">Pengajuan disetujui</p>
               </div>
               <div class="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center">
                 <i class="ri-checkbox-circle-line text-2xl text-success"></i>
@@ -389,6 +434,7 @@ onUnmounted(() => {
               <div>
                 <p class="text-3xl font-bold text-danger">{{ stats.ditolak }}</p>
                 <p class="text-sm text-secondary-500 mt-1">Ditolak</p>
+                <p class="text-xs text-secondary-400 mt-0.5">Perlu diperbaiki</p>
               </div>
               <div class="w-12 h-12 rounded-xl bg-red-100 flex items-center justify-center">
                 <i class="ri-close-line text-2xl text-danger"></i>
@@ -399,13 +445,26 @@ onUnmounted(() => {
       </template>
     </div>
 
+    <!-- Info Box - Panduan Singkat -->
+    <!-- <div class="card bg-purple-50 border-purple-200 animate-slide-up" style="animation-delay: 225ms;">
+      <div class="card-body py-4">
+        <div class="flex items-start gap-3">
+          <i class="ri-information-line text-2xl text-purple-600 flex-shrink-0 mt-0.5"></i>
+          <div class="flex-1">
+            <p class="font-semibold text-purple-900 mb-1">Tentang Pencantuman Gelar Akademik</p>
+            <p class="text-sm text-purple-700">Layanan untuk PNS yang telah menyelesaikan pendidikan dan ingin mencantumkan gelar akademiknya. Unggah ijazah, transkrip nilai, dan SK Kum terakhir, kemudian submit untuk verifikasi admin BKPSDM.</p>
+          </div>
+        </div>
+      </div>
+    </div> -->
+
     <!-- Recent Submissions Table -->
     <div class="card animate-slide-up" style="animation-delay: 250ms;">
       <div class="card-header">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <h3 class="card-title flex items-center gap-2">
-            <i class="ri-file-list-3-line text-lg text-primary-600"></i>
-            Pengajuan Terbaru
+            <i class="ri-file-list-3-line text-lg text-purple-600"></i>
+            Pengajuan Terbaru Pencantuman Gelar Akademik
           </h3>
           <div class="flex items-center gap-2">
             <router-link to="/pga" class="btn btn-ghost btn-sm gap-1">
@@ -501,13 +560,6 @@ onUnmounted(() => {
                     >
                       <i class="ri-refresh-line"></i> Pulihkan
                     </button>
-                    <button
-                      v-if="canDelete(item)"
-                      @click="handleDelete(item.id)"
-                      class="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 flex items-center gap-2"
-                    >
-                      <i class="ri-delete-bin-line"></i> Hapus
-                    </button>
                   </div>
                 </div>
 
@@ -542,14 +594,6 @@ onUnmounted(() => {
                     <i class="ri-refresh-line mr-1"></i>
                     Pulihkan
                   </button>
-                  <button
-                    v-if="canDelete(item)"
-                    @click="handleDelete(item.id)"
-                    class="btn btn-danger btn-sm"
-                  >
-                    <i class="ri-delete-bin-line mr-1"></i>
-                    Hapus
-                  </button>
                 </div>
               </div>
 
@@ -571,12 +615,13 @@ onUnmounted(() => {
                     class="relative z-10 flex flex-col items-center"
                   >
                     <div
-                      class="w-3 h-3 rounded-full transition-all duration-300"
+                      class="w-3 h-3 rounded-full transition-all duration-300 shadow-sm"
                       :class="getStepClass(step)"
+                      :title="getStepTooltip(step)"
                     ></div>
                     <span
                       class="text-xs mt-1 whitespace-nowrap"
-                      :class="step.status === 'current' ? 'text-blue-600 font-medium' : 'text-gray-600'"
+                      :class="getStepLabelClass(step)"
                     >{{ step.label }}</span>
                   </div>
                 </div>

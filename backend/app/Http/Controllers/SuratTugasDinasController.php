@@ -408,18 +408,8 @@ class SuratTugasDinasController extends Controller
         ])->findOrFail($id);
 
         // Check permission:
-        // - Admin BKPSDM and Kepala BKPSDM can download all surat
-        // - Kepala Unit can only download surat from their unit kerja
-        // - User can download their own surat
+        // - Only Admin BKPSDM and Kepala BKPSDM can download
         $canDownload = $user->isAdminBkpsdm() || $user->isKepalaBkpsdm();
-
-        if (! $canDownload && $user->isKepalaUnit()) {
-            $canDownload = $surat->unit_kerja_id === $user->unit_kerja_id;
-        }
-
-        if (! $canDownload && $surat->pengajuan->user_id === $user->id) {
-            $canDownload = true;
-        }
 
         if (! $canDownload) {
             return response()->json(['message' => 'Unauthorized'], 403);
@@ -474,6 +464,7 @@ class SuratTugasDinasController extends Controller
 
     /**
      * Get surat tugas dinas by pengajuan_id.
+     * Pemohon can access their own surat, Admin can access all.
      */
     public function getByPengajuan($pengajuanId)
     {
@@ -482,14 +473,12 @@ class SuratTugasDinasController extends Controller
         $pengajuan = Pengajuan::findOrFail($pengajuanId);
 
         // Check permission:
-        // 1. Admin BKPSDM can see all
-        // 2. User can see own pengajuan
-        // 3. Kepala Unit can see pengajuan from their unit kerja (including those they created for others)
-        // 4. User can see pengajuan created by them (created_by)
-        $canAccess = $user->isAdminBkpsdm()
-            || $pengajuan->user_id === $user->id
-            || ($user->isKepalaUnit() && $pengajuan->user->unit_kerja_id === $user->unit_kerja_id)
-            || $pengajuan->created_by === $user->id;
+        // - Admin BKPSDM and Kepala BKPSDM can access all
+        // - User can access their own surat
+        $canAccess = $user->isAdminBkpsdm() || $user->isKepalaBkpsdm();
+        if (! $canAccess && $pengajuan->user_id === $user->id) {
+            $canAccess = true;
+        }
 
         if (! $canAccess) {
             return response()->json(['message' => 'Unauthorized'], 403);
@@ -575,5 +564,90 @@ class SuratTugasDinasController extends Controller
                 'is_valid' => $surat->status === 'signed',
             ],
         ]);
+    }
+
+    /**
+     * Upload TTE document for surat tugas dinas.
+     */
+    public function uploadTte(Request $request, $id)
+    {
+        $user = auth()->user();
+
+        if (! $user->isAdminBkpsdm() && ! $user->isKepalaBkpsdm()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $surat = SuratTugasDinas::findOrFail($id);
+
+        $request->validate([
+            'file' => 'required|file|mimes:pdf|max:10240', // Max 10MB
+        ]);
+
+        if ($request->hasFile('file')) {
+            $file = $request->file('file');
+            $filename = 'Surat_Tugas_TTE_' . $surat->pengajuan->user->nip . '_' . $surat->tahun . '.pdf';
+            $filePath = $file->storeAs('surat-tugas-tte', $filename, 'public');
+
+            $surat->update(['file_path_tte' => $filePath]);
+
+            return response()->json([
+                'message' => 'TTE document uploaded successfully',
+                'data' => [
+                    'file_path_tte' => $filePath,
+                    'download_url' => Storage::disk('public')->url($filePath),
+                ],
+            ]);
+        }
+
+        return response()->json(['message' => 'No file uploaded'], 400);
+    }
+
+    /**
+     * Download TTE document for surat tugas dinas.
+     * Public route - checks token from query parameter.
+     */
+    public function downloadTte(Request $request, $id)
+    {
+        // Check token from query parameter (for direct download link)
+        if ($request->has('token')) {
+            $token = $request->query('token');
+            $personalAccessToken = PersonalAccessToken::findToken($token);
+            if ($personalAccessToken) {
+                $user = $personalAccessToken->tokenable;
+            } else {
+                $user = null;
+            }
+
+            if (! $user) {
+                return response()->json(['message' => 'Unauthorized'], 401);
+            }
+        } else {
+            $user = auth()->user();
+            if (! $user) {
+                return response()->json(['message' => 'Unauthorized'], 401);
+            }
+        }
+
+        $surat = SuratTugasDinas::with(['pengajuan.user'])->findOrFail($id);
+
+        // Check permission:
+        // - Admin BKPSDM and Kepala BKPSDM can download all
+        // - User can download their own TTE document
+        $canDownload = $user->isAdminBkpsdm() || $user->isKepalaBkpsdm();
+
+        if (! $canDownload && $surat->pengajuan->user_id === $user->id) {
+            // User can download their own TTE document
+            $canDownload = true;
+        }
+
+        if (! $canDownload) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if (! $surat->file_path_tte || ! Storage::disk('public')->exists($surat->file_path_tte)) {
+            return response()->json(['message' => 'TTE document not found'], 404);
+        }
+
+        return Storage::disk('public')->download($surat->file_path_tte);
     }
 }

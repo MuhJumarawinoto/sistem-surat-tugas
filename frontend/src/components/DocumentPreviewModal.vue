@@ -73,8 +73,10 @@ const isPdf = computed(() => detectedFileType.value === 'pdf')
 
 const pdfUrl = computed(() => {
   if (!isPdf.value || !computedSrc.value) return ''
-  // Add download parameter to force download behavior in iframe
-  return computedSrc.value
+  // Add parameters to force inline viewing instead of download
+  const url = new URL(computedSrc.value, window.location.origin)
+  url.searchParams.set('inline', '1')
+  return url.toString()
 })
 
 // Reset state when document changes
@@ -276,9 +278,10 @@ onUnmounted(() => {
           <!-- PDF Viewer -->
           <div v-if="isPdf" class="w-full h-full max-w-5xl max-h-[85vh] bg-white rounded-lg shadow-2xl overflow-hidden">
             <iframe
-              :src="computedSrc"
+              :src="pdfUrl"
               class="w-full h-full border-0"
               type="application/pdf"
+              credentials="include"
               @error="handlePdfError"
             ></iframe>
           </div>

@@ -139,7 +139,7 @@ const displaySubtitle = computed(() => {
   if (props.subtitle) return props.subtitle
 
   const subtitleMap = {
-    '/dashboard': 'Selamat datang di Sistem Surat Izin Belajar Mandiri',
+    '/dashboard': 'Selamat datang di Sistem Surat Surat Tugas Belajar Mandiri',
     '/pengajuan': 'Daftar pengajuan yang telah selesai diproses',
     '/pengajuan/baru': 'Isi formulir untuk mengajukan izin belajar mandiri',
     '/admin/verifikasi': 'Verifikasi dokumen pengajuan izin belajar',

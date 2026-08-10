@@ -393,7 +393,7 @@ onUnmounted(() => {
       <Breadcrumb />
 
       <PageHeader
-        title="Edit Pengajuan"
+        title="Edit Pengajuan Izin Belajar"
         :subtitle="`ID: ${route.params.id}`"
       />
 

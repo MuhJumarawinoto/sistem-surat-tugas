@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useMasterStore } from '@/stores/master'
 import { usePengajuanStore } from '@/stores/pengajuan'
 import { useToastStore } from '@/stores/toast'
@@ -15,6 +15,7 @@ import Breadcrumb from '@/components/Breadcrumb.vue'
 import PageHeader from '@/components/PageHeader.vue'
 
 const router = useRouter()
+const route = useRoute()
 const masterStore = useMasterStore()
 const pengajuanStore = usePengajuanStore()
 const toast = useToastStore()
@@ -29,9 +30,16 @@ function debounce(fn, delay) {
   }
 }
 
+// Page header title - based on route (edit vs create)
+const headerTitle = computed(() => {
+  const isEdit = route.params.id !== 'baru' && route.name === 'pengajuan.edit'
+  return isEdit ? 'Edit Pengajuan Izin Belajar' : 'Buat Pengajuan Izin Belajar'
+})
+
 // Page header subtitle
 const headerSubtitle = computed(() => {
-  return 'Isi formulir untuk mengajukan izin belajar mandiri'
+  const isEdit = route.params.id !== 'baru' && route.name === 'pengajuan.edit'
+  return isEdit ? 'Edit formulir untuk mengajukan izin belajar mandiri' : 'Isi formulir untuk mengajukan izin belajar mandiri'
 })
 
 // Show education fields only after jenjang is selected
@@ -460,17 +468,16 @@ function handleFileUpload(docKey, event) {
   const file = event.target.files?.[0]
   if (!file) return
 
-  // Check file size (5MB)
-  const maxSize = 5 * 1024 * 1024
+  // Check file size (1MB)
+  const maxSize = 1 * 1024 * 1024
   if (file.size > maxSize) {
-    toast.error('Ukuran file terlalu besar. Maksimum 5MB')
+    toast.error('Ukuran file terlalu besar. Maksimum 1MB')
     return
   }
 
-  // Check file type
-  const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png']
-  if (!allowedTypes.includes(file.type)) {
-    toast.error('Tipe file tidak valid. Gunakan PDF, JPG, atau PNG')
+  // Check file type - only PDF allowed
+  if (file.type !== 'application/pdf') {
+    toast.error('Tipe file tidak valid. Hanya file PDF yang diperbolehkan')
     return
   }
 
@@ -562,11 +569,19 @@ function checkIncompleteDocs() {
 }
 
 async function saveWithDocuments() {
-  // Check for incomplete documents
-  const missingDocs = jenisDokumenList.value.filter(doc => !documents.value[doc.key])
+  // Check for incomplete REQUIRED documents
+  // Treat undefined/null/true as required, only false means optional
+  const missingDocs = jenisDokumenList.value.filter(doc => {
+    const isRequired = doc.is_wajib === true || doc.is_wajib === undefined || doc.is_wajib === null
+    const hasFile = documents.value[doc.key]
+    return isRequired && !hasFile
+  })
 
-  if (missingDocs.length > 0) {
-    incompleteDocsList.value = missingDocs
+  // Also block if absolutely no documents are uploaded
+  const hasAnyDocuments = Object.values(documents.value).some(d => d)
+
+  if (missingDocs.length > 0 || !hasAnyDocuments) {
+    incompleteDocsList.value = missingDocs.length > 0 ? missingDocs : [{ key: 'all', label: 'Semua dokumen' }]
     showIncompleteConfirm.value = true
     return
   }
@@ -629,6 +644,16 @@ function cancelIncompleteConfirm() {
 const uploadedCount = computed(() => {
   return Object.values(documents.value).filter(d => d).length
 })
+
+// Count of required documents
+const requiredCount = computed(() => {
+  return jenisDokumenList.value.filter(doc => doc.is_wajib).length
+})
+
+// Count of uploaded required documents
+const uploadedRequiredCount = computed(() => {
+  return jenisDokumenList.value.filter(doc => doc.is_wajib && documents.value[doc.key]).length
+})
 </script>
 
 <style scoped>
@@ -658,7 +683,7 @@ const uploadedCount = computed(() => {
     <Breadcrumb />
 
     <PageHeader
-      title="Buat Pengajuan Baru"
+      :title="headerTitle"
       :subtitle="headerSubtitle"
     />
 
@@ -1028,7 +1053,7 @@ const uploadedCount = computed(() => {
                 Upload Dokumen
               </h3>
               <div class="flex items-center gap-2">
-                <span class="badge badge-primary">{{ uploadedCount }}/{{ jenisDokumenList.length }}</span>
+                <span class="badge" :class="uploadedRequiredCount === requiredCount ? 'badge-success' : 'badge-primary'">{{ uploadedRequiredCount }}/{{ requiredCount }} Wajib</span>
                 <button
                   @click="refreshJenisDokumen"
                   :disabled="refreshingDokumen"
@@ -1039,7 +1064,7 @@ const uploadedCount = computed(() => {
                 </button>
               </div>
             </div>
-            <p class="text-sm text-secondary-500 mt-1">Max 1MB per file. PDF, JPG, PNG.</p>
+            <p class="text-sm text-secondary-500 mt-1">Max 1MB per file. Hanya PDF.</p>
           </div>
           <div class="card-body">
             <!-- Minimalis List Layout -->
@@ -1048,16 +1073,20 @@ const uploadedCount = computed(() => {
                 v-for="(doc, index) in jenisDokumenList"
                 :key="doc.key"
                 class="flex items-center gap-2 p-2 border rounded-lg"
-                :class="documents[doc.key] ? 'border-success bg-green-50' : 'border-secondary-200'"
+                :class="documents[doc.key] ? 'border-success bg-green-50' : (doc.is_wajib ? 'border-warning bg-amber-50' : 'border-secondary-200')"
               >
                 <!-- Nomor -->
-                <span class="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold" :class="documents[doc.key] ? 'bg-success text-white' : 'bg-secondary-200 text-secondary-600'">
+                <span class="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold" :class="documents[doc.key] ? 'bg-success text-white' : (doc.is_wajib ? 'bg-warning text-white' : 'bg-secondary-200 text-secondary-600')">
                   {{ index + 1 }}
                 </span>
 
                 <!-- Info Dokumen -->
                 <div class="flex-1 min-w-0">
-                  <p class="text-xs font-medium text-secondary-800 truncate">{{ doc.label }}</p>
+                  <div class="flex items-center gap-1">
+                    <p class="text-xs font-medium text-secondary-800 truncate">{{ doc.label }}</p>
+                    <span v-if="doc.is_wajib" class="badge badge-xs badge-danger flex-shrink-0">Wajib</span>
+                    <span v-else class="badge badge-xs badge-secondary flex-shrink-0">Opsional</span>
+                  </div>
                   <p v-if="documents[doc.key]" class="text-xs text-secondary-500">
                     {{ documents[doc.key].name }} ({{ (documents[doc.key].size / 1024 / 1024).toFixed(2) }} MB)
                   </p>
@@ -1072,12 +1101,12 @@ const uploadedCount = computed(() => {
                   />
 
                   <!-- Upload Button -->
-                  <label class="cursor-pointer p-1.5 rounded-lg transition-colors" :class="documents[doc.key] ? 'bg-success text-white hover:bg-green-600' : 'bg-primary-600 text-white hover:bg-primary-700'">
+                  <label class="cursor-pointer p-1.5 rounded-lg transition-colors" :class="documents[doc.key] ? 'bg-success text-white hover:bg-green-600' : (doc.is_wajib ? 'bg-warning text-white hover:bg-amber-600' : 'bg-primary-600 text-white hover:bg-primary-700')">
                     <i :class="documents[doc.key] ? 'ri-check-line' : 'ri-upload-line'" class="text-sm"></i>
                     <input
                       type="file"
                       class="hidden"
-                      accept=".pdf,.jpg,.jpeg,.png"
+                      accept=".pdf"
                       @change="(e) => handleFileUpload(doc.key, e)"
                     />
                   </label>
@@ -1097,12 +1126,20 @@ const uploadedCount = computed(() => {
             <!-- Progress Bar -->
             <div class="mt-4 pt-3 border-t border-secondary-200">
               <div class="flex items-center justify-between text-xs text-secondary-600 mb-1">
-                <span>Progress Dokumen</span>
-                <span class="font-semibold" :class="uploadedCount === jenisDokumenList.length ? 'text-success' : 'text-primary-600'">{{ uploadedCount }} dari {{ jenisDokumenList.length }} lengkap</span>
+                <span>Progress Dokumen Wajib</span>
+                <span class="font-semibold" :class="uploadedRequiredCount === requiredCount ? 'text-success' : 'text-primary-600'">{{ uploadedRequiredCount }} dari {{ requiredCount }} lengkap</span>
               </div>
               <div class="w-full bg-secondary-200 rounded-full h-2">
-                <div class="h-2 rounded-full transition-all duration-300" :class="uploadedCount === jenisDokumenList.length ? 'bg-success' : 'bg-primary-600'" :style="{ width: (uploadedCount / jenisDokumenList.length * 100) + '%' }"></div>
+                <div class="h-2 rounded-full transition-all duration-300" :class="uploadedRequiredCount === requiredCount ? 'bg-success' : 'bg-primary-600'" :style="{ width: requiredCount > 0 ? (uploadedRequiredCount / requiredCount * 100) + '%' : '0%' }"></div>
               </div>
+              <p v-if="uploadedRequiredCount < requiredCount" class="text-xs text-warning-600 mt-2">
+                <i class="ri-error-warning-line"></i>
+                Semua dokumen wajib harus dilengkapi sebelum mengirim pengajuan.
+              </p>
+              <p v-else class="text-xs text-success-600 mt-2">
+                <i class="ri-check-line"></i>
+                Semua dokumen wajib sudah lengkap. Pengajuan siap dikirim.
+              </p>
             </div>
           </div>
         </div>
@@ -1142,45 +1179,49 @@ const uploadedCount = computed(() => {
     <Teleport to="body">
       <Transition name="modal">
         <div v-if="showIncompleteConfirm" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="cancelIncompleteConfirm"></div>
+          <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click.self="cancelIncompleteConfirm"></div>
           <div class="relative bg-white rounded-2xl shadow-soft max-w-md w-full overflow-hidden animate-slide-up">
             <!-- Header -->
             <div class="p-4 border-b border-secondary-100">
               <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
-                  <i class="ri-alert-line text-xl text-amber-600"></i>
+                <div class="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                  <i class="ri-error-warning-line text-xl text-red-600"></i>
                 </div>
                 <div class="flex-1">
-                  <h3 class="text-sm font-bold text-secondary-800">Dokumen Belum Lengkap</h3>
-                  <p class="text-xs text-secondary-500">{{ incompleteDocsList.length }} dari {{ jenisDokumenList.length }} dokumen belum diupload</p>
+                  <h3 class="text-sm font-bold text-secondary-800">
+                    {{ incompleteDocsList[0]?.key === 'all' ? 'Belum Upload Dokumen' : 'Dokumen Wajib Belum Lengkap' }}
+                  </h3>
+                  <p class="text-xs text-secondary-500">
+                    {{ incompleteDocsList[0]?.key === 'all' ? 'Upload minimal 1 dokumen untuk melanjutkan' : `${incompleteDocsList.length} dokumen wajib belum diupload` }}
+                  </p>
                 </div>
               </div>
             </div>
 
             <!-- Body -->
             <div class="p-4">
-              <p class="text-sm text-secondary-700 mb-3">
-                Anda dapat menambahkan dokumen lainnya nanti melalui menu Riwayat Pengajuan.
+              <p v-if="incompleteDocsList[0]?.key === 'all'" class="text-sm text-secondary-700 mb-3">
+                <strong>Anda belum mengupload satupun dokumen.</strong> Silakan upload minimal 1 dokumen untuk melanjutkan pengajuan.
+              </p>
+              <p v-else class="text-sm text-secondary-700 mb-3">
+                <strong>Semua dokumen wajib harus diupload sebelum dapat mengirim pengajuan.</strong> Silakan lengkapi dokumen berikut:
               </p>
               <div class="max-h-48 overflow-y-auto space-y-1.5">
-                <div v-for="doc in incompleteDocsList" :key="doc.key" class="flex items-center gap-2 p-2 bg-secondary-50 rounded-lg">
-                  <span class="w-5 h-5 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-bold">
+                <div v-for="doc in incompleteDocsList" :key="doc.key" class="flex items-center gap-2 p-2 bg-red-50 rounded-lg">
+                  <span class="w-5 h-5 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-xs font-bold">
                     <i class="ri-close-line"></i>
                   </span>
-                  <p class="text-xs text-secondary-700">{{ doc.label }}</p>
+                  <p class="text-xs text-secondary-700 font-medium">{{ doc.key === 'all' ? 'Upload minimal 1 dokumen' : doc.label }}</p>
+                  <span v-if="doc.key !== 'all'" class="badge badge-xs badge-danger ml-auto">Wajib</span>
                 </div>
               </div>
             </div>
 
             <!-- Footer -->
-            <div class="p-4 bg-secondary-50 flex gap-2">
-              <button @click="cancelIncompleteConfirm" class="btn btn-secondary flex-1">
+            <div class="p-4 bg-secondary-50">
+              <button @click="cancelIncompleteConfirm" class="btn btn-primary w-full justify-center">
                 <i class="ri-arrow-left-line"></i>
-                Lengkapi Dulu
-              </button>
-              <button @click="proceedWithSubmission" class="btn btn-primary flex-1">
-                <i class="ri-send-plane-fill"></i>
-                Tetap Kirim
+                {{ incompleteDocsList[0]?.key === 'all' ? 'Upload Dokumen' : 'Lengkapi Dokumen' }}
               </button>
             </div>
           </div>

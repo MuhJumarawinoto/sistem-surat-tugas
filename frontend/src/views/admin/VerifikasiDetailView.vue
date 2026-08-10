@@ -24,15 +24,15 @@ const rejectModal = ref(false)
 const rejectReason = ref('')
 
 const documentTypes = {
-  sk_pangkat: { label: 'SK Pangkat Terakhir', required: true },
+  sk_pangkat: { label: 'SK Pangkat', required: true },
   sk_cpns: { label: 'SK CPNS', required: true },
-  skp: { label: 'SKP 2 Tahun Terakhir', required: true },
-  surat_lulus: { label: 'Surat Keterangan Lulus/Diterima', required: true },
-  jadwal: { label: 'Jadwal Perkuliahan', required: true },
-  akreditasi: { label: 'Sertifikat Akreditasi Prodi', required: true },
-  surat_mandiri: { label: 'Surat Pernyataan Biaya Mandiri', required: true },
-  surat_ijazah: { label: 'Surat Pernyataan Tidak Menuntut Ijazah', required: true },
-  surat_sehat: { label: 'Surat Keterangan Sehat', required: true }
+  skp: { label: 'SKP 2 Thn', required: true },
+  surat_lulus: { label: 'Surat Lulus', required: true },
+  jadwal: { label: 'Jadwal', required: true },
+  akreditasi: { label: 'Akreditasi', required: true },
+  surat_mandiri: { label: 'Biaya Mandiri', required: true },
+  surat_ijazah: { label: 'Tidak Menuntut', required: true },
+  surat_sehat: { label: 'Surat Sehat', required: true }
 }
 
 const isAllDocumentsVerified = computed(() => {
@@ -66,7 +66,6 @@ async function loadData() {
     dokumenList.value = dokumenRes.data.data || dokumenRes.data || []
     verificationInfo.value = verificationRes.data
 
-    // Initialize document checks
     documentChecks.value = {}
     documentNotes.value = {}
     dokumenList.value.forEach(doc => {
@@ -95,10 +94,7 @@ function getDocumentIcon(type) {
 
 function getDocumentUrl(path) {
   if (!path) return '#'
-
-  if (path.startsWith('http')) {
-    return path
-  }
+  if (path.startsWith('http')) return path
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
   const baseUrl = apiUrl.endsWith('/api') ? apiUrl.slice(0, -4) : apiUrl
@@ -133,7 +129,7 @@ async function updateDocumentVerification(docId) {
 }
 
 async function handleApprove() {
-  if (!confirm('Setujui pengajuan ini? Surat Izin Belajar, Surat Tugas Mandiri, dan Surat Tugas Dinas akan dibuat secara otomatis.')) return
+  if (!confirm('Setujui pengajuan ini?')) return
 
   submitting.value = true
   try {
@@ -160,7 +156,7 @@ async function handleReject() {
   submitting.value = true
   try {
     await api.post(`/pengajuan/${pengajuanId.value}/reject`, {
-      alasan: rejectReason.value
+      catatan: rejectReason.value
     })
     goBack()
   } catch (error) {
@@ -172,27 +168,9 @@ async function handleReject() {
   }
 }
 
-function getVerifierStatusClass(status) {
-  const classes = {
-    'completed': 'bg-green-50 border-green-200 text-green-700',
-    'current': 'bg-blue-50 border-blue-200 text-blue-700',
-    'pending': 'bg-gray-50 border-gray-200 text-gray-500'
-  }
-  return classes[status] || classes['pending']
-}
-
-function getVerifierStatusIcon(status) {
-  const icons = {
-    'completed': 'ri-checkbox-circle-fill text-green-600',
-    'current': 'ri-time-line text-blue-600',
-    'pending': 'ri-circle-line text-gray-400'
-  }
-  return icons[status] || icons['pending']
-}
-
 function getDocumentStatusLabel(status) {
   const labels = {
-    'pending': 'Belum Diverifikasi',
+    'pending': 'Belum',
     'lengkap': 'Lengkap',
     'tidak_lengkap': 'Tidak Lengkap'
   }
@@ -207,197 +185,63 @@ function getDocumentStatusClass(status) {
   }
   return classes[status] || classes['pending']
 }
-
-function getDocumentCheckStatus(docTypeKey) {
-  // Find document by type
-  const doc = dokumenList.value.find(d => d.jenis_dokumen === docTypeKey)
-
-  if (!doc) {
-    return {
-      icon: 'ri-checkbox-blank-circle-line text-gray-400',
-      textClass: 'text-gray-500',
-      bgClass: 'bg-gray-100'
-    }
-  }
-
-  const isChecked = documentChecks.value[doc.id]
-
-  if (isChecked === true) {
-    return {
-      icon: 'ri-checkbox-circle-fill text-green-600',
-      textClass: 'text-green-700',
-      bgClass: 'bg-green-100'
-    }
-  } else if (isChecked === false) {
-    return {
-      icon: 'ri-close-circle-fill text-red-600',
-      textClass: 'text-red-700',
-      bgClass: 'bg-red-100'
-    }
-  } else {
-    return {
-      icon: 'ri-time-line text-orange-600',
-      textClass: 'text-orange-700',
-      bgClass: 'bg-orange-100'
-    }
-  }
-}
 </script>
 
 <template>
   <MainLayout>
     <Breadcrumb />
-    <div class="flex items-center justify-between mb-5">
-      <div>
+
+    <!-- Compact Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+      <div class="flex items-center gap-3">
         <button
           @click="goBack"
-          class="flex items-center gap-2 text-secondary-600 hover:text-primary-600 transition-colors mb-2"
+          class="btn btn-ghost btn-icon"
         >
-          <i class="ri-arrow-left-line"></i>
-          <span class="text-sm font-medium">Kembali ke Verifikasi</span>
+          <i class="ri-arrow-left-line text-xl"></i>
         </button>
-        <h1 class="text-2xl font-semibold text-secondary-800">Verifikasi Pengajuan</h1>
-        <p v-if="pengajuan" class="text-secondary-500">{{ pengajuan.nomor_pengajuan }}</p>
+        <div>
+          <h1 class="text-lg font-semibold text-secondary-800">{{ pengajuan?.nomor_pengajuan || 'Detail Pengajuan' }}</h1>
+          <p class="text-xs text-secondary-500">{{ pengajuan?.user?.name }}</p>
+        </div>
       </div>
 
       <div class="flex items-center gap-2">
+        <!-- Verification Status -->
+        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium" :class="{
+          'bg-green-100 text-green-700 border border-green-200': isAllDocumentsVerified,
+          'bg-red-100 text-red-700 border border-red-200': hasIncompleteDocuments,
+          'bg-amber-100 text-amber-700 border border-amber-200': !isAllDocumentsVerified && !hasIncompleteDocuments
+        }">
+          <i :class="[
+            isAllDocumentsVerified ? 'ri-checkbox-circle-fill' :
+            hasIncompleteDocuments ? 'ri-close-circle-fill' :
+            'ri-time-line'
+          ]"></i>
+          <span>
+            {{ Object.values(documentChecks).filter(v => v === true).length }}/{{ Object.keys(documentChecks).length }} Dokumen
+          </span>
+        </div>
+
         <button
           v-if="pengajuan?.status === 'pending_admin'"
           @click="openRejectModal"
-          class="btn btn-danger"
+          class="btn btn-sm btn-danger"
           :disabled="submitting"
         >
-          <i class="ri-close-line mr-1"></i>
-          Tolak
+          <i class="ri-close-line"></i>
+          <span class="hidden sm:inline ml-1">Tolak</span>
         </button>
 
         <button
           v-if="pengajuan?.status === 'pending_admin'"
           @click="handleApprove"
-          class="btn btn-primary"
+          class="btn btn-sm btn-primary"
           :disabled="submitting || !canApprove"
         >
-          <i class="ri-check-line mr-1"></i>
-          {{ submitting ? 'Memproses...' : 'Verifikasi & Lanjutkan' }}
+          <i class="ri-check-line"></i>
+          <span class="hidden sm:inline ml-1">Setujui</span>
         </button>
-      </div>
-    </div>
-
-    <!-- Status Summary Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-5">
-      <!-- Verification Progress Card -->
-      <div class="card bg-gradient-to-br from-primary-500 to-primary-600 text-white">
-        <div class="card-body">
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-xs text-primary-100 mb-1">Progress Verifikasi</p>
-              <p class="text-2xl font-bold">
-                {{ Object.values(documentChecks).filter(v => v === true).length }} / {{ Object.keys(documentChecks).length }}
-              </p>
-              <p class="text-xs text-primary-100 mt-1">dokumen terverifikasi</p>
-            </div>
-            <div class="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
-              <i class="ri-file-check-line text-2xl"></i>
-            </div>
-          </div>
-          <!-- Progress Bar -->
-          <div class="mt-3 bg-white/20 rounded-full h-2">
-            <div
-              class="bg-white rounded-full h-2 transition-all duration-300"
-              :style="{ width: (Object.values(documentChecks).filter(v => v === true).length / Object.keys(documentChecks).length * 100) + '%' }"
-            ></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Status Card -->
-      <div class="card" :class="{
-        'bg-green-50 border-green-200': isAllDocumentsVerified,
-        'bg-red-50 border-red-200': hasIncompleteDocuments,
-        'bg-amber-50 border-amber-200': !isAllDocumentsVerified && !hasIncompleteDocuments
-      }">
-        <div class="card-body">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-full flex items-center justify-center" :class="{
-              'bg-green-100': isAllDocumentsVerified,
-              'bg-red-100': hasIncompleteDocuments,
-              'bg-amber-100': !isAllDocumentsVerified && !hasIncompleteDocuments
-            }">
-              <i :class="[
-                'text-xl',
-                isAllDocumentsVerified ? 'ri-checkbox-circle-fill text-green-600' :
-                hasIncompleteDocuments ? 'ri-close-circle-fill text-red-600' :
-                'ri-time-line text-amber-600'
-              ]"></i>
-            </div>
-            <div>
-              <p class="text-xs text-secondary-500">Status Verifikasi</p>
-              <p class="text-sm font-semibold" :class="{
-                'text-green-700': isAllDocumentsVerified,
-                'text-red-700': hasIncompleteDocuments,
-                'text-amber-700': !isAllDocumentsVerified && !hasIncompleteDocuments
-              }">
-                {{ isAllDocumentsVerified ? 'Lengkap Semua' : hasIncompleteDocuments ? 'Ada Tidak Lengkap' : 'Dalam Proses' }}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Complete Count Card -->
-      <div class="card">
-        <div class="card-body">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-full bg-success/10 flex items-center justify-center">
-              <i class="ri-checkbox-circle-fill text-xl text-success"></i>
-            </div>
-            <div>
-              <p class="text-xs text-secondary-500">Dokumen Lengkap</p>
-              <p class="text-lg font-bold text-success">{{ Object.values(documentChecks).filter(v => v === true).length }}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Incomplete Count Card -->
-      <div class="card">
-        <div class="card-body">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-full bg-danger/10 flex items-center justify-center">
-              <i class="ri-close-circle-fill text-xl text-danger"></i>
-            </div>
-            <div>
-              <p class="text-xs text-secondary-500">Dokumen Tidak Lengkap</p>
-              <p class="text-lg font-bold text-danger">{{ Object.values(documentChecks).filter(v => v === false).length }}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Document Checklist Summary -->
-    <div class="card mb-5">
-      <div class="card-header">
-        <h4 class="card-title text-sm">
-          <i class="ri-list-check-2 mr-1"></i> Checklist Dokumen
-        </h4>
-      </div>
-      <div class="card-body">
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-          <div
-            v-for="(docType, key) in documentTypes"
-            :key="key"
-            class="flex items-center gap-2 px-3 py-2.5 rounded-lg border transition-all hover:shadow-sm"
-            :class="{
-              'bg-green-50 border-green-200': getDocumentCheckStatus(key).icon.includes('green'),
-              'bg-red-50 border-red-200': getDocumentCheckStatus(key).icon.includes('red'),
-              'bg-gray-50 border-gray-200': getDocumentCheckStatus(key).icon.includes('gray') || getDocumentCheckStatus(key).icon.includes('orange')
-            }"
-          >
-            <i :class="[getDocumentCheckStatus(key).icon, 'text-base']"></i>
-            <span class="text-xs font-medium" :class="getDocumentCheckStatus(key).textClass">{{ docType.label }}</span>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -406,181 +250,108 @@ function getDocumentCheckStatus(docTypeKey) {
       <LoadingSpinner size="sm" text="Memuat data..." />
     </div>
 
-    <div v-else-if="pengajuan" class="space-y-5">
-      <!-- Verification Chain -->
-      <div v-if="false && verificationInfo?.verification_chain" class="card">
-        <div class="card-header">
-          <h4 class="card-title">
-            <i class="ri-flow-chart mr-1"></i> Alur Verifikasi
-          </h4>
-        </div>
-        <div class="card-body">
-          <div class="space-y-2">
-            <div
-              v-for="step in verificationInfo.verification_chain"
-              :key="step.level"
-              class="flex items-center gap-3 p-3 rounded-lg border"
-              :class="getVerifierStatusClass(step.status)"
-            >
-              <i :class="[getVerifierStatusIcon(step.status), 'text-xl']"></i>
-              <div class="flex-1">
-                <p class="text-sm font-medium">{{ step.nama }}</p>
-                <p class="text-xs opacity-75">{{ step.jabatan }}</p>
-              </div>
-              <div class="text-right">
-                <p class="text-xs font-medium" :class="step.status === 'completed' ? 'text-green-600' : ''">
-                  {{ step.status === 'completed' ? 'Selesai' : step.status === 'current' ? 'Sedang Diproses' : 'Menunggu' }}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Info Grid -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <!-- Pegawai Info -->
-        <div class="card">
-          <div class="card-header">
-            <h4 class="card-title">
-              <i class="ri-user-line mr-1"></i> Informasi Pegawai
-            </h4>
-          </div>
-          <div class="card-body">
-            <div class="space-y-3">
-              <div>
-                <p class="text-xs text-secondary-500">Nama</p>
-                <p class="font-medium">{{ pengajuan.user?.name }}</p>
-              </div>
-              <div>
-                <p class="text-xs text-secondary-500">NIP</p>
-                <p class="font-medium">{{ pengajuan.user?.nip || '-' }}</p>
-              </div>
-              <div>
-                <p class="text-xs text-secondary-500">Pangkat/Golongan</p>
-                <p class="font-medium">{{ pengajuan.user?.pangkat_gol || '-' }}</p>
-              </div>
-              <div>
-                <p class="text-xs text-secondary-500">Jabatan</p>
-                <p class="font-medium">{{ pengajuan.user?.jabatan || '-' }}</p>
-              </div>
-              <div>
-                <p class="text-xs text-secondary-500">Unit Kerja</p>
-                <p class="font-medium">{{ pengajuan.user?.unit_kerja?.nama || pengajuan.user?.unit_kerja || '-' }}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Pendidikan Info -->
-        <div class="card">
-          <div class="card-header">
-            <h4 class="card-title">
-              <i class="ri-graduation-cap-line mr-1"></i> Informasi Pendidikan
-            </h4>
-          </div>
-          <div class="card-body">
-            <div class="space-y-3">
-              <div>
-                <p class="text-xs text-secondary-500">Jenjang</p>
-                <p class="font-medium">{{ pengajuan.jenjang?.nama || '-' }}</p>
-              </div>
-              <div>
-                <p class="text-xs text-secondary-500">Program Studi</p>
-                <p class="font-medium">{{ pengajuan.nama_prodi }}</p>
-              </div>
-              <div>
-                <p class="text-xs text-secondary-500">Perguruan Tinggi</p>
-                <p class="font-medium">{{ pengajuan.perguruan_tinggi }}</p>
-              </div>
-              <div>
-                <p class="text-xs text-secondary-500">Akreditasi Prodi</p>
-                <p class="font-medium">{{ pengajuan.akreditasi_prodi }}</p>
-              </div>
-              <div>
-                <p class="text-xs text-secondary-500">Lokasi</p>
-                <p class="font-medium">{{ pengajuan.lokasi_pt }}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Documents Verification -->
+    <div v-else-if="pengajuan" class="space-y-4">
+      <!-- Compact Info Row -->
       <div class="card">
-        <div class="card-header">
-          <h4 class="card-title">
-            <i class="ri-file-list-3-line mr-1"></i> Verifikasi Dokumen
-          </h4>
+        <div class="card-body py-3">
+          <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-x-4 gap-y-2 text-xs">
+            <div>
+              <p class="text-secondary-500">NIP</p>
+              <p class="font-medium text-secondary-800 truncate">{{ pengajuan.user?.nip || '-' }}</p>
+            </div>
+            <div>
+              <p class="text-secondary-500">Pangkat/Gol</p>
+              <p class="font-medium text-secondary-800 truncate">{{ pengajuan.user?.pangkat_gol || '-' }}</p>
+            </div>
+            <div>
+              <p class="text-secondary-500">Jabatan</p>
+              <p class="font-medium text-secondary-800 truncate">{{ pengajuan.user?.jabatan || '-' }}</p>
+            </div>
+            <div>
+              <p class="text-secondary-500">Unit Kerja</p>
+              <p class="font-medium text-secondary-800 truncate">{{ pengajuan.user?.unit_kerja?.nama || '-' }}</p>
+            </div>
+            <div>
+              <p class="text-secondary-500">Jenjang</p>
+              <p class="font-medium text-secondary-800 truncate">{{ pengajuan.jenjang?.nama || '-' }}</p>
+            </div>
+            <div>
+              <p class="text-secondary-500">Prodi</p>
+              <p class="font-medium text-secondary-800 truncate">{{ pengajuan.nama_prodi || '-' }}</p>
+            </div>
+          </div>
         </div>
-        <div class="card-body">
+      </div>
+
+      <!-- Compact Document List -->
+      <div class="card">
+        <div class="card-header py-2">
+          <h4 class="card-title text-sm">Dokumen yang Diunggah</h4>
+        </div>
+        <div class="card-body p-0">
           <div v-if="dokumenList.length === 0" class="text-center py-8 text-secondary-500">
-            <i class="ri-inbox-line text-3xl"></i>
-            <p class="mt-2">Tidak ada dokumen diunggah</p>
+            <i class="ri-inbox-line text-2xl"></i>
+            <p class="text-xs mt-1">Tidak ada dokumen</p>
           </div>
 
-          <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div v-else class="divide-y divide-secondary-100">
+            <!-- Document List Item (Compact) -->
             <div
               v-for="doc in dokumenList"
               :key="doc.id"
-              class="border rounded-lg overflow-hidden"
-              :class="documentChecks[doc.id] === false ? 'border-red-300 bg-red-50' : 'border-secondary-200'"
+              class="flex items-center gap-3 p-2.5 hover:bg-secondary-50 transition-colors"
+              :class="{ 'bg-red-50': documentChecks[doc.id] === false }"
             >
-              <!-- Document Header -->
-              <div class="p-2.5 bg-secondary-50 border-b flex items-center gap-2">
-                <div class="w-7 h-7 rounded bg-white flex items-center justify-center shrink-0">
-                  <i :class="[getDocumentIcon(doc.file_type), 'text-base text-secondary-500']"></i>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <p class="text-xs font-medium truncate text-secondary-700">{{ documentTypes[doc.jenis_dokumen]?.label || doc.jenis_dokumen }}</p>
-                </div>
-                <span class="badge text-xs py-0.5 px-1.5" :class="getDocumentStatusClass(doc.status_verifikasi)">
-                  {{ getDocumentStatusLabel(doc.status_verifikasi) }}
-                </span>
+              <!-- Document Icon -->
+              <div class="w-8 h-8 rounded bg-secondary-100 flex items-center justify-center shrink-0">
+                <i :class="[getDocumentIcon(doc.file_type), 'text-base text-secondary-500']"></i>
               </div>
 
-              <!-- Document Preview Placeholder (No auto-load to prevent downloads) -->
-              <div
-                class="bg-secondary-100 aspect-[4/3] flex items-center justify-center overflow-hidden cursor-pointer hover:bg-secondary-200 transition-colors"
+              <!-- Document Info -->
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-medium text-secondary-800 truncate">
+                  {{ documentTypes[doc.jenis_dokumen]?.label || doc.jenis_dokumen }}
+                </p>
+                <p class="text-xs text-secondary-500 truncate">{{ doc.file_name }}</p>
+              </div>
+
+              <!-- Status Badge -->
+              <span class="badge text-xs shrink-0" :class="getDocumentStatusClass(doc.status_verifikasi)">
+                {{ getDocumentStatusLabel(doc.status_verifikasi) }}
+              </span>
+
+              <!-- Preview Button -->
+              <button
                 @click="previewDocument(doc)"
+                class="btn btn-ghost btn-icon btn-sm text-primary-600 hover:text-primary-700 shrink-0"
+                title="Preview"
               >
-                <!-- File Icon with Preview Prompt -->
-                <div class="text-center">
-                  <i :class="[getDocumentIcon(doc.file_type), 'text-4xl text-secondary-400']"></i>
-                  <p class="text-xs text-secondary-500 mt-2">Klik untuk preview</p>
-                </div>
-              </div>
+                <i class="ri-eye-line"></i>
+              </button>
 
-              <!-- Actions & Notes -->
-              <div class="p-2.5 space-y-2">
-                <div class="flex items-center justify-between">
-                  <button
-                    @click="previewDocument(doc)"
-                    class="text-xs text-primary-600 hover:text-primary-700"
-                  >
-                    <i class="ri-external-link-line mr-0.5"></i>
-                    Buka
-                  </button>
+              <!-- Verification Checkbox -->
+              <label class="flex items-center gap-1.5 cursor-pointer shrink-0" title="Verifikasi">
+                <input
+                  type="checkbox"
+                  v-model="documentChecks[doc.id]"
+                  @change="updateDocumentVerification(doc.id)"
+                  class="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                >
+                <i
+                  class="text-sm transition-colors"
+                  :class="documentChecks[doc.id] ? 'ri-checkbox-circle-fill text-green-600' : 'ri-checkbox-blank-circle-line text-gray-400'"
+                ></i>
+              </label>
 
-                  <label class="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      v-model="documentChecks[doc.id]"
-                      @change="updateDocumentVerification(doc.id)"
-                      class="w-3.5 h-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                    >
-                    <span class="text-xs font-medium" :class="documentChecks[doc.id] ? 'text-green-600' : 'text-secondary-600'">
-                      {{ documentChecks[doc.id] ? 'Lengkap' : 'Verifikasi' }}
-                    </span>
-                  </label>
-                </div>
-
+              <!-- Notes Input -->
+              <div class="w-24 shrink-0">
                 <input
                   type="text"
                   v-model="documentNotes[doc.id]"
                   @blur="updateDocumentVerification(doc.id)"
                   placeholder="Catatan..."
-                  class="w-full px-2 py-1.5 border rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  class="w-full px-2 py-1 border border-secondary-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  :class="{ 'border-red-300 bg-red-50': documentChecks[doc.id] === false }"
                 >
               </div>
             </div>
@@ -588,7 +359,20 @@ function getDocumentCheckStatus(docTypeKey) {
         </div>
       </div>
 
-      
+      <!-- Missing Documents Warning -->
+      <div v-if="dokumenList.length < Object.keys(documentTypes).length" class="card bg-amber-50 border-amber-200">
+        <div class="card-body py-3">
+          <div class="flex items-start gap-2">
+            <i class="ri-error-warning-line text-amber-600 mt-0.5"></i>
+            <div class="flex-1">
+              <p class="text-xs font-medium text-amber-800">Dokumen Belum Lengkap</p>
+              <p class="text-xs text-amber-700 mt-0.5">
+                {{ Object.keys(documentTypes).length - dokumenList.length }} dari {{ Object.keys(documentTypes).length }} dokumen belum diunggah
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </MainLayout>
 
@@ -600,22 +384,22 @@ function getDocumentCheckStatus(docTypeKey) {
         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
         @click.self="rejectModal = false"
       >
-        <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-          <h3 class="text-lg font-semibold text-red-600 mb-4">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-5">
+          <h3 class="text-base font-semibold text-red-600 mb-2">
             <i class="ri-close-circle-line mr-1"></i> Tolak Pengajuan
           </h3>
-          <p class="text-sm text-secondary-600 mb-4">
+          <p class="text-sm text-secondary-600 mb-3">
             Pengajuan akan ditolak dan dikembalikan ke pemohon. Mohon isi alasan penolakan.
           </p>
           <textarea
             v-model="rejectReason"
             placeholder="Alasan penolakan..."
-            class="w-full px-3 py-2 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary-500"
+            class="w-full px-3 py-2 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
             rows="3"
           ></textarea>
-          <div class="flex justify-end gap-2 mt-4">
-            <button @click="rejectModal = false" class="btn btn-ghost">Batal</button>
-            <button @click="handleReject" class="btn btn-danger" :disabled="submitting">
+          <div class="flex justify-end gap-2 mt-3">
+            <button @click="rejectModal = false" class="btn btn-ghost btn-sm">Batal</button>
+            <button @click="handleReject" class="btn btn-danger btn-sm" :disabled="submitting">
               {{ submitting ? 'Memproses...' : 'Ya, Tolak' }}
             </button>
           </div>

@@ -114,16 +114,26 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('pga')->group(function () {
         Route::get('/', [PgaController::class, 'index']);
         Route::post('/', [PgaController::class, 'store']);
-        Route::get('/{id}', [PgaController::class, 'show']);
+        Route::match(['get', 'post'], '/{id}', [PgaController::class, 'show'])->name('pga.show');
         Route::put('/{id}', [PgaController::class, 'update']);
         Route::delete('/{id}', [PgaController::class, 'destroy']);
         Route::post('/{id}/submit', [PgaController::class, 'submit']);
         Route::post('/{id}/restore', [PgaController::class, 'restore']);
-        Route::get('/{id}/document/{type}', [PgaController::class, 'downloadDocument']);
+        Route::get('/{id}/document/{type}', [PgaController::class, 'downloadDocument'])->name('pga.downloadDocument');
+        Route::get('/{id}/view/{type}', [PgaController::class, 'viewDocument'])
+            ->name('pga.viewDocument')
+            ->withoutMiddleware('auth:sanctum');
+        Route::get('/{id}/view-url/{type}', [PgaController::class, 'getDocumentViewUrl']);
 
         // Admin/Kepala BKPSDM only
         Route::post('/{id}/approve', [PgaController::class, 'approve']);
         Route::post('/{id}/reject', [PgaController::class, 'reject']);
+    });
+
+    // Admin PGA Management (Admin only)
+    Route::prefix('admin/pga')->middleware('admin')->group(function () {
+        Route::delete('/{id}', [PgaController::class, 'destroy']);
+        Route::post('/delete-multiple', [PgaController::class, 'deleteMultiple']);
     });
 
     // Signing routes (by pengajuan_id)
@@ -194,7 +204,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{id}', [SuratTugasDinasController::class, 'show']);
         Route::put('/{id}', [SuratTugasDinasController::class, 'update']);
         Route::delete('/{id}', [SuratTugasDinasController::class, 'destroy']);
-        Route::get('/{id}/pdf', [SuratTugasDinasController::class, 'generatePdf']);
+        // PDF route moved to public routes (below) for token-based access
     });
 
     // Surat Tugas Dinas by Pengajuan (Admin/BKPSDM)
@@ -209,6 +219,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/pending', [SuratTugasDinasController::class, 'pending']);
         Route::post('/', [SuratTugasDinasController::class, 'store']);
         Route::get('/{id}', [SuratTugasDinasController::class, 'show']);
+        Route::post('/{id}/upload-tte', [SuratTugasDinasController::class, 'uploadTte']);
         // preview moved to public routes
         // pdf moved to public routes
     });
@@ -267,8 +278,10 @@ Route::get('/admin/surat-izin/{id}/download', [SuratIzinBelajarController::class
 Route::get('/admin/surat-izin/{id}/preview', [SuratIzinBelajarController::class, 'preview']);
 Route::get('/admin/surat-tugas/{id}/pdf', [SuratTugasDinasController::class, 'generatePdf']);
 Route::get('/admin/surat-tugas/{id}/preview', [SuratTugasDinasController::class, 'preview']);
+Route::get('/admin/surat-tugas/{id}/download-tte', [SuratTugasDinasController::class, 'downloadTte']);
 Route::get('/admin/surat-tugas-mandiri/{id}/download', [SuratTugasMandiriController::class, 'download']);
 Route::get('/kepala/surat-tugas/{id}/pdf', [SuratTugasDinasController::class, 'generatePdf']);
+Route::get('/kepala/surat-tugas/{id}/download-tte', [SuratTugasDinasController::class, 'downloadTte']);
 
 // ============================================================================
 // SYSTEM ROUTES (For deployment without terminal access)

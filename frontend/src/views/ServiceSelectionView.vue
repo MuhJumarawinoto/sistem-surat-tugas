@@ -59,7 +59,7 @@ function selectService(service) {
   <!-- Service Selection -->
   <div v-else class="min-h-screen flex">
     <!-- Left Side - Branding -->
-    <div class="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary-600 via-primary-700 to-accent relative overflow-hidden">
+    <div class="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary-600 via-primary-700 to-purple relative overflow-hidden">
       <!-- Background Pattern -->
       <div class="absolute inset-0 opacity-10">
         <div class="absolute inset-0" style="background-image: url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'1\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"></div>
@@ -206,10 +206,10 @@ function selectService(service) {
               class="group cursor-pointer"
             >
               <div class="card h-full transition-all duration-300 hover:shadow-xl hover:-translate-y-1 border-2 transition-colors"
-                   :class="selectedService === 'pga' ? 'border-accent bg-accent/10' : 'border-transparent hover:border-accent/50'">
+                   :class="selectedService === 'pga' ? 'border-purple bg-purple/10' : 'border-transparent hover:border-purple/50'">
                 <div class="card-body">
                   <!-- Icon -->
-                  <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-accent to-accent/80 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+                  <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600 to-purple-500 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
                     <i class="ri-graduation-cap-line text-3xl text-white"></i>
                   </div>
 
@@ -239,7 +239,7 @@ function selectService(service) {
 
                   <!-- Button -->
                   <div class="mt-6 pt-4 border-t border-secondary-100">
-                    <span class="inline-flex items-center gap-2 text-sm font-semibold text-accent group-hover:gap-3 transition-all">
+                    <span class="inline-flex items-center gap-2 text-sm font-semibold text-purple group-hover:gap-3 transition-all">
                       Pilih Layanan
                       <i class="ri-arrow-right-line"></i>
                     </span>

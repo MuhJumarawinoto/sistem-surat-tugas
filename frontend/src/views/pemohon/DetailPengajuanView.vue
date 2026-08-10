@@ -113,8 +113,8 @@ const canSubmit = computed(() => isDraft.value || isDitolak.value)
 const canEdit = computed(() => isDraft.value || isDitolak.value)
 const isDisetujui = computed(() => pengajuan.value?.status === 'disetujui' || pengajuan.value?.status === 'selesai')
 
-// Surat Izin Belajar
-const suratIzin = ref(null)
+// Surat Tugas TTE (uploaded by admin)
+const suratTugasDinas = ref(null)
 const loadingSurat = ref(false)
 const downloadingSurat = ref(false)
 
@@ -123,24 +123,27 @@ const canDownloadSurat = computed(() => {
   return pengajuan.value?.status === 'selesai' || pengajuan.value?.status === 'completed'
 })
 
-// Load surat izin belajar
-async function loadSuratIzin() {
+// Load surat tugas dinas (with TTE)
+async function loadSuratTugas() {
   if (!canDownloadSurat.value) return
 
   loadingSurat.value = true
   try {
-    const response = await api.get(`/pengajuan/${pengajuan.value.id}/surat-izin`)
-    suratIzin.value = response.data.data
+    const response = await api.get(`/surat-tugas/${pengajuan.value.id}`)
+    suratTugasDinas.value = response.data.data
   } catch (error) {
-    console.error('Failed to load surat izin:', error)
+    console.error('Failed to load surat tugas:', error)
   } finally {
     loadingSurat.value = false
   }
 }
 
-// Download surat izin belajar
-async function downloadSuratIzin() {
-  if (!suratIzin.value) return
+// Download surat tugas TTE (admin uploaded)
+async function downloadSuratTugas() {
+  if (!suratTugasDinas.value || !suratTugasDinas.value.file_path_tte) {
+    alert('Surat Tugas TTE belum tersedia')
+    return
+  }
 
   downloadingSurat.value = true
   try {
@@ -150,7 +153,7 @@ async function downloadSuratIzin() {
       ? import.meta.env.VITE_API_URL.replace('/api', '')
       : 'http://localhost:8000'
 
-    const url = `${baseUrl}/api/admin/surat-izin/${suratIzin.value.id}/download?token=${encodeURIComponent(token)}`
+    const url = `${baseUrl}/api/admin/surat-tugas/${suratTugasDinas.value.id}/download-tte?token=${encodeURIComponent(token)}`
 
     // Open in new tab to trigger download
     window.open(url, '_blank')
@@ -170,7 +173,7 @@ async function downloadSuratIzin() {
 import { watch } from 'vue'
 watch(() => pengajuan.value?.status, (newStatus) => {
   if (newStatus === 'selesai' || newStatus === 'completed') {
-    loadSuratIzin()
+    loadSuratTugas()
   }
 }, { immediate: true })
 
@@ -336,13 +339,13 @@ const headerActions = computed(() => {
       isBadge: true, // Render as badge instead of button
     })
 
-    // Add download surat button if can download
+    // Add download surat tugas button if can download
     if (canDownloadSurat.value) {
       actions.push({
-        label: downloadingSurat.value ? 'Mendownload...' : 'Download Surat',
+        label: downloadingSurat.value ? 'Mendownload...' : 'Download Surat Tugas',
         icon: downloadingSurat.value ? 'ri-loader-4-line animate-spin' : 'ri-download-line',
         variant: 'btn-success',
-        onClick: downloadSuratIzin,
+        onClick: downloadSuratTugas,
       })
     }
 

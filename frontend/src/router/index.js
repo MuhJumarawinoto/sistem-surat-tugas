@@ -98,7 +98,7 @@ const routes = [
   {
     path: '/pga/:id',
     name: 'pga.show',
-    component: () => import('@/views/pga/PgaDashboardView.vue'), // Reuse dashboard for now
+    component: () => import('@/views/pga/PgaDetailView.vue'),
     meta: { requiresAuth: true, roles: ['pemohon', 'atasan', 'kepala'] },
   },
   {
@@ -113,6 +113,12 @@ const routes = [
     path: '/admin/pga-verifikasi',
     name: 'admin.pga.verifikasi',
     component: () => import('@/views/admin/PgaVerifikasiView.vue'),
+    meta: { requiresAuth: true, roles: ['admin_bkpsdm', 'kepala_bkpsdm'] },
+  },
+  {
+    path: '/admin/pga-verifikasi/:id',
+    name: 'admin.pga.verifikasi.detail',
+    component: () => import('@/views/admin/PgaVerifikasiDetailView.vue'),
     meta: { requiresAuth: true, roles: ['admin_bkpsdm', 'kepala_bkpsdm'] },
   },
 

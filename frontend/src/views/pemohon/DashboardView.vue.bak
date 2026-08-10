@@ -193,14 +193,8 @@ async function loadSuratInfoForPengajuan(pengajuanId) {
       // No surat tugas mandiri
     }
 
-    // Try to get surat tugas dinas (now accessible to pemohon for TTE download)
+    // Surat tugas dinas not accessible to pemohon (admin only)
     let suratTugasDinas = null
-    try {
-      const dinasResponse = await api.get(`/surat-tugas/${pengajuanId}`)
-      suratTugasDinas = dinasResponse.data.data
-    } catch (e) {
-      // No surat tugas dinas
-    }
 
     suratInfoMap.value.set(pengajuanId, {
       surat_izin: suratIzin,
@@ -1277,8 +1271,80 @@ async function handleDelete(id) {
                 <span>Memuat surat...</span>
               </div>
               
-              <!-- Surat options - Only Surat Tugas TTE for pemohon -->
+              <!-- Surat options -->
               <template v-else>
+	                <!-- Surat Izin Belajar -->
+              <div
+                v-if="getSuratInfo(selectedPengajuanForSurat).surat_izin"
+                class="border border-secondary-200 rounded-xl overflow-hidden"
+              >
+                <button
+                  @click="downloadSuratIzin(selectedPengajuanForSurat)"
+                  :disabled="isDownloading(selectedPengajuanForSurat.id, 'izin')"
+                  class="w-full px-4 py-3 flex items-center justify-between hover:bg-secondary-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center">
+                      <i class="ri-file-text-line text-primary-600"></i>
+                    </div>
+                    <div class="text-left">
+                      <p class="font-medium text-secondary-800">Surat Izin Belajar (BKPSDM)</p>
+                      <p class="text-xs text-secondary-500">{{ getSuratInfo(selectedPengajuanForSurat).surat_izin.nomor_surat }}</p>
+                    </div>
+                  </div>
+                  <i v-if="isDownloading(selectedPengajuanForSurat.id, 'izin')" class="ri-loader-4-line animate-spin text-xl text-primary-600"></i>
+                  <i v-else class="ri-download-line text-xl text-secondary-400"></i>
+                </button>
+              </div>
+
+              <!-- Surat Tugas Mandiri -->
+              <div
+                v-if="getSuratInfo(selectedPengajuanForSurat).surat_tugas_mandiri"
+                class="border border-secondary-200 rounded-xl overflow-hidden"
+              >
+                <button
+                  @click="downloadSuratTugasMandiri(selectedPengajuanForSurat)"
+                  :disabled="isDownloading(selectedPengajuanForSurat.id, 'tugas_mandiri')"
+                  class="w-full px-4 py-3 flex items-center justify-between hover:bg-secondary-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                      <i class="ri-file-text-line text-blue-600"></i>
+                    </div>
+                    <div class="text-left">
+                      <p class="font-medium text-secondary-800">Surat Tugas Mandiri (Admin)</p>
+                      <p class="text-xs text-secondary-500">{{ getSuratInfo(selectedPengajuanForSurat).surat_tugas_mandiri.nomor_surat }}</p>
+                    </div>
+                  </div>
+                  <i v-if="isDownloading(selectedPengajuanForSurat.id, 'tugas_mandiri')" class="ri-loader-4-line animate-spin text-xl text-primary-600"></i>
+                  <i v-else class="ri-download-line text-xl text-secondary-400"></i>
+                </button>
+              </div>
+
+              <!-- Surat Tugas Dinas -->
+              <div
+                v-if="getSuratInfo(selectedPengajuanForSurat).surat_tugas_dinas"
+                class="border border-secondary-200 rounded-xl overflow-hidden"
+              >
+                <button
+                  @click="downloadSuratTugasDinas(selectedPengajuanForSurat)"
+                  :disabled="isDownloading(selectedPengajuanForSurat.id, 'tugas_dinas')"
+                  class="w-full px-4 py-3 flex items-center justify-between hover:bg-secondary-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                      <i class="ri-file-text-line text-green-600"></i>
+                    </div>
+                    <div class="text-left">
+                      <p class="font-medium text-secondary-800">Surat Tugas Dinas (Kepala Dinas)</p>
+                      <p class="text-xs text-secondary-500">{{ getSuratInfo(selectedPengajuanForSurat).surat_tugas_dinas.nomor_surat }}</p>
+                    </div>
+                  </div>
+                  <i v-if="isDownloading(selectedPengajuanForSurat.id, 'tugas_dinas')" class="ri-loader-4-line animate-spin text-xl text-primary-600"></i>
+                  <i v-else class="ri-download-line text-xl text-secondary-400"></i>
+                </button>
+              </div>
+
               <!-- Surat Tugas TTE -->
               <div
                 v-if="hasTteDocument(selectedPengajuanForSurat)"
@@ -1290,26 +1356,26 @@ async function handleDelete(id) {
                   class="w-full px-4 py-3 flex items-center justify-between hover:bg-secondary-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-                      <i class="ri-file-download-line text-green-600"></i>
+                    <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                      <i class="ri-file-download-line text-amber-600"></i>
                     </div>
                     <div class="text-left">
-                      <p class="font-medium text-secondary-800">Surat Tugas TTE</p>
+                      <p class="font-medium text-secondary-800">Surat Tugas TTE (Admin)</p>
                       <p class="text-xs text-secondary-500">Dokumen TTE dari Admin</p>
                     </div>
                   </div>
-                  <i v-if="isDownloading(selectedPengajuanForSurat.id, 'tugas_tte')" class="ri-loader-4-line animate-spin text-xl text-green-600"></i>
-                  <i v-else class="ri-download-line text-xl text-green-400"></i>
+                  <i v-if="isDownloading(selectedPengajuanForSurat.id, 'tugas_tte')" class="ri-loader-4-line animate-spin text-xl text-amber-600"></i>
+                  <i v-else class="ri-download-line text-xl text-amber-400"></i>
                 </button>
               </div>
 
-              <!-- No surat message -->
+	              <!-- No surat message -->
               <div
-                v-if="!hasTteDocument(selectedPengajuanForSurat)"
+                v-if="!getSuratInfo(selectedPengajuanForSurat).surat_izin && !getSuratInfo(selectedPengajuanForSurat).surat_tugas_mandiri && !getSuratInfo(selectedPengajuanForSurat).surat_tugas_dinas && !hasTteDocument(selectedPengajuanForSurat)"
                 class="text-center py-8 text-secondary-500"
               >
                 <i class="ri-file-text-line text-4xl text-secondary-300 mb-2"></i>
-                <p>Surat Tugas TTE belum tersedia</p>
+                <p>Tidak ada surat tersedia</p>
               </div>
               </template>
             </div>

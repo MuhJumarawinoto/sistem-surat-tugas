@@ -21,6 +21,7 @@ class SuratTugasDinas extends Model
         'tanggal_ttd',
         'tempat_ttd',
         'file_path',
+        'file_path_tte',
         'status',
         'signed_at',
     ];

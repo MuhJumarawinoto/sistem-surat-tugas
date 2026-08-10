@@ -21,6 +21,27 @@ function debounce(fn, delay) {
   }
 }
 
+// Format date string to YYYY-MM-DD for date input
+function formatDateForInput(dateStr) {
+  if (!dateStr) return ''
+
+  // If already in YYYY-MM-DD format, return as is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return dateStr
+  }
+
+  // Try to parse the date
+  const date = new Date(dateStr)
+  if (isNaN(date.getTime())) return ''
+
+  // Format to YYYY-MM-DD (local time, not UTC)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
 const router = useRouter()
 const route = useRoute()
 const pgaStore = usePgaStore()
@@ -109,7 +130,7 @@ const headerSubtitle = computed(() => {
 // Page header title
 const headerTitle = computed(() => {
   const isEdit = route.params.id !== 'baru' && route.name === 'pga.edit'
-  return isEdit ? 'Edit Pengajuan PGA' : 'Pengajuan PGA Baru'
+  return isEdit ? 'Edit Pengajuan Pencantuman Gelar Akademik' : 'Buat Pengajuan Pencantuman Gelar Akademik'
 })
 
 function handleFileUpload(key, event) {
@@ -475,18 +496,33 @@ async function saveForm(submit = false) {
 
   submitting.value = true
   try {
+    // Debug log
+    console.log('[PGA Edit] Form values:', form.value)
+
     const formData = new FormData()
 
-    // Add form fields
-    Object.keys(form.value).forEach(key => {
-      if (form.value[key] !== null && form.value[key] !== '') {
+    // Add form fields - always include required fields even if empty
+    // This ensures backend validation can provide proper error messages
+    const requiredFields = ['jenjang_pendidikan_id', 'nama_prodi', 'perguruan_tinggi', 'tahun_lulus']
+    const optionalFields = ['lokasi_pt', 'gelar_akademik', 'nomor_ijazah', 'tanggal_ijazah']
+
+    // Add required fields
+    requiredFields.forEach(key => {
+      const value = form.value[key] !== null && form.value[key] !== undefined ? form.value[key] : ''
+      formData.append(key, value)
+      console.log(`[PGA Edit] ${key}:`, value, `(${typeof value})`)
+    })
+
+    // Add optional fields only if they have values
+    optionalFields.forEach(key => {
+      if (form.value[key] !== null && form.value[key] !== undefined && form.value[key] !== '') {
         formData.append(key, form.value[key])
       }
     })
 
     // Add files
     Object.keys(documents.value).forEach(key => {
-      if (documents.value[key]) {
+      if (documents.value[key] && documents.value[key] !== 'existing') {
         formData.append(key, documents.value[key])
       }
     })
@@ -538,18 +574,21 @@ onMounted(async () => {
     loading.value = true
     try {
       const response = await pgaStore.fetchPgaById(route.params.id)
-      const data = response.data.data || response.data
+      // fetchPgaById returns the PGA data directly (not wrapped in response.data)
+      const data = response.data || response
 
-      form.value = {
+      // Update form values while preserving reactivity
+      Object.assign(form.value, {
         jenjang_pendidikan_id: data.jenjang_pendidikan_id || '',
         nama_prodi: data.nama_prodi || '',
         perguruan_tinggi: data.perguruan_tinggi || '',
         lokasi_pt: data.lokasi_pt || '',
         gelar_akademik: data.gelar_akademik || '',
         nomor_ijazah: data.nomor_ijazah || '',
-        tanggal_ijazah: data.tanggal_ijazah || '',
+        // Format tanggal for date input (YYYY-MM-DD)
+        tanggal_ijazah: formatDateForInput(data.tanggal_ijazah),
         tahun_lulus: data.tahun_lulus || new Date().getFullYear(),
-      }
+      })
 
       // Load existing files info - use document types from API
       documentTypes.value.forEach(doc => {

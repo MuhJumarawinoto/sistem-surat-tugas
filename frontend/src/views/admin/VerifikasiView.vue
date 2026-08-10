@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePengajuanStore } from '@/stores/pengajuan'
 import { useAuthStore } from '@/stores/auth'
@@ -15,20 +15,72 @@ const pengajuanStore = usePengajuanStore()
 const authStore = useAuthStore()
 
 const pengajuanList = ref([])
-const verificationInfoMap = ref(new Map()) // Store verification info for each pengajuan
+const verificationInfoMap = ref(new Map())
 const loading = ref(false)
 const showModal = ref(false)
 const selectedPengajuan = ref(null)
 const activeDropdown = ref(null)
+const searchQuery = ref('')
+const statusFilter = ref('all')
+const currentPage = ref(1)
+const itemsPerPage = 5
 
-// Hitung statistik verifikasi (hanya yang belum selesai diverifikasi)
-const stats = computed(() => {
-  return {
-    total: pengajuanList.value.length,
-    pendingAdmin: pengajuanList.value.filter(p => p.status === 'pending_admin').length,
-    verified: pengajuanList.value.filter(p => p.status === 'verified').length,
-    ditolak: pengajuanList.value.filter(p => p.status === 'ditolak').length,
+// Status filter options
+const statusOptions = [
+  { value: 'all', label: 'Semua Status' },
+  { value: 'pending_admin', label: 'Menunggu Verifikasi' },
+  { value: 'verified', label: 'Terverifikasi' },
+  { value: 'ditolak', label: 'Ditolak' },
+]
+
+// Filter untuk list verifikasi
+const filteredList = computed(() => {
+  let list = pengajuanList.value
+
+  // Status filter
+  if (statusFilter.value === 'all') {
+    // Show all statuses (already filtered in loadPengajuan)
+  } else {
+    list = list.filter(p => p.status === statusFilter.value)
   }
+
+  // Search filter
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    list = list.filter(p =>
+      (p.nomor_pengajuan && p.nomor_pengajuan.toLowerCase().includes(query)) ||
+      (p.user?.name && p.user.name.toLowerCase().includes(query)) ||
+      (p.nama_prodi && p.nama_prodi.toLowerCase().includes(query)) ||
+      (p.perguruan_tinggi && p.perguruan_tinggi.toLowerCase().includes(query))
+    )
+  }
+
+  return list
+})
+
+// Hitung statistik verifikasi (berdasarkan filtered list)
+const stats = computed(() => {
+  const list = pengajuanList.value
+  return {
+    total: list.length,
+    pendingAdmin: list.filter(p => p.status === 'pending_admin').length,
+    verified: list.filter(p => p.status === 'verified').length,
+    ditolak: list.filter(p => p.status === 'ditolak').length,
+  }
+})
+
+// Pagination
+const totalPages = computed(() => Math.ceil(filteredList.value.length / itemsPerPage))
+
+const paginatedList = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage
+  const end = start + itemsPerPage
+  return filteredList.value.slice(start, end)
+})
+
+// Reset to page 1 when search or status filter changes
+watch([searchQuery, statusFilter], () => {
+  currentPage.value = 1
 })
 
 onMounted(async () => {
@@ -51,18 +103,10 @@ function openVerificationPage(id) {
 async function loadPengajuan() {
   loading.value = true
   try {
-    // Ambil semua pengajuan yang perlu verifikasi admin
-    // Filter akan dilakukan di frontend untuk hanya menampilkan yang belum selesai diverifikasi
-    const data = await pengajuanStore.fetchPengajuan()
-    // Filter: Hanya tampilkan yang belum selesai (bukan signed, selesai, completed, dicabut)
-    // Status verified masih ditampilkan karena admin perlu klik "Setujui & Lanjutkan" untuk buat surat
-    // Data yang sudah signed/completed ada di menu Riwayat Verifikasi
-    // Draft tidak ditampilkan karena belum dikirim oleh pemohon
+    const data = await pengajuanStore.fetchPengajuan({ per_page: 100 })
     pengajuanList.value = (data || []).filter(p =>
       !['signed', 'selesai', 'completed', 'dicabut', 'draft'].includes(p.status)
     )
-
-    console.log('Admin pengajuan loaded:', pengajuanList.value.length, 'items')
 
     // Load verification info for each pengajuan
     await loadVerificationInfo()
@@ -74,7 +118,6 @@ async function loadPengajuan() {
 }
 
 async function loadVerificationInfo() {
-  // Load verification info for each pengajuan in parallel
   const promises = pengajuanList.value.map(async (pengajuan) => {
     try {
       const response = await api.get(`/verification/pengajuan/${pengajuan.id}`)
@@ -110,96 +153,48 @@ function getStatusLabel(status) {
   return labels[status] || status
 }
 
-// Dapatkan informasi siapa yang perlu memverifikasi (dari API)
+// Dapatkan informasi siapa yang perlu memverifikasi
 function getVerifierInfo(pengajuan) {
-  const verificationInfo = verificationInfoMap.value.get(pengajuan.id)
-
-  if (!verificationInfo) {
-    // Fallback to simple logic if API data not loaded yet
-    return getFallbackVerifierInfo(pengajuan)
-  }
-
-  // Find current verifier in chain
-  const currentChain = verificationInfo.verification_chain?.find(c => c.status === 'current')
-  const pendingChain = verificationInfo.verification_chain?.find(c => c.status === 'pending')
-
   if (pengajuan.status === 'pending_admin') {
     return {
       label: 'Perlu Verifikasi',
       name: 'Admin BKPSDM',
       jabatan: 'Verifikasi Dokumen',
-      nip: '-',
       icon: 'ri-admin-line',
-      color: 'blue'
+      bgColor: 'bg-blue-50',
+      textColor: 'text-blue-700',
+      iconColor: 'text-blue-600',
+      borderColor: 'border-blue-200'
     }
   } else if (pengajuan.status === 'verified') {
     return {
       label: 'Selanjutnya',
       name: 'Kepala Dinas',
       jabatan: 'Buat Surat Tugas Belajar',
-      nip: '-',
       icon: 'ri-file-list-line',
-      color: 'purple'
+      bgColor: 'bg-purple-50',
+      textColor: 'text-purple-700',
+      iconColor: 'text-purple-600',
+      borderColor: 'border-purple-200'
     }
   } else if (pengajuan.status === 'surat_dinas') {
+    const verificationInfo = verificationInfoMap.value.get(pengajuan.id)
     return {
       label: 'Selanjutnya',
-      name: verificationInfo.final_signer?.nama || 'Admin BKPSDM',
+      name: verificationInfo?.final_signer?.nama || 'Admin BKPSDM',
       jabatan: 'Buat Surat Izin Belajar',
-      nip: '-',
       icon: 'ri-file-text-line',
-      color: 'blue'
+      bgColor: 'bg-blue-50',
+      textColor: 'text-blue-700',
+      iconColor: 'text-blue-600',
+      borderColor: 'border-blue-200'
     }
   }
 
   return null
 }
 
-// Fallback verifier info when API data not loaded
-function getFallbackVerifierInfo(pengajuan) {
-  if (pengajuan.status === 'pending_admin') {
-    return {
-      label: 'Perlu Verifikasi',
-      name: 'Admin BKPSDM',
-      jabatan: 'Verifikasi Dokumen',
-      nip: '-',
-      icon: 'ri-admin-line',
-      color: 'blue'
-    }
-  } else if (pengajuan.status === 'verified') {
-    return {
-      label: 'Selanjutnya',
-      name: 'Kepala Dinas',
-      jabatan: 'Buat Surat Tugas Belajar',
-      nip: '-',
-      icon: 'ri-file-list-line',
-      color: 'purple'
-    }
-  } else if (pengajuan.status === 'surat_dinas') {
-    return {
-      label: 'Selanjutnya',
-      name: 'Admin BKPSDM',
-      jabatan: 'Buat Surat Izin Belajar',
-      nip: '-',
-      icon: 'ri-file-text-line',
-      color: 'blue'
-    }
-  }
-
-  return null
-}
-
-// Get final signer info from verification data
-function getFinalSigner(pengajuan) {
-  const verificationInfo = verificationInfoMap.value.get(pengajuan.id)
-  return verificationInfo?.final_signer || {
-    nama: 'Kepala BKPSDM',
-    jabatan: 'Penandatangan Surat',
-    level: 'kepala_bkpsdm'
-  }
-}
-
-// Milestone dot-line functions (3 Steps - tanpa TTE)
+// Milestone functions (4 Steps)
 function getMilestoneSteps(pengajuan) {
   const status = pengajuan.status
   const steps = []
@@ -217,35 +212,39 @@ function getMilestoneSteps(pengajuan) {
               ['pending_admin'].includes(status) ? 'current' : 'pending',
   })
 
-  // Step 3: Selesai
+  // Step 3: Surat Tugas
+  steps.push({
+    label: 'Surat Tugas',
+    status: ['signed', 'selesai', 'completed'].includes(status) ? 'completed' :
+              ['verified'].includes(status) ? 'current' : 'pending',
+  })
+
+  // Step 4: Selesai
   steps.push({
     label: 'Selesai',
-    status: ['selesai', 'completed'].includes(status) ? 'completed' :
-              ['signed'].includes(status) ? 'current' : 'pending',
+    status: ['selesai', 'completed'].includes(status) ? 'completed' : 'pending',
   })
 
   return steps
 }
 
 function getProgressLineClass(status) {
-  // Flow: 3 Steps - Dikirim → Verifikasi → Selesai (tanpa TTE)
-  // Draft - no progress
+  // Flow: 4 Steps - Dikirim → Verifikasi → Surat Tugas → Selesai
   if (status === 'draft' || status === 'dicabut' || status === 'ditolak') {
     return 'w-0 bg-gray-200'
   }
-  // Pending Admin - 1/3 progress (33%)
   if (status === 'pending_admin') {
-    return 'w-1/3 bg-blue-500'
+    return 'w-1/4 bg-blue-500'
   }
-  // Verified - 2/3 progress (66%)
   if (status === 'verified') {
-    return 'w-2/3 bg-blue-500'
+    return 'w-2/4 bg-blue-500'
   }
-  // Signed/Selesai/Completed - full progress (100%)
-  if (status === 'signed' || status === 'selesai' || status === 'completed') {
+  if (status === 'signed') {
+    return 'w-3/4 bg-blue-500'
+  }
+  if (status === 'selesai' || status === 'completed') {
     return 'w-full bg-green-500'
   }
-  // Default
   return 'w-0 bg-gray-200'
 }
 
@@ -284,104 +283,178 @@ if (typeof window !== 'undefined') {
 
 <template>
   <MainLayout>
+    <!-- Breadcrumb -->
     <Breadcrumb />
+
+    <!-- Page Header -->
     <PageHeader
-      title="Verifikasi Pengajuan"
-      subtitle="Daftar pengajuan yang menunggu verifikasi"
+      title="Verifikasi Surat Tugas Belajar Mandiri"
+      subtitle="Verifikasi kelengkapan dokumen pengajuan izin belajar"
     />
 
-    <!-- Compact Stats Row -->
-    <div class="flex flex-wrap items-center gap-4 mb-5 animate-slide-up">
-      <div class="flex items-center gap-2.5 px-4 py-2.5 bg-white rounded-lg border border-secondary-200">
-        <i class="ri-file-list-3-line text-secondary-500"></i>
-        <span class="text-sm text-secondary-500">Total:</span>
-        <span class="font-semibold text-lg text-secondary-800">{{ stats.total }}</span>
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5 animate-slide-up">
+      <!-- Total -->
+      <div class="bg-white rounded-xl border border-secondary-200 p-4 hover:shadow-sm transition-shadow">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg bg-secondary-100 flex items-center justify-center">
+            <i class="ri-file-list-3-line text-xl text-secondary-600"></i>
+          </div>
+          <div>
+            <p class="text-xs text-secondary-500 mb-0.5">Total</p>
+            <p class="text-xl font-bold text-secondary-800">{{ stats.total }}</p>
+          </div>
+        </div>
       </div>
-      <div class="flex items-center gap-2.5 px-4 py-2.5 bg-blue-50 rounded-lg border border-blue-200">
-        <i class="ri-admin-line text-blue-500"></i>
-        <span class="text-sm text-blue-600">Verifikasi:</span>
-        <span class="font-semibold text-lg text-blue-700">{{ stats.pendingAdmin }}</span>
+
+      <!-- Pending Verification -->
+      <div class="bg-white rounded-xl border border-blue-200 p-4 hover:shadow-sm transition-shadow">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+            <i class="ri-admin-line text-xl text-blue-600"></i>
+          </div>
+          <div>
+            <p class="text-xs text-blue-600 mb-0.5">Verifikasi</p>
+            <p class="text-xl font-bold text-blue-700">{{ stats.pendingAdmin }}</p>
+          </div>
+        </div>
       </div>
-      <div class="flex items-center gap-2.5 px-4 py-2.5 bg-green-50 rounded-lg border border-green-200">
-        <i class="ri-checkbox-circle-line text-green-500"></i>
-        <span class="text-sm text-green-600">Terverifikasi:</span>
-        <span class="font-semibold text-lg text-green-700">{{ stats.verified }}</span>
+
+      <!-- Verified -->
+      <div class="bg-white rounded-xl border border-green-200 p-4 hover:shadow-sm transition-shadow">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+            <i class="ri-checkbox-circle-line text-xl text-green-600"></i>
+          </div>
+          <div>
+            <p class="text-xs text-green-600 mb-0.5">Terverifikasi</p>
+            <p class="text-xl font-bold text-green-700">{{ stats.verified }}</p>
+          </div>
+        </div>
       </div>
-      <div class="flex items-center gap-2.5 px-4 py-2.5 bg-red-50 rounded-lg border border-red-200">
-        <i class="ri-close-circle-line text-red-500"></i>
-        <span class="text-sm text-red-600">Ditolak:</span>
-        <span class="font-semibold text-lg text-red-700">{{ stats.ditolak }}</span>
+
+      <!-- Rejected -->
+      <div class="bg-white rounded-xl border border-red-200 p-4 hover:shadow-sm transition-shadow">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
+            <i class="ri-close-circle-line text-xl text-red-600"></i>
+          </div>
+          <div>
+            <p class="text-xs text-red-600 mb-0.5">Ditolak</p>
+            <p class="text-xl font-bold text-red-700">{{ stats.ditolak }}</p>
+          </div>
+        </div>
       </div>
+    </div>
+
+    <!-- Search & Filter Bar -->
+    <div class="flex flex-col sm:flex-row gap-3 mb-4">
+      <!-- Search Box -->
+      <div class="flex-1 relative">
+        <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-secondary-400"></i>
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="Cari berdasarkan nomor, nama, prodi, atau universitas..."
+          class="w-full pl-10 pr-10 py-2.5 border border-secondary-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+        />
+        <button
+          v-if="searchQuery"
+          @click="searchQuery = ''"
+          class="absolute right-3 top-1/2 -translate-y-1/2 text-secondary-400 hover:text-secondary-600 transition-colors"
+        >
+          <i class="ri-close-line"></i>
+        </button>
+      </div>
+
+      <!-- Status Filter Dropdown -->
+      <div class="sm:w-56 relative">
+        <select
+          v-model="statusFilter"
+          class="w-full pl-4 pr-10 py-2.5 border border-secondary-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent appearance-none bg-white cursor-pointer"
+        >
+          <option v-for="option in statusOptions" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </option>
+        </select>
+        <i class="ri-filter-line absolute right-3 top-1/2 -translate-y-1/2 text-secondary-400 pointer-events-none"></i>
+      </div>
+    </div>
+
+    <!-- Result Count -->
+    <div v-if="searchQuery || statusFilter !== 'all'" class="text-sm text-secondary-500 mb-4 flex items-center gap-2">
+      <i class="ri-information-line"></i>
+      <span v-if="searchQuery">{{ filteredList.length }} hasil ditemukan untuk "{{ searchQuery }}"</span>
+      <span v-if="searchQuery && statusFilter !== 'all'" class="text-secondary-300">•</span>
+      <span v-if="statusFilter !== 'all'" class="badge badge-secondary text-xs">{{ statusOptions.find(o => o.value === statusFilter)?.label }}</span>
     </div>
 
     <!-- Loading State -->
     <div v-if="loading" class="grid grid-cols-1 gap-4 animate-slide-up">
-      <div v-for="i in 3" :key="i" class="bg-white rounded-xl border border-secondary-200 p-4 animate-pulse">
+      <div v-for="i in 3" :key="i" class="bg-white rounded-xl border border-secondary-200 p-5 animate-pulse">
         <div class="flex items-start gap-4">
           <div class="flex-1">
             <div class="flex items-center gap-2 mb-2">
               <div class="h-5 w-32 bg-secondary-200 rounded"></div>
-              <div class="h-6 w-20 bg-secondary-200 rounded-full"></div>
+              <div class="h-6 w-24 bg-secondary-200 rounded-full"></div>
             </div>
             <div class="h-5 w-48 bg-secondary-200 rounded mb-2"></div>
             <div class="flex items-center gap-2">
               <div class="h-4 w-24 bg-secondary-200 rounded"></div>
               <div class="h-4 w-32 bg-secondary-200 rounded"></div>
-              <div class="h-4 w-28 bg-secondary-200 rounded"></div>
             </div>
           </div>
           <div class="flex gap-2">
-            <div class="h-9 w-20 bg-secondary-200 rounded-lg"></div>
-            <div class="h-9 w-9 bg-secondary-200 rounded-lg"></div>
+            <div class="h-10 w-24 bg-secondary-200 rounded-lg"></div>
           </div>
-        </div>
-        <div class="mt-3 pt-3 border-t border-secondary-100">
-          <div class="h-8 w-full bg-secondary-100 rounded"></div>
         </div>
       </div>
     </div>
 
     <!-- Empty State -->
-    <div v-else-if="pengajuanList.length === 0" class="text-center py-16 animate-slide-up">
+    <div v-else-if="filteredList.length === 0" class="text-center py-16 animate-slide-up">
       <div class="w-20 h-20 rounded-full bg-gradient-to-br from-secondary-100 to-secondary-50 flex items-center justify-center mx-auto mb-4 border border-secondary-200">
         <i class="ri-inbox-archive-line text-4xl text-secondary-400"></i>
       </div>
-      <h3 class="text-base font-semibold text-secondary-800 mb-1">Tidak Ada Pengajuan</h3>
-      <p class="text-sm text-secondary-500">Belum ada pengajuan yang menunggu verifikasi</p>
+      <h3 class="text-lg font-semibold text-secondary-800 mb-2">Tidak Ada Pengajuan</h3>
+      <p class="text-sm text-secondary-500 max-w-md mx-auto">
+        <template v-if="searchQuery">
+          Tidak ditemukan hasil pencarian untuk "{{ searchQuery }}". Coba kata kunci lain.
+        </template>
+        <template v-else-if="statusFilter !== 'all'">
+          Tidak ada pengajuan dengan status {{ statusOptions.find(o => o.value === statusFilter)?.label.toLowerCase() }}.
+        </template>
+        <template v-else>
+          Belum ada pengajuan yang menunggu verifikasi. Pengajuan yang sudah diverifikasi akan ditampilkan di menu Riwayat Verifikasi.
+        </template>
+      </p>
     </div>
 
     <!-- List -->
-    <div v-else class="space-y-3 animate-slide-up">
+    <div v-else class="space-y-4 animate-slide-up">
       <div
-        v-for="item in pengajuanList"
+        v-for="item in paginatedList"
         :key="item.id"
-        class="bg-white rounded-xl border border-secondary-200 shadow-sm hover:shadow-md transition-all"
+        class="bg-white rounded-xl border border-secondary-200 shadow-sm hover:shadow-md hover:border-secondary-300 transition-all"
       >
-        <div class="p-4">
-          <!-- Compact Header Row -->
-          <div class="flex items-start gap-4">
+        <div class="p-5">
+          <!-- Header Row -->
+          <div class="flex items-start gap-4 mb-4">
             <!-- Main Info -->
             <div class="flex-1 min-w-0">
-              <!-- First row: Number + badges -->
+              <!-- Number + Status Badge -->
               <div class="flex items-center gap-2 mb-2 flex-wrap">
                 <span class="font-semibold text-base text-secondary-800">{{ item.nomor_pengajuan }}</span>
-                <span class="badge text-sm py-1 px-2.5" :class="getStatusBadgeClass(item.status)">
+                <span class="badge text-sm" :class="getStatusBadgeClass(item.status)">
                   {{ getStatusLabel(item.status) }}
                 </span>
-                <span v-if="item.user?.atasan" class="text-xs text-secondary-500 bg-secondary-100 px-2 py-1 rounded-md">
-                  <i class="ri-user-star-line mr-0.5"></i>
-                  {{ item.user.atasan.name }}
-                </span>
-                <span v-else class="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded-md">
-                  <i class="ri-error-warning-line mr-0.5"></i>
-                  <span class="hidden sm:inline">Atasan belum ditetapkan</span>
-                  <span class="sm:hidden">Atasan -</span>
-                </span>
               </div>
-              <!-- Second row: Name -->
-              <p class="text-base font-medium text-secondary-800 mb-1.5">{{ item.user?.name }}</p>
-              <!-- Third row: Details -->
-              <div class="flex items-center gap-3 text-sm text-secondary-500 flex-wrap">
+
+              <!-- Name -->
+              <p class="text-base font-semibold text-secondary-800 mb-2">{{ item.user?.name }}</p>
+
+              <!-- Details -->
+              <div class="flex items-center gap-2 text-sm text-secondary-500 flex-wrap">
                 <span class="flex items-center gap-1">
                   <i class="ri-briefcase-line text-secondary-400"></i>
                   {{ item.user?.jabatan || '-' }}
@@ -409,75 +482,63 @@ if (typeof window !== 'undefined') {
                 <i :class="item.status === 'pending_admin' ? 'ri-checkbox-circle-line' : 'ri-eye-line'"></i>
                 <span class="ml-1">{{ item.status === 'pending_admin' ? 'Verifikasi' : 'Detail' }}</span>
               </button>
-              <button
-                v-if="item.status !== 'disetujui' && item.status !== 'ditolak'"
-                @click="openSendMessageModal(item)"
-                class="btn btn-ghost btn-sm"
-                title="Kirim Pesan"
-              >
-                <i class="ri-message-3-line"></i>
-              </button>
             </div>
 
             <!-- Actions - Mobile Dropdown -->
             <div class="sm:hidden relative">
               <button
                 @click="toggleDropdown(item.id, $event)"
-                class="btn btn-ghost btn-sm p-2"
+                class="btn btn-ghost btn-icon p-2"
               >
-                <i class="ri-more-2-fill text-lg"></i>
+                <i class="ri-more-2-fill text-xl"></i>
               </button>
               <div
                 v-if="activeDropdown === item.id"
-                class="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-secondary-200 py-1 z-20"
+                class="absolute right-0 top-full mt-1 w-44 bg-white rounded-lg shadow-lg border border-secondary-200 py-1 z-20"
                 @click.stop
               >
                 <button
                   @click="openVerificationPage(item.id); closeAllMenus()"
-                  class="w-full px-4 py-2 text-left text-sm hover:bg-secondary-50 flex items-center gap-2"
+                  class="w-full px-4 py-2.5 text-left text-sm hover:bg-secondary-50 flex items-center gap-2 transition-colors"
                 >
                   <i :class="item.status === 'pending_admin' ? 'ri-checkbox-circle-line text-primary-600' : 'ri-eye-line text-secondary-600'"></i>
                   <span>{{ item.status === 'pending_admin' ? 'Verifikasi' : 'Detail' }}</span>
-                </button>
-                <button
-                  v-if="item.status !== 'disetujui' && item.status !== 'ditolak'"
-                  @click="openSendMessageModal(item); closeAllMenus()"
-                  class="w-full px-4 py-2 text-left text-sm hover:bg-secondary-50 flex items-center gap-2"
-                >
-                  <i class="ri-message-3-line text-secondary-600"></i>
-                  <span>Kirim Pesan</span>
-                </button>
-                <button
-                  @click="openSendMessageModal(item); closeAllMenus()"
-                  class="w-full px-4 py-2 text-left text-sm hover:bg-secondary-50 flex items-center gap-2"
-                >
-                  <i class="ri-message-3-line text-secondary-600"></i>
-                  <span>Kirim Pesan</span>
                 </button>
               </div>
             </div>
           </div>
 
           <!-- Divider -->
-          <div class="border-t border-secondary-100 my-3"></div>
+          <div class="border-t border-secondary-100 my-4"></div>
 
           <!-- Verifier Info -->
-          <div v-if="getVerifierInfo(item)" class="flex items-center gap-2 text-sm px-3 py-2 rounded-md" :class="`bg-${getVerifierInfo(item).color}-50`">
-            <i :class="[getVerifierInfo(item).icon, `text-${getVerifierInfo(item).color}-600`]"></i>
-            <span :class="`text-${getVerifierInfo(item).color}-700`">{{ getVerifierInfo(item).label }}:</span>
-            <span class="font-medium" :class="`text-${getVerifierInfo(item).color}-900`">{{ getVerifierInfo(item).name }}</span>
-            <span class="text-secondary-300">•</span>
-            <span :class="`text-${getVerifierInfo(item).color}-600`">{{ getVerifierInfo(item).jabatan }}</span>
+          <div v-if="getVerifierInfo(item)" class="mb-4">
+            <div class="flex items-center gap-3 px-4 py-3 rounded-lg border" :class="[
+              getVerifierInfo(item).bgColor,
+              getVerifierInfo(item).borderColor
+            ]">
+              <div class="w-8 h-8 rounded-full bg-white/80 flex items-center justify-center">
+                <i :class="[getVerifierInfo(item).icon, getVerifierInfo(item).iconColor]"></i>
+              </div>
+              <div class="flex-1">
+                <p class="text-xs font-medium opacity-80">{{ getVerifierInfo(item).label }}</p>
+                <p class="text-sm font-semibold" :class="getVerifierInfo(item).textColor">
+                  {{ getVerifierInfo(item).name }}
+                  <span class="text-secondary-300">•</span>
+                  {{ getVerifierInfo(item).jabatan }}
+                </p>
+              </div>
+            </div>
           </div>
 
-          <!-- Milestone Dot-Line -->
-          <div class="px-4 pb-2">
-            <div class="flex items-center justify-between relative py-2">
+          <!-- Milestone Progress (4 Steps) -->
+          <div class="px-2">
+            <div class="flex items-center justify-between relative py-3">
               <!-- Progress Line Background -->
-              <div class="absolute top-1/2 left-0 right-0 h-0.5 -translate-y-1/2 bg-gray-200 z-0"></div>
+              <div class="absolute top-1/2 left-0 right-0 h-1 -translate-y-1/2 bg-gray-200 rounded-full z-0"></div>
               <!-- Progress Line Active -->
               <div
-                class="absolute top-1/2 left-0 h-0.5 -translate-y-1/2 z-0 transition-all duration-300"
+                class="absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full z-0 transition-all duration-500"
                 :class="getProgressLineClass(item.status)"
               ></div>
 
@@ -485,7 +546,7 @@ if (typeof window !== 'undefined') {
               <div
                 v-for="(step, idx) in getMilestoneSteps(item)"
                 :key="idx"
-                class="relative z-10 flex flex-col items-center"
+                class="relative z-10 flex flex-col items-center gap-1.5"
               >
                 <!-- Pulse Ring for Current Step -->
                 <div
@@ -494,119 +555,40 @@ if (typeof window !== 'undefined') {
                   style="animation-duration: 1.5s;"
                 ></div>
                 <div
-                  class="w-3 h-3 rounded-full transition-all duration-300 relative cursor-pointer hover:scale-125"
+                  class="w-4 h-4 rounded-full transition-all duration-300 relative cursor-pointer hover:scale-110 border-2 border-white shadow-sm"
                   :class="getStepClass(step)"
                   :title="`${step.label}: ${getStepStatusDescription(step.status, step.label)}`"
                 ></div>
                 <span
-                  class="text-xs mt-1 whitespace-nowrap"
-                  :class="step.status === 'current' ? 'text-blue-600 font-medium' : 'text-gray-600'"
+                  class="text-xs font-medium whitespace-nowrap"
+                  :class="step.status === 'current' ? 'text-blue-600' : step.status === 'completed' ? 'text-green-600' : 'text-gray-400'"
                 >{{ step.label }}</span>
               </div>
             </div>
           </div>
-
-          <!-- Collapsible Documents Section - HIDDEN -->
-          <!--
-          <div class="mt-3">
-            <button
-              class="flex items-center justify-between w-full text-left hover:bg-secondary-50 px-2 py-2 -mx-2 rounded-lg transition-colors group"
-              @click="toggleDocuments(item.id)"
-            >
-              <span class="text-sm font-medium text-secondary-600 flex items-center gap-1.5">
-                <i class="ri-file-list-3-line text-primary-500"></i>
-                Dokumen Lampiran
-                <span class="text-xs text-secondary-400 font-normal">
-                  ({{ getDocumentStatusCount(item.id).total }} file)
-                </span>
-              </span>
-              <div class="flex items-center gap-2">
-                <span class="flex items-center gap-1 text-xs">
-                  <span class="badge badge-success py-0.5 px-1.5">{{ getDocumentStatusCount(item.id).lengkap }}</span>
-                  <span class="badge badge-secondary py-0.5 px-1.5">{{ getDocumentStatusCount(item.id).belum }}</span>
-                  <span v-if="getDocumentStatusCount(item.id).tidak_lengkap > 0" class="badge badge-danger py-0.5 px-1.5">{{ getDocumentStatusCount(item.id).tidak_lengkap }}</span>
-                </span>
-                <i
-                  class="text-secondary-400 group-hover:text-secondary-500 transition-transform duration-200"
-                  :class="isDocumentsCollapsed(item.id) ? 'ri-arrow-down-s-line' : 'ri-arrow-up-s-line'"
-                ></i>
-              </div>
-            </button>
-            <Transition
-              enter-active-class="transition-all duration-200 ease-out"
-              enter-from-class="opacity-0 -translate-y-1"
-              enter-to-class="opacity-100 translate-y-0"
-              leave-active-class="transition-all duration-150 ease-in"
-              leave-from-class="opacity-100 translate-y-0"
-              leave-to-class="opacity-0 -translate-y-1"
-            >
-              <div v-show="!isDocumentsCollapsed(item.id)" class="mt-2 overflow-hidden">
-                <div v-if="getDocuments(item.id).length === 0" class="text-center py-4 text-secondary-500 text-sm">
-                  <i class="ri-inbox-line text-xl"></i>
-                  <p class="mt-1">Tidak ada dokumen</p>
-                </div>
-                <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div
-                    v-for="doc in getDocuments(item.id)"
-                    :key="doc.id"
-                    class="flex items-center gap-2 p-2 bg-secondary-50 rounded-lg hover:bg-secondary-100 transition-colors"
-                  >
-                    <div class="w-8 h-8 rounded bg-white flex items-center justify-center shrink-0">
-                      <i :class="[getDocumentIcon(doc.file_type), 'text-lg text-secondary-500']"></i>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                      <p class="text-xs font-medium text-secondary-700 truncate">{{ documentTypes[doc.jenis_dokumen]?.label || doc.jenis_dokumen }}</p>
-                      <p class="text-xs text-secondary-400 truncate">{{ doc.file_name }}</p>
-                    </div>
-                    <span class="badge text-xs py-0.5" :class="getDocumentStatusClass(doc.status_verifikasi)">
-                      {{ getDocumentStatusLabel(doc.status_verifikasi) }}
-                    </span>
-                    <button
-                      @click="previewDocument(doc)"
-                      class="btn btn-ghost btn-sm p-1 h-7 w-7 text-primary-600 hover:text-primary-700 hover:bg-primary-50"
-                      title="Preview Dokumen"
-                    >
-                      <i class="ri-eye-line"></i>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </Transition>
-          </div>
-          -->
-
-          <!-- Collapsible Milestone - HIDDEN -->
-          <!--
-          <div class="mt-3">
-            <button
-              class="flex items-center justify-between w-full text-left hover:bg-secondary-50 px-2 py-2 -mx-2 rounded-lg transition-colors group"
-              @click="toggleMilestone(item.id)"
-            >
-              <span class="text-sm font-medium text-secondary-600 flex items-center gap-1.5">
-                <i class="ri-route-line text-primary-500"></i>
-                Progress Pengajuan
-              </span>
-              <i
-                class="text-secondary-400 group-hover:text-secondary-500 transition-transform duration-200"
-                :class="isMilestoneCollapsed(item.id) ? 'ri-arrow-down-s-line' : 'ri-arrow-up-s-line'"
-              ></i>
-            </button>
-            <Transition
-              enter-active-class="transition-all duration-200 ease-out"
-              enter-from-class="opacity-0 -translate-y-1"
-              enter-to-class="opacity-100 translate-y-0"
-              leave-active-class="transition-all duration-150 ease-in"
-              leave-from-class="opacity-100 translate-y-0"
-              leave-to-class="opacity-0 -translate-y-1"
-            >
-              <div v-show="!isMilestoneCollapsed(item.id)" class="bg-secondary-50 rounded-lg p-3 mt-2 overflow-hidden">
-                <PengajuanMilestone :pengajuan-id="item.id" />
-              </div>
-            </Transition>
-          </div>
-          -->
         </div>
       </div>
+    </div>
+
+    <!-- Pagination -->
+    <div v-if="filteredList.length > 0 && totalPages > 1" class="flex items-center justify-center gap-2 mt-6">
+      <button
+        @click="currentPage--"
+        :disabled="currentPage === 1"
+        class="w-10 h-10 rounded-lg border border-secondary-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-secondary-50 transition-colors flex items-center justify-center"
+      >
+        <i class="ri-arrow-left-s-line"></i>
+      </button>
+      <span class="text-sm text-secondary-600 px-4">
+        Halaman <span class="font-semibold">{{ currentPage }}</span> dari <span class="font-semibold">{{ totalPages }}</span>
+      </span>
+      <button
+        @click="currentPage++"
+        :disabled="currentPage === totalPages"
+        class="w-10 h-10 rounded-lg border border-secondary-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-secondary-50 transition-colors flex items-center justify-center"
+      >
+        <i class="ri-arrow-right-s-line"></i>
+      </button>
     </div>
 
     <SendMessageModal
